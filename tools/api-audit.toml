@@ -59,6 +59,8 @@ modules = [
 ]
 
 [renamed]
+"Builder.addMigrations" = "Create"   # DataStoreFactory::Create(serializer, path, handler, migrations)
+ReThrowCorruptionHandler = "CorruptionException"   # without a handler, reads throw it
 "MutablePreferences.putAll" = "PutAll"
 "MutablePreferences.plusAssign" = "PutAll"
 "KeepOnScreenCondition.shouldKeepOnScreen" = "SplashScreenKeptOnScreen"
@@ -498,6 +500,10 @@ ResourceFont = "Font"
 toFontFamily = "FontFamily Of"
 
 [skipped]
+"Builder.setTracer" = "kiln::trace sections cover the store's IO"
+"DataStoreFactory.createWithTracing" = "kiln::trace sections cover the store's IO"
+"DataStoreFactory.createInDeviceProtectedStorage" = "direct-boot (device-protected) storage: kiln apps do not run before the first unlock"
+DeviceProtectedDataStoreFile = "see createInDeviceProtectedStorage"
 "PreferencesFileSerializer.writeTo" = "SerializePreferences returns the bytes"
 "PreferencesSerializer.writeTo" = "SerializePreferences returns the bytes"
 "PreferenceDataStoreFile.preferencesDataStoreFile" = "Open(name) puts the file under the app's files directory itself"
@@ -855,6 +861,7 @@ StaticLayoutFactory = "Android StaticLayout internals"
 toSpan = "Android spans (TtsSpan)"
 
 [skipped_patterns]
+'^(Storage|FileStorage|StorageConnection|ReadScope|WriteScope|InterProcessCoordinator|MultiProcessDataStoreFactory|createSingleProcessCoordinator|createMultiProcessCoordinator|writeData|readData)(\..*)?$' = "pluggable storage and multi-process coordination: kiln's DataStore is one process, one file (FileStorage's behaviour built in)"
 '^WindowInfoTracker\.(registerWindowEngagementInfoListener|unregisterWindowEngagementInfoListener|windowEngagementInfo)$' = "window engagement (XR / connected displays): not on phones"
 '^component\d+$' = "Kotlin destructuring (componentN): C++ reads the fields"
 '^(ContextAware|ContextAwareHelper|OnContextAvailableListener|withContextAvailable|ComponentActivity\.(add|remove)OnContextAvailableListener|ComponentActivity\.peekAvailableContext)$' = "Android Context availability; kiln_main runs with everything set up"

@@ -54,49 +54,6 @@ namespace kiln::datastore {
             }
         };
 
-        void MakeParentDirs(const std::string& path) {
-            for (std::size_t i = 1; i < path.size(); ++i)
-                if (path[i] == '/') ::mkdir(path.substr(0, i).c_str(), 0700);
-        }
-        // nullopt when there is no file; any other failure throws (FileStorage's readData: a
-        // file that exists but cannot be read is an error, not empty data an edit would then
-        // write over).
-        std::optional<std::string> ReadFile(const std::string& path) {
-            FILE* f = std::fopen(path.c_str(), "rb");
-            if (!f) {
-                if (errno == ENOENT) return std::nullopt;
-                throw std::runtime_error("kiln: cannot read " + path + ": " + std::strerror(errno));
-            }
-            std::string out;
-            char buf[16384];
-            std::size_t n;
-            while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) out.append(buf, n);
-            const bool failed = std::ferror(f) != 0;
-            std::fclose(f);
-            if (failed) throw std::runtime_error("kiln: cannot read " + path);
-            return out;
-        }
-        // Writes `bytes` to a temporary file next to `path`, syncs it and renames it over `path`.
-        void WriteFileAtomically(const std::string& path, const std::string& bytes) {
-            MakeParentDirs(path);
-            const std::string tmp = path + ".tmp";
-            const int fd = ::open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
-            if (fd < 0) throw std::runtime_error("kiln: cannot write " + tmp + ": " + std::strerror(errno));
-            std::size_t done = 0;
-            while (done < bytes.size()) {
-                const ssize_t n = ::write(fd, bytes.data() + done, bytes.size() - done);
-                if (n < 0) {
-                    if (errno == EINTR) continue;
-                    ::close(fd);
-                    throw std::runtime_error("kiln: cannot write " + tmp + ": " + std::strerror(errno));
-                }
-                done += std::size_t(n);
-            }
-            ::fsync(fd);
-            ::close(fd);
-            if (std::rename(tmp.c_str(), path.c_str()) != 0) throw std::runtime_error("kiln: cannot replace " + path + ": " + std::strerror(errno));
-        }
-
         std::mutex g_StoresMutex;
         std::map<std::string, std::weak_ptr<PreferencesDataStore>>& Stores() {
             static auto* m = new std::map<std::string, std::weak_ptr<PreferencesDataStore>>;
@@ -104,32 +61,6 @@ namespace kiln::datastore {
         }
     }
 
-    // A FIFO lock for coroutines: edits and the first read take turns.
-    struct PreferencesDataStore::Turns {
-        bool locked = false;
-        std::deque<std::weak_ptr<rt::Channel<bool>>> waiters;
-        rt::Task<> Lock() {
-            if (!locked) {
-                locked = true;
-                co_return;
-            }
-            auto turn = std::make_shared<rt::Channel<bool>>(1);
-            waiters.push_back(turn);
-            co_await turn->Next();
-        }
-        void Unlock() {
-            while (!waiters.empty()) {
-                auto w = waiters.front().lock();
-                waiters.pop_front();
-                if (w) { w->TrySend(true); return; }   // a cancelled waiter's channel is gone
-            }
-            locked = false;
-        }
-        struct Guard {
-            std::shared_ptr<Turns> m;
-            ~Guard() { m->Unlock(); }
-        };
-    };
     std::string SerializePreferences(const Preferences& p) {
         std::string out(kMagic);
         PutU32(out, std::uint32_t(p.AsMap().size()));
@@ -191,10 +122,10 @@ namespace kiln::datastore {
         return p;
     }
 
-    PreferencesDataStore::PreferencesDataStore(std::string path) : m_Path(std::move(path)), m_Turns(std::make_shared<Turns>()) {}
+    PreferencesDataStore::PreferencesDataStore(std::string path) : m_Path(std::move(path)), m_Turns(std::make_shared<detail::TurnLock>()) {}
 
     std::shared_ptr<PreferencesDataStore> PreferencesDataStore::Open(const std::string& name) {
-        return OpenFile(ui::FilesDir() + "/datastore/" + name + ".preferences");
+        return OpenFile(DataStoreFile(name + ".preferences"));
     }
 
     std::shared_ptr<PreferencesDataStore> PreferencesDataStore::OpenFile(const std::string& path) {
@@ -211,7 +142,7 @@ namespace kiln::datastore {
         if (m_Loaded) co_return;
         auto self = shared_from_this();
         const std::string path = self->m_Path;
-        const std::optional<std::string> bytes = co_await rt::WithContext(rt::TaskDispatchers::Platform().IO(), [path] { return ReadFile(path); });
+        const std::optional<std::string> bytes = co_await rt::WithContext(rt::TaskDispatchers::Platform().IO(), [path] { return detail::ReadFile(path); });
         // A missing file is empty preferences; an unreadable one too (corruption: start over,
         // as ReplaceFileCorruptionHandler with emptyPreferences does).
         Preferences p;
@@ -225,7 +156,7 @@ namespace kiln::datastore {
         auto self = shared_from_this();
         auto mutex = self->m_Turns;
         co_await mutex->Lock();
-        Turns::Guard unlock{ mutex };
+        detail::TurnLock::Guard unlock{ mutex };
         co_await self->LoadLocked();
     }
 
@@ -241,14 +172,14 @@ namespace kiln::datastore {
         auto self = shared_from_this();
         auto mutex = self->m_Turns;
         co_await mutex->Lock();
-        Turns::Guard unlock{ mutex };
+        detail::TurnLock::Guard unlock{ mutex };
         co_await self->LoadLocked();
         MutablePreferences next(self->m_State.Value());
         transform(next);
         if (Preferences(next) == self->m_State.Value()) co_return;   // unchanged: no write
         const std::string bytes = SerializePreferences(next);
         const std::string path = self->m_Path;
-        co_await rt::WithContext(rt::TaskDispatchers::Platform().IO(), [path, bytes] { WriteFileAtomically(path, bytes); });
+        co_await rt::WithContext(rt::TaskDispatchers::Platform().IO(), [path, bytes] { detail::WriteFileAtomically(path, bytes); });
         self->m_State.SetValue(Preferences(next));
     }
 

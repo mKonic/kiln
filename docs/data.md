@@ -53,6 +53,46 @@ void SettingsScreen() {
 From C, `kiln_preferences_open` and the `kiln_preferences_*` getters and setters do the
 same; kiln++ has `kpp::Preferences` and Rust `kiln::Preferences`.
 
+### A value of your own type
+
+`kiln/datastore/DataStore.h` is typed DataStore: one value of the app's own type in a file,
+with a serializer that turns it into bytes and back.
+
+```cpp
+#include <kiln/datastore/DataStore.h>
+
+using namespace kiln;
+
+struct Settings {
+    int fontSize = 14;
+    bool operator==(const Settings&) const = default;
+};
+
+datastore::Serializer<Settings> serializer{
+    .defaultValue = {},
+    .readFrom = [](std::string_view bytes) {
+        if (bytes.size() != 1) throw datastore::CorruptionException("not a Settings");
+        return Settings{ static_cast<unsigned char>(bytes[0]) };
+    },
+    .writeTo = [](const Settings& s) { return std::string(1, char(s.fontSize)); },
+};
+
+rt::Task<> Bigger(std::shared_ptr<datastore::DataStore<Settings>> store) {
+    co_await store->UpdateData([](Settings s) { s.fontSize += 2; return s; });
+}
+```
+
+* Create the store once with
+  `datastore::DataStoreFactory::Create(serializer, datastore::DataStoreFile("settings.pb"))`
+  and keep it. A second store on the same file while the first is alive throws.
+* `Data()` is a flow of the value; `UpdateData` returns the new value once it is written.
+  A value equal to the old one is not written.
+* `readFrom` throws `CorruptionException` for bytes that are not a value. The read then
+  throws, unless a `ReplaceFileCorruptionHandler` supplies a value, which is written back.
+* `DataMigration`s run once, before the first read. Each one whose `shouldMigrate` holds
+  changes the value, and its `cleanUp` runs after the result is written. Use them to move
+  data from an older format or file.
+
 ## Secrets
 
 Login tokens and other secrets go in a `security::SecureStore` (`kiln/security/SecureStore.h`)

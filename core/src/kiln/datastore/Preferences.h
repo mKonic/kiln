@@ -12,6 +12,7 @@
 //   std::string theme = prefs.Get().Get(kTheme).value_or("light");
 //   store->Update([](datastore::MutablePreferences& p) { p.Set(kTheme, std::string("dark")); });
 
+#include "kiln/datastore/DataStore.h"
 #include "kiln/runtime/Flow.h"
 
 #include <cstdint>
@@ -109,8 +110,7 @@ namespace kiln::datastore {
         std::string m_Path;
         rt::MutableStateFlow<Preferences> m_State{ Preferences{} };
         bool m_Loaded = false;
-        struct Turns;
-        std::shared_ptr<Turns> m_Turns;   // the FIFO lock the first read and edits take
+        std::shared_ptr<detail::TurnLock> m_Turns;   // the FIFO lock the first read and edits take
         std::vector<rt::Job> m_Updates;
     };
 
