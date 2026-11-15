@@ -25,6 +25,22 @@ final class KilnLocales {
     static void attach(Activity activity) {
         sContext = activity.getApplicationContext();
         sActivity = new WeakReference<>(activity);
+        syncToFramework(sContext);
+    }
+
+    /**
+     * AppCompatDelegate.syncLocalesToFramework: locales kept here before the device moved to
+     * Android 13 go to LocaleManager once, unless the system already has some for the app.
+     * Moved, they are no longer kept here.
+     */
+    private static void syncToFramework(Context c) {
+        if (Build.VERSION.SDK_INT < 33) return;
+        String tags = stored(c);
+        if (tags.isEmpty()) return;
+        LocaleManager lm = c.getSystemService(LocaleManager.class);
+        if (lm == null) return;
+        if (lm.getApplicationLocales().isEmpty()) lm.setApplicationLocales(LocaleList.forLanguageTags(tags));
+        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove("locales").apply();
     }
 
     private static String stored(Context c) {
