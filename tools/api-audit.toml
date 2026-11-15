@@ -59,6 +59,38 @@ modules = [
 ]
 
 [renamed]
+"MutablePreferences.putAll" = "PutAll"
+"MutablePreferences.plusAssign" = "PutAll"
+"KeepOnScreenCondition.shouldKeepOnScreen" = "SplashScreenKeptOnScreen"
+"WindowInfoTracker.getCurrentWindowLayoutInfo" = "DisplayFold"   # the folds, read as state
+"WindowInfoTracker.registerWindowLayoutInfoListener" = "DisplayFold"   # observable: no listener to register
+"WindowInfoTracker.unregisterWindowLayoutInfoListener" = "DisplayFold"
+"WindowMetricsCalculator.computeCurrentWindowMetrics" = "ContainerSize"
+"WindowMetricsCalculator.computeCurrentWindowMetricsOrNull" = "ContainerSize"
+# window: folds reach content as OwnerMediaScope's DisplayFold list (KilnWindowLayout reads the
+# OEM extensions as androidx.window does); the window's size is LocalWindowInfo.containerSize.
+WindowInfoTracker = "OwnerMediaScope"
+DisplayFeature = "DisplayFold"
+"WindowLayoutInfo.displayFeatures" = "DisplayFold"
+WindowMetrics = "ContainerSize"
+WindowMetricsCalculator = "ContainerSize"
+# core-splashscreen: the splash stays until the first frame, longer while the app asks.
+KeepOnScreenCondition = "KeepSplashScreenOnScreen"
+"SplashScreen.installSplashScreen" = "KeepSplashScreenOnScreen"   # installed by the activity itself
+# datastore-preferences: keys are typed functions, files open by name or path.
+"PreferencesKeys.stringPreferencesKey" = "StringKey"
+"PreferencesKeys.longPreferencesKey" = "LongKey"
+"PreferencesKeys.floatPreferencesKey" = "FloatKey"
+"PreferencesKeys.doublePreferencesKey" = "DoubleKey"
+"PreferencesKeys.stringSetPreferencesKey" = "StringSetKey"
+"PreferencesKeys.byteArrayPreferencesKey" = "ByteArrayKey"
+"PreferenceDataStoreFactory.createWithPath" = "OpenFile"
+PreferenceDataStoreFile = "Open"   # preferencesDataStoreFile(context, name): Open(name)'s file
+"Preferences.toMutablePreferences" = "MutablePreferences"   # MutablePreferences(prefs)
+"Preferences.toPreferences" = "Preferences"   # a copy
+"MutablePreferences.minusAssign" = "Remove"
+PreferencesSerializer = "SerializePreferences"
+PreferencesFileSerializer = "SerializePreferences"
 # activity: back handling is ui::BackDispatcher / BackCallback (one per window); activity results
 # go through ui::ActivityResultRegistry and RememberLauncherForActivityResult.
 "OnBackPressedCallback.handleOnBackPressed" = "OnBack"
@@ -466,6 +498,17 @@ ResourceFont = "Font"
 toFontFamily = "FontFamily Of"
 
 [skipped]
+"PreferencesFileSerializer.writeTo" = "SerializePreferences returns the bytes"
+"PreferencesSerializer.writeTo" = "SerializePreferences returns the bytes"
+"PreferenceDataStoreFile.preferencesDataStoreFile" = "Open(name) puts the file under the app's files directory itself"
+"WindowInfoTracker.supportedPostures" = "postures are read from the folds the device reports (WindowPosture)"
+"WindowMetricsCalculator.computeMaximumWindowMetrics" = "the largest window the display allows; layouts adapt to the window they have (ContainerSize)"
+"WindowMetricsCalculator.computeMaximumWindowMetricsOrNull" = "see computeMaximumWindowMetrics"
+OnExitAnimationListener = "the splash's exit animation animates the platform's splash View; kiln's ends with the system's"
+"SplashScreen.setOnExitAnimationListener" = "see OnExitAnimationListener"
+SplashScreenViewProvider = "see OnExitAnimationListener"
+PreferencesFactory = "preferencesOf / mutablePreferencesOf: build a MutablePreferences and Set each key"
+SharedPreferencesMigration = "kiln apps keep no SharedPreferences of their own to migrate from"
 "ActivityResultCallback.onActivityResult" = "the launcher's onResult function, called with the parsed result"
 "ActivityResultCaller.registerForActivityResult" = "RememberLauncherForActivityResult registers on the window's registry"
 "OnBackPressedDispatcherOwnerFactory.OnBackPressedDispatcherOwner" = "the window's BackDispatcher; no owner objects"
@@ -812,6 +855,7 @@ StaticLayoutFactory = "Android StaticLayout internals"
 toSpan = "Android spans (TtsSpan)"
 
 [skipped_patterns]
+'^WindowInfoTracker\.(registerWindowEngagementInfoListener|unregisterWindowEngagementInfoListener|windowEngagementInfo)$' = "window engagement (XR / connected displays): not on phones"
 '^component\d+$' = "Kotlin destructuring (componentN): C++ reads the fields"
 '^(ContextAware|ContextAwareHelper|OnContextAvailableListener|withContextAvailable|ComponentActivity\.(add|remove)OnContextAvailableListener|ComponentActivity\.peekAvailableContext)$' = "Android Context availability; kiln_main runs with everything set up"
 '^ComponentActivity\.(addMenuProvider|removeMenuProvider|invalidateMenu|initializeViewTreeOwners)$' = "the View system's options menu and view-tree owners"

@@ -48,6 +48,12 @@ TEST(PreferencesSerializeEveryType) {
     CHECK(back && back->Get(ByteArrayKey("bytes")) == std::optional<std::vector<std::uint8_t>>(std::vector<std::uint8_t>{ 0, 255, 7 }));
     CHECK(!p.Get(IntKey("name")).has_value());   // another type under the name
     CHECK(!ParsePreferences("garbage").has_value());
+    // putAll: the other's entries replace those of the same name, the rest stay.
+    MutablePreferences q;
+    q.Set(kName, std::string("Grace"));
+    q.Set(IntKey("other"), 7);
+    q.PutAll(p);
+    CHECK(q.Get(kName) == std::optional<std::string>("Ada") && q.Get(IntKey("other")) == std::optional<int>(7) && q.Size() == p.Size() + 1);
 }
 
 TEST(PreferencesDataStoreEditsPersistAndFlow) {

@@ -67,6 +67,10 @@ namespace kiln::datastore {
         explicit MutablePreferences(const Preferences& p) : Preferences(p) {}
         template<typename T> void Set(const PreferenceKey<T>& key, T value) { m_Values[key.name] = PreferenceValue(std::move(value)); }
         template<typename T> void Remove(const PreferenceKey<T>& key) { m_Values.erase(key.name); }
+        // putAll / plusAssign(prefs): every entry of other, replacing those with the same name.
+        void PutAll(const Preferences& other) {
+            for (const auto& [name, value] : other.AsMap()) m_Values[name] = value;
+        }
         void Clear() { m_Values.clear(); }
     };
 
