@@ -24,8 +24,16 @@ namespace kiln::foundation {
     // (Subtitles, as PlayerView shows them).
     void VideoSurface(const Modifier& modifier, media::Player& player, bool keepAspectRatio = true, bool showSubtitles = true);
 
-    // The camera's preview, upright on the display, at the largest preview size within 1080p.
-    // onError: the camera failed or android.permission.CAMERA is not granted.
+    // CameraController's gestures over the preview: a tap focuses and meters there
+    // (onTapToFocus: whether it focused), a pinch zooms.
+    struct CameraPreviewOptions {
+        bool tapToFocus = true, pinchToZoom = true;
+        kiln::Function<void(bool focused)> onTapToFocus;
+    };
+    // A camera's preview (PreviewView), upright on the display, 4:3 within 1080p.
+    void CameraPreview(const Modifier& modifier, media::Camera& camera, CameraPreviewOptions options = {});
+    // A camera opened for the preview alone. onError: the camera failed or
+    // android.permission.CAMERA is not granted.
     void CameraPreview(const Modifier& modifier, const std::string& cameraId, kiln::Function<void(std::string)> onError = {});
 
 }

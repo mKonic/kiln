@@ -362,6 +362,38 @@ namespace {
         });
     }
 
+    // A camera with ImageCapture (CameraX's Camera): its preview (tap to focus, pinch to zoom),
+    // zoom, torch and a picture into the cache directory.
+    void CameraDemo(const std::string& id) {
+        using namespace kiln::foundation;
+        auto& c = *kiln::rt::Composition::Current();
+        auto& camera = c.RememberNew<kiln::media::Camera>(kiln::rt::Keys{ id }, {}, id, kiln::media::CameraOptions{ .imageCapture = kiln::media::ImageCaptureOptions{} });
+        const kiln::media::CameraState& s = kiln::rt::CollectAsState(camera.StateFlow()).Get();
+        auto& status = RememberState(std::string());
+        CameraPreview(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), camera,
+                      { .onTapToFocus = [&status](bool focused) { status.Set(focused ? "Focused" : "Not focused"); } });
+        FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&camera, &s, &status, &c] {
+            auto button = [](const char* label, kiln::Function<void()> onClick) {
+                Box(Clickable(Background(Modifier{}, kPrimaryContainer, CornerShape::Pill()), std::move(onClick)), Alignment::Center(), false,
+                    [label] { BasicText(label, Padding(Modifier{}, 20_dp, 10_dp), { 14, kOnSurface }); });
+            };
+            button("1x", [&camera] { camera.SetZoomRatio(1); });
+            button("2x", [&camera, max = s.zoom.maxZoomRatio] { camera.SetZoomRatio(std::min(2.0f, max)); });
+            if (camera.Info().hasFlashUnit) button(s.torch == kiln::media::TorchState::On ? "Torch off" : "Torch", [&camera, on = s.torch != kiln::media::TorchState::On] { camera.EnableTorch(on); });
+            const int rotation = c.Read(kiln::ui::LocalConfiguration).displayRotation;
+            button("Photo", [&camera, &status, rotation] {
+                status.Set("Taking a picture...");
+                camera.TakePicture({ .file = kiln::ui::CacheDir() + "/photo.jpg" }, [&status](kiln::media::ImageCaptureResult r) {
+                    status.Set(r.error == kiln::media::ImageCaptureResult::Error::None ? "Saved " + r.savedUri : "Failed: " + r.message);
+                }, rotation);
+            });
+        });
+        char zoom[32];
+        std::snprintf(zoom, sizeof zoom, "%.1fx", double(s.zoom.zoomRatio));
+        BasicText(std::string(zoom) + (s.errorMessage.empty() ? "" : " - " + s.errorMessage) + (status.Get().empty() ? "" : " - " + status.Get()),
+                  Padding(Modifier{}, 16_dp, 0_dp), { 14, kOnSurface });
+    }
+
     // media::Player in a VideoSurface, and a camera's preview once the permission is granted.
     void MediaDemo() {
         using namespace kiln::foundation;
@@ -482,8 +514,7 @@ namespace {
                 });
             });
             if (cameraOn.Get()) {
-                if (auto back = kiln::media::FindCamera(kiln::media::LensFacing::Back))
-                    CameraPreview(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), back->id, [&cameraError](std::string e) { cameraError.Set(e); });
+                if (auto back = kiln::media::FindCamera(kiln::media::LensFacing::Back)) CameraDemo(back->id);
                 else cameraError.Set("No back camera");
             }
             if (!cameraError.Get().empty()) BasicText(cameraError.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kOnSurface });

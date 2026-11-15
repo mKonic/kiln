@@ -878,7 +878,7 @@ Session().SetMediaButtonPreferences({
   them. Without the callback, requests are refused, as in media3.
 * **Extras.** `SetSessionExtras` sets the session's extras.
 
-### Camera preview
+### Camera
 
 `CameraPreview` shows a camera's live picture, upright on the display. Ask for
 `android.permission.CAMERA` first (`contracts::RequestPermission`):
@@ -889,9 +889,42 @@ if (auto back = kiln::media::FindCamera(kiln::media::LensFacing::Back))
     CameraPreview(FillMax(Modifier{}, Axis::Horizontal), back->id, [&](std::string error) { showError(error); });
 ```
 
-`media::Cameras()` lists the cameras, with their facing, sensor orientation and preview sizes.
-The preview uses the largest size within 1080p. A front camera's preview is mirrored, as in
-CameraX.
+`media::Cameras()` lists the cameras with their facing, sensor orientation, sizes, flash, zoom
+range and exposure range. The preview is 4:3 within 1080p, as in CameraX, and a front camera's
+preview is mirrored.
+
+To take pictures and control the camera, open a `media::Camera` with still capture. It works
+like CameraX's `Camera` from `bindToLifecycle`:
+
+<!-- prelude: std::function<void(std::string)> show; -->
+```cpp
+auto& c = *kiln::rt::Composition::Current();
+auto& camera = c.RememberNew<kiln::media::Camera>({}, {}, "0",
+    kiln::media::CameraOptions{ .imageCapture = kiln::media::ImageCaptureOptions{} });
+CameraPreview(FillMax(Modifier{}, Axis::Horizontal), camera);   // tap to focus, pinch to zoom
+camera.SetZoomRatio(2);
+camera.TakePicture({ .file = kiln::ui::CacheDir() + "/photo.jpg" }, [&](kiln::media::ImageCaptureResult r) {
+    show(r.error == kiln::media::ImageCaptureResult::Error::None ? r.savedUri : r.message);
+});
+```
+
+* **State.** `StateFlow()` reports whether the camera is open, why it failed, and its zoom,
+  exposure and torch.
+* **Controls.** `SetZoomRatio`, `SetLinearZoom`, `EnableTorch`,
+  `SetExposureCompensationIndex`, `StartFocusAndMetering` and `CancelFocusAndMetering` follow
+  CameraX's rules:
+  - The state changes at once, and the callback runs when the camera has the new value.
+  - A newer request cancels the older one.
+  - A value out of range fails, and so does a torch request on a camera without a flash.
+* **Focus and metering.** By default, focus locks on the point you give and exposure and white
+  balance meter there. Focus gives up after 5 seconds, and the camera goes back to continuous
+  focus after `autoCancelDurationMs`.
+* **Pictures.** `TakePicture` runs CameraX's capture pipeline:
+  - The flash mode decides whether the flash fires. In auto, it fires when exposure asks for it,
+    after a precapture metering sequence.
+  - `CaptureMode::MaximizeQuality` also locks focus and white balance before the shot.
+  - The JPEG is turned upright for the display rotation you pass.
+  - Pictures are taken one at a time and saved whole, or handed to you as bytes.
 
 ### Your own rendering
 
