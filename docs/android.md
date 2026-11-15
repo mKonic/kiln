@@ -621,7 +621,9 @@ void Player() {
 ```
 
 * `IsInPictureInPictureMode()` is state: content that reads it recomposes when the window
-  enters or leaves picture-in-picture.
+  enters or leaves picture-in-picture. `GetPictureInPictureUiState()` is state too: `stashed`
+  while the user has tucked the window against the screen's edge, and `transitioningToPip` once
+  the animation into it starts (Android 15 and later), the time to hide controls.
 * `SetPictureInPictureParams` sets the params ahead of time. With `autoEnter` the window
   enters by itself when the user goes home, and `sourceRectHint` (window pixels) is the part
   of the screen the system animates from.
@@ -629,6 +631,11 @@ void Player() {
   returns false, as it does when the activity does not declare picture-in-picture.
 * `ui::SetRequestedOrientation(ui::ScreenOrientation::SensorLandscape)` asks for an
   orientation, as `Activity.setRequestedOrientation` does.
+* `ui::IsInMultiWindowMode()` (`kiln/ui/ActivityCallbacks.h`) is state that tells whether the
+  app shares the screen (split screen or a free-form window).
+* `ui::AddOnTrimMemoryListener` hears when the system asks the app to use less memory, after
+  kiln has trimmed its own caches; at `kTrimMemoryBackground` and above the app is in the
+  background.
 
 ## Activity results and permissions
 

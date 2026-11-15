@@ -130,6 +130,8 @@ final class KilnNative {
     static native boolean keepSplashScreen(long elapsedMillis);
     static native void setHighContrastText(boolean enabled, boolean background);
     static native void pictureInPictureModeChanged(boolean inPictureInPictureMode);
+    static native void pictureInPictureUiStateChanged(boolean stashed, boolean transitioningToPip);
+    static native void multiWindowModeChanged(boolean inMultiWindowMode);
     /** Folds of the window: left, top, right, bottom, hinge, halfOpened per fold. */
     static native void setDisplayFolds(int win, int[] data);
     static native boolean dragEvent(int win, int action, float x, float y, String[] mimeTypes, String label, String[] items, boolean local, boolean result);

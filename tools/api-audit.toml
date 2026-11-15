@@ -59,6 +59,44 @@ modules = [
 ]
 
 [renamed]
+# activity: back handling is ui::BackDispatcher / BackCallback (one per window); activity results
+# go through ui::ActivityResultRegistry and RememberLauncherForActivityResult.
+"OnBackPressedCallback.handleOnBackPressed" = "OnBack"
+"OnBackPressedCallback.handleOnBackStarted" = "OnBackStarted"
+"OnBackPressedCallback.handleOnBackProgressed" = "OnBackProgressed"
+"OnBackPressedCallback.handleOnBackCancelled" = "OnBackCancelled"
+"OnBackPressedDispatcher.addCallback" = "Add"
+addCallback = "Add"   # the lifecycle-aware OnBackPressedDispatcher.addCallback(owner) { }
+"OnBackPressedDispatcher.onBackPressed" = "Completed"
+"OnBackPressedDispatcher.dispatchOnBackStarted" = "Started"
+"OnBackPressedDispatcher.dispatchOnBackProgressed" = "Progressed"
+"OnBackPressedDispatcher.dispatchOnBackCancelled" = "Cancelled"
+"OnBackPressedDispatcher.setOnBackInvokedDispatcher" = "onHasEnabledChanged"   # the host registers the platform callback
+OnBackPressedDispatcherOwner = "BackDispatcher"   # BackDispatcher::Main(), the window's
+OnBackPressedDispatcherOwnerFactory = "BackDispatcher"
+LocalOnBackPressedDispatcherOwner = "BackDispatcher"
+ActivityResultCaller = "RememberLauncherForActivityResult"
+registerForActivityResult = "RememberLauncherForActivityResult"
+"ComponentActivity.registerForActivityResult" = "RememberLauncherForActivityResult"
+ActivityResultCallback = "RememberLauncherForActivityResult"   # its onResult function
+"ActivityResultRegistry.onLaunch" = "Launch"
+"Builder.setOrderedSelection" = "isOrderedSelection"
+"PickVisualMediaRequest.isCustomAccentColorApplied" = "accentColor"
+"Builder.addSupportedHdrType" = "supportedHdrTypes"
+SingleMimeType = "mediaType"   # PickVisualMediaRequest's mediaType
+VisualMediaType = "mediaType"
+AlbumsTab = "defaultTab"
+"ComponentActivity.addOnTrimMemoryListener" = "AddOnTrimMemoryListener"
+"ComponentActivity.removeOnTrimMemoryListener" = "RemoveOnTrimMemoryListener"
+"ComponentActivity.addOnMultiWindowModeChangedListener" = "IsInMultiWindowMode"   # observable state
+"ComponentActivity.removeOnMultiWindowModeChangedListener" = "IsInMultiWindowMode"
+"ComponentActivity.addOnPictureInPictureModeChangedListener" = "IsInPictureInPictureMode"
+"ComponentActivity.removeOnPictureInPictureModeChangedListener" = "IsInPictureInPictureMode"
+"ComponentActivity.addOnPictureInPictureUiStateChangedListener" = "GetPictureInPictureUiState"
+"ComponentActivity.removeOnPictureInPictureUiStateChangedListener" = "GetPictureInPictureUiState"
+"ComponentActivity.addOnConfigurationChangedListener" = "LocalConfiguration"   # read in content
+"ComponentActivity.removeOnConfigurationChangedListener" = "LocalConfiguration"
+"ComponentActivity.navigationEventDispatcher" = "BackDispatcher"
 FullyDrawnReporterOwner = "LocalFullyDrawnReporter"   # the host owns the reporter
 # Members spelled as C++ operators or shorter names.
 "Cubic.plus" = "operator"
@@ -428,6 +466,27 @@ ResourceFont = "Font"
 toFontFamily = "FontFamily Of"
 
 [skipped]
+"ActivityResultCallback.onActivityResult" = "the launcher's onResult function, called with the parsed result"
+"ActivityResultCaller.registerForActivityResult" = "RememberLauncherForActivityResult registers on the window's registry"
+"OnBackPressedDispatcherOwnerFactory.OnBackPressedDispatcherOwner" = "the window's BackDispatcher; no owner objects"
+"LocalOnBackPressedDispatcherOwner.current" = "BackDispatcher::Main(), the window's"
+"LocalOnBackPressedDispatcherOwner.provides" = "one dispatcher per window; nothing to provide"
+"ActivityResult.resultCodeToString" = "result codes are ints (RESULT_OK -1, RESULT_CANCELED 0)"
+SynchronousResult = "GetSynchronousResult returns the output itself (std::optional)"
+StartIntentSenderForResult = "IntentSender comes from another app's PendingIntent; launch an Intent with StartActivityForResult"
+TakePicturePreview = "a thumbnail Bitmap through the Intent's extras; TakePicture writes the full photo to a URI"
+"PickVisualMedia.isPhotoPickerAvailable" = "always: kiln's minimum (API 31) has the photo picker through the SDK extension or Google Play"
+"BackEventCompat.toBackEvent" = "the host converts the platform's BackEvent to ui::BackEvent"
+"BackEventCompat.toNavigationEvent" = "the host converts the platform's BackEvent to ui::BackEvent"
+"OnBackPressedDispatcher.asNavigationEventDispatcher" = "one back system: BackDispatcher is the window's"
+"ActivityResultRegistry.onSaveInstanceState" = "the host (KilnActivityResults) saves and restores the registry's keys"
+"ActivityResultRegistry.onRestoreInstanceState" = "the host (KilnActivityResults) saves and restores the registry's keys"
+ComponentDialog = "dialogs are composables (Dialog); there is no Dialog window class"
+LocalActivity = "content does not reach the Activity object; kiln's APIs stand for what apps use it for"
+"ComponentActivity.addOnUserLeaveHintListener" = "for entering picture-in-picture by hand before API 31; kiln's minimum has auto-enter (PictureInPictureParams.autoEnter)"
+"ComponentActivity.removeOnUserLeaveHintListener" = "see addOnUserLeaveHintListener"
+"ComponentActivity.onRetainNonConfigurationInstance" = "the activity is never recreated for a configuration change; ViewModels outlive what remains"
+"ComponentActivity.defaultViewModelArgs" = "the host's CreationExtras (DefaultViewModelCreationExtrasOf)"
 "SaveableStateRegistry.canBeSaved" = "every rt::SavedValue can be saved: the types are checked when compiling"
 "SavedStateRegistry.getSavedStateProvider" = "a key holds a list of providers (Compose's registry); PerformSave reads them all"
 SavedStateRestorer = "restoring is ConsumeRestored by key"
@@ -753,6 +812,9 @@ StaticLayoutFactory = "Android StaticLayout internals"
 toSpan = "Android spans (TtsSpan)"
 
 [skipped_patterns]
+'^component\d+$' = "Kotlin destructuring (componentN): C++ reads the fields"
+'^(ContextAware|ContextAwareHelper|OnContextAvailableListener|withContextAvailable|ComponentActivity\.(add|remove)OnContextAvailableListener|ComponentActivity\.peekAvailableContext)$' = "Android Context availability; kiln_main runs with everything set up"
+'^ComponentActivity\.(addMenuProvider|removeMenuProvider|invalidateMenu|initializeViewTreeOwners)$' = "the View system's options menu and view-tree owners"
 '^SavedState(Reader|Writer)\.\w+$' = "Bundle accessors by type: rt::SavedValue is a typed value, read with std::get and made from the value"
 "^(ClassDiscriminatorMode|SavedStateConfiguration|SavedStateContainer|SavedStateSerializer|JavaSerializableSerializer|ParcelableSerializer|SizeSerializer|SizeFSerializer|SparseArraySerializer|MutableStateFlowSerializer|MutableStateSerializer|SnapshotState(List|Map|Set)Serializer|Builder\\.(classDiscriminatorMode|encodeDefaults|serializersModule)|getKotlinSerializable|putKotlinSerializable|encodeToSavedState|decodeFromSavedState|(SavedStateRegistry|SavedStateHandle)\\.(asContainer|getOrCreateContainer))$" = "kotlinx.serialization into a SavedState: kiln saves values through Savers (rt::SavedValue), with no serialization framework"
 '^AppCompatDelegate\.(addContentView|applyDayNight|attachBaseContext2|createView|findViewById|getContextForDelegate|getDrawerToggleDelegate|getMenuInflater|getSupportActionBar|hasWindowFeature|installViewFactory|invalidateOptionsMenu|isCompatVectorFromResourcesEnabled|isHandleNativeActionModesEnabled|onConfigurationChanged|onPostCreate|onPostResume|onSaveInstanceState|requestWindowFeature|setCompatVectorFromResourcesEnabled|setContentView|setHandleNativeActionModesEnabled|setOnBackInvokedDispatcher|setSupportActionBar|startSupportActionMode)$' = "the delegate an AppCompatActivity forwards its View-system calls through (action bar, menus, view inflation); kiln applies the night mode itself on each change"

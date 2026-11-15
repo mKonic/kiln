@@ -27,6 +27,17 @@ namespace kiln::ui {
     }
 
     void SetPictureInPictureHost(PictureInPictureHost host) { Host() = std::move(host); }
+    namespace {
+        rt::State<PictureInPictureUiState>& UiState() {
+            static auto* s = new rt::State<PictureInPictureUiState>(PictureInPictureUiState{});
+            return *s;
+        }
+    }
+    PictureInPictureUiState GetPictureInPictureUiState() { return UiState().Get(); }
+    void SetPictureInPictureUiState(PictureInPictureUiState state) {
+        if (!(UiState().Peek() == state)) UiState().Set(state);
+    }
+
     void SetInPictureInPictureMode(bool inPip) {
         if (InPip().Peek() != inPip) InPip().Set(inPip);
     }

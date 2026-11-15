@@ -57,6 +57,7 @@ public class KilnActivity extends Activity {
         view = new KilnView(this, saved);
         setContentView(view);
         KilnNightMode.attach(this);
+        KilnNative.multiWindowModeChanged(isInMultiWindowMode());
         keepSplashScreen();
     }
 
@@ -154,6 +155,19 @@ public class KilnActivity extends Activity {
         newConfig = KilnNightMode.correct(this, newConfig);
         KilnEdgeToEdge.enable(this, statusBarStyle, navigationBarStyle);
         view.onHostConfigurationChanged(newConfig);
+    }
+
+    @Override
+    public void onMultiWindowModeChanged(boolean inMultiWindowMode, Configuration newConfig) {
+        super.onMultiWindowModeChanged(inMultiWindowMode, newConfig);
+        KilnNative.multiWindowModeChanged(inMultiWindowMode);
+    }
+
+    @Override
+    public void onPictureInPictureUiStateChanged(android.app.PictureInPictureUiState state) {
+        super.onPictureInPictureUiStateChanged(state);
+        boolean transitioning = android.os.Build.VERSION.SDK_INT >= 35 && state.isTransitioningToPip();
+        KilnNative.pictureInPictureUiStateChanged(state.isStashed(), transitioning);
     }
 
     @Override

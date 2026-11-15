@@ -15,6 +15,7 @@
 #include "kiln/ui/AppDirectories.h"
 #include "kiln/ui/FileProvider.h"
 #include "kiln/ui/FullyDrawn.h"
+#include "kiln/ui/ActivityCallbacks.h"
 
 namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JNIEnv* env, jobject assets); }
 
@@ -1524,9 +1525,22 @@ namespace {
 
     // ComponentCallbacks2.onTrimMemory.
     void TrimMemory(JNIEnv*, jclass, jint level) {
-        if (!g_Host) return;
-        const std::size_t freed = g_Host->app->TrimMemory(level);
-        __android_log_print(ANDROID_LOG_DEBUG, "kiln", "trim memory %d: %zu KB of GPU caches freed", int(level), freed / 1024);
+        if (g_Host) {
+            const std::size_t freed = g_Host->app->TrimMemory(level);
+            __android_log_print(ANDROID_LOG_DEBUG, "kiln", "trim memory %d: %zu KB of GPU caches freed", int(level), freed / 1024);
+        }
+        // Then the app's own listeners (addOnTrimMemoryListener).
+        kiln::ui::DispatchTrimMemory(level);
+    }
+
+    void MultiWindowModeChanged(JNIEnv*, jclass, jboolean on) {
+        kiln::ui::SetInMultiWindowMode(on);
+        if (g_Host && g_Host->app) g_Host->app->RequestFrame();
+    }
+
+    void PictureInPictureUiStateChanged(JNIEnv*, jclass, jboolean stashed, jboolean transitioning) {
+        kiln::ui::SetPictureInPictureUiState({ .stashed = bool(stashed), .transitioningToPip = bool(transitioning) });
+        if (g_Host && g_Host->app) g_Host->app->RequestFrame();
     }
 
     // KilnWindowLayout: the window's folds (androidx.window extensions).
@@ -3629,6 +3643,8 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "keepSplashScreen", "(J)Z", reinterpret_cast<void*>(&KeepSplashScreen) },
         { "setHighContrastText", "(ZZ)V", reinterpret_cast<void*>(&SetHighContrastText) },
         { "pictureInPictureModeChanged", "(Z)V", reinterpret_cast<void*>(&PictureInPictureModeChanged) },
+        { "pictureInPictureUiStateChanged", "(ZZ)V", reinterpret_cast<void*>(&PictureInPictureUiStateChanged) },
+        { "multiWindowModeChanged", "(Z)V", reinterpret_cast<void*>(&MultiWindowModeChanged) },
         { "setDisplayFolds", "(I[I)V", reinterpret_cast<void*>(&SetDisplayFolds) },
         { "textToolbarItem", "(II)V", reinterpret_cast<void*>(&TextToolbarItem) },
         { "textToolbarDestroyed", "(I)V", reinterpret_cast<void*>(&TextToolbarDestroyed) },

@@ -39,6 +39,16 @@ namespace kiln::ui {
     // it enters or leaves.
     bool IsInPictureInPictureMode();
 
+    // PictureInPictureUiState (onPictureInPictureUiStateChanged): stashed is the window tucked
+    // at the screen's edge (show less, keep playing); transitioningToPip is the animation into
+    // picture-in-picture having started (Android 15+), the time to hide controls. Observable.
+    struct PictureInPictureUiState {
+        bool stashed = false;
+        bool transitioningToPip = false;
+        bool operator==(const PictureInPictureUiState&) const = default;
+    };
+    PictureInPictureUiState GetPictureInPictureUiState();
+
     // ActivityInfo.SCREEN_ORIENTATION_*.
     enum class ScreenOrientation : int {
         Unspecified = -1, Landscape = 0, Portrait = 1, User = 2, Behind = 3, Sensor = 4, NoSensor = 5,
@@ -57,5 +67,6 @@ namespace kiln::ui {
     };
     void SetPictureInPictureHost(PictureInPictureHost host);
     void SetInPictureInPictureMode(bool inPip);
+    void SetPictureInPictureUiState(PictureInPictureUiState state);
 
 }
