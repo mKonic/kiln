@@ -180,6 +180,36 @@ namespace kiln::media {
         int rotationDegrees = 0;              // its EXIF orientation (ImageInfo.getRotationDegrees)
     };
 
+    // --- ImageAnalysis --------------------------------------------------------------------------
+
+    // ImageAnalysis.OUTPUT_IMAGE_FORMAT_*.
+    enum class AnalysisFormat { Yuv420 = 1, Rgba8888 = 2 };
+    struct ImageAnalysisOptions {
+        AnalysisFormat format = AnalysisFormat::Yuv420;
+        ui::IntSize targetResolution{ 640, 480 };   // DEFAULT_TARGET_RESOLUTION, sensor-oriented
+    };
+    // An analysis frame (ImageProxy), valid only during the analyzer's call: YUV_420_888's three
+    // planes, or one RGBA_8888 plane.
+    struct ImagePlane {
+        const std::uint8_t* data = nullptr;
+        std::size_t size = 0;
+        int rowStride = 0, pixelStride = 0;
+    };
+    struct ImageFrame {
+        int width = 0, height = 0;
+        AnalysisFormat format = AnalysisFormat::Yuv420;
+        std::array<ImagePlane, 3> planes{};
+        int planeCount = 0;
+        std::int64_t timestampNs = 0;
+        int rotationDegrees = 0;              // to turn it upright (ImageInfo.getRotationDegrees)
+    };
+    // ImageProcessingUtil.convertYUVToRGB: libyuv's Android420ToABGR with full-swing BT.601
+    // (kYvuJPEGConstants), RGBA bytes, width * 4 a row.
+    std::vector<std::uint8_t> YuvToRgba(const ImageFrame& yuv);
+    // The analysis size: of the sizes nearest the target's aspect ratio, the smallest covering it
+    // (else the largest).
+    ui::IntSize ChooseAnalysisSize(const std::vector<ui::IntSize>& sizes, ui::IntSize target);
+
     // --- the platform (camera2) -----------------------------------------------------------------
 
     // CaptureRequest keys kiln sets (camera2 values: CONTROL_AF_MODE 1 auto, 4 continuous
@@ -209,10 +239,10 @@ namespace kiln::media {
     inline constexpr int kAwbStateInactive = 0, kAwbStateSearching = 1, kAwbStateConverged = 2, kAwbStateLocked = 3;
 
     // The session's outputs: the preview surface (none: no preview yet), a JPEG stream for still
-    // capture (an empty size: none).
+    // capture and a YUV_420_888 stream for analysis (an empty size: none).
     struct CameraOutputs {
         ui::PlatformSurface preview;
-        ui::IntSize previewSize, jpegSize;
+        ui::IntSize previewSize, jpegSize, analysisSize;
         bool operator==(const CameraOutputs&) const = default;
     };
     struct CameraHost {
@@ -223,6 +253,9 @@ namespace kiln::media {
             kiln::Function<void()> onOpened;
             kiln::Function<void(CameraState::Error error, std::string message)> onError;
             kiln::Function<void(const CameraFrameResult& result)> onResult;
+            // The latest analysis frame (YUV), on the camera's image thread; frames that come
+            // while it runs are dropped (STRATEGY_KEEP_ONLY_LATEST).
+            kiln::Function<void(const ImageFrame& frame)> onAnalysisFrame;
         };
         kiln::Function<std::uint64_t(const std::string& cameraId, Callbacks callbacks)> open;
         // (Re)configures the capture session with these outputs and starts the repeating request.
@@ -246,6 +279,8 @@ namespace kiln::media {
     struct CameraOptions {
         // ImageCapture bound with the preview; none: preview only.
         std::optional<ImageCaptureOptions> imageCapture;
+        // ImageAnalysis bound too; its analyzer is set with SetAnalyzer.
+        std::optional<ImageAnalysisOptions> imageAnalysis;
     };
 
     // A camera with its use cases (ProcessCameraProvider.bindToLifecycle's Camera): it opens when
@@ -278,6 +313,15 @@ namespace kiln::media {
         // Takes a picture, upright for this display rotation (targetRotation; Surface.ROTATION_*
         // in degrees). done runs once, on the main thread.
         void TakePicture(OutputFileOptions output, kiln::Function<void(ImageCaptureResult)> done, int displayRotation = 0);
+
+        // ImageAnalysis.setAnalyzer: called on the camera's image thread with each frame, upright
+        // for the target rotation; frames that come while it runs are dropped. Empty: none. Hand
+        // results to the UI with a dispatcher taken on the main thread (rt::Dispatcher::Main()
+        // is the calling thread's) and PostFromAnyThread.
+        void SetAnalyzer(kiln::Function<void(const ImageFrame&)> analyzer);
+        // The display rotation (Surface.ROTATION_* in degrees) frames' rotation is relative to
+        // (setTargetRotation; CameraPreview sets it).
+        void SetTargetRotation(int displayRotation);
 
         // The preview's surface (CameraPreview sets it); an empty surface stops the preview.
         void SetPreviewSurface(ui::PlatformSurface surface, ui::IntSize size);

@@ -6,7 +6,9 @@
 #include <cmath>
 #include <cstdio>
 #include <deque>
+#include <atomic>
 #include <functional>
+#include <mutex>
 #include <limits>
 
 namespace kiln::media {
@@ -73,6 +75,50 @@ namespace kiln::media {
     ui::IntSize ChoosePreviewSize(const std::vector<ui::IntSize>& sizes, float aspect) { return Choose(sizes, aspect, 1920, 1080); }
     ui::IntSize ChooseCaptureSize(const std::vector<ui::IntSize>& sizes, float aspect) {
         return Choose(sizes, aspect, std::numeric_limits<int>::max(), std::numeric_limits<int>::max());
+    }
+
+    // --- ImageAnalysis ------------------------------------------------------------------------------
+
+    std::vector<std::uint8_t> YuvToRgba(const ImageFrame& f) {
+        std::vector<std::uint8_t> out(std::size_t(std::max(f.width, 0)) * std::max(f.height, 0) * 4);
+        if (f.format != AnalysisFormat::Yuv420 || f.planeCount < 3) return out;
+        const ImagePlane &y = f.planes[0], &u = f.planes[1], &v = f.planes[2];
+        auto at = [](const ImagePlane& p, int x, int row) -> int {
+            const std::size_t i = std::size_t(row) * p.rowStride + std::size_t(x) * std::max(p.pixelStride, 1);
+            return i < p.size ? p.data[i] : 128;
+        };
+        auto clamp = [](float c) { return std::uint8_t(std::clamp(int(std::lround(c)), 0, 255)); };
+        for (int row = 0; row < f.height; ++row) {
+            std::uint8_t* d = out.data() + std::size_t(row) * f.width * 4;
+            for (int x = 0; x < f.width; ++x, d += 4) {
+                const float Y = float(at(y, x, row));
+                const float U = float(at(u, x / 2, row / 2)) - 128, V = float(at(v, x / 2, row / 2)) - 128;
+                // Full-swing BT.601 (JPEG).
+                d[0] = clamp(Y + 1.402f * V);
+                d[1] = clamp(Y - 0.344136f * U - 0.714136f * V);
+                d[2] = clamp(Y + 1.772f * U);
+                d[3] = 255;
+            }
+        }
+        return out;
+    }
+
+    ui::IntSize ChooseAnalysisSize(const std::vector<ui::IntSize>& sizes, ui::IntSize target) {
+        if (target.width <= 0 || target.height <= 0) return ChooseCaptureSize(sizes);
+        const float aspect = float(target.width) / float(target.height);
+        float best = 1e9f;
+        for (const auto& s : sizes)
+            if (s.width > 0 && s.height > 0) best = std::min(best, std::abs(std::log(float(s.width) / float(s.height) / aspect)));
+        ui::IntSize covering{}, largest{};
+        for (const auto& s : sizes) {
+            if (s.width <= 0 || s.height <= 0 || std::abs(std::abs(std::log(float(s.width) / float(s.height) / aspect)) - best) > 1e-3f) continue;
+            const std::int64_t area = std::int64_t(s.width) * s.height;
+            if (s.width >= target.width && s.height >= target.height
+                && (covering.width == 0 || area < std::int64_t(covering.width) * covering.height))
+                covering = s;
+            if (area > std::int64_t(largest.width) * largest.height) largest = s;
+        }
+        return covering.width ? covering : largest;
     }
 
     // --- ZoomMath ---------------------------------------------------------------------------------
@@ -231,6 +277,30 @@ namespace kiln::media {
         bool capturing = false;
         // The picture camera2 has: answered once, by its JPEG or by the camera closing.
         std::shared_ptr<kiln::Function<void(ImageCaptureResult)>> inflight;
+
+        // The analyzer, read on the camera's image thread.
+        struct Analysis {
+            std::mutex mutex;
+            kiln::Function<void(const ImageFrame&)> analyzer;
+            AnalysisFormat format = AnalysisFormat::Yuv420;
+            std::atomic<int> rotation{ 0 };
+            std::vector<std::uint8_t> rgba;
+            void Deliver(ImageFrame f) {
+                std::lock_guard lock(mutex);
+                if (!analyzer) return;
+                f.rotationDegrees = rotation.load();
+                if (format == AnalysisFormat::Rgba8888) {
+                    rgba = YuvToRgba(f);
+                    f.format = AnalysisFormat::Rgba8888;
+                    f.planes = {};
+                    f.planes[0] = { rgba.data(), rgba.size(), f.width * 4, 4 };
+                    f.planeCount = 1;
+                }
+                analyzer(f);
+            }
+        };
+        std::shared_ptr<Analysis> analysis = std::make_shared<Analysis>();
+        int targetRotation = 0;
 
         CameraState Base() const { return state.Value(); }
         void SetState(const std::function<void(CameraState&)>& f) {
@@ -415,14 +485,21 @@ namespace kiln::media {
             .onOpened = [weak] { if (auto i = weak.lock()) i->OnOpened(); },
             .onError = [weak](CameraState::Error e, std::string message) { if (auto i = weak.lock()) i->OnError(e, std::move(message)); },
             .onResult = [weak](const CameraFrameResult& r) { if (auto i = weak.lock()) i->OnResult(r); },
+            .onAnalysisFrame = [a = m.analysis](const ImageFrame& f) { a->Deliver(f); },
         });
         if (!m.handle) m.OnError(CameraState::Error::CameraFatal, "the camera cannot be opened");
         const ImageCaptureOptions* ic = options.imageCapture ? &*options.imageCapture : nullptr;
         if (ic) m.outputs.jpegSize = ChooseCaptureSize(m.info.jpegSizes, ic->targetAspectRatio > 0 ? ic->targetAspectRatio : 4.0f / 3.0f);
+        if (options.imageAnalysis) {
+            m.outputs.analysisSize = ChooseAnalysisSize(m.info.yuvSizes, options.imageAnalysis->targetResolution);
+            m.analysis->format = options.imageAnalysis->format;
+            m.analysis->rotation = PreviewRotation(m.info, 0);
+        }
     }
 
     Camera::~Camera() {
         Impl& m = *m_Impl;
+        SetAnalyzer({});   // waits for a frame being analyzed
         if (m.handle && Host().close) Host().close(m.handle);
         m.Lost();
     }
@@ -765,6 +842,15 @@ namespace kiln::media {
         }
         m.pictures.push_back({ std::move(output), std::move(done), displayRotation });
         RunNextPicture(m_Impl);
+    }
+
+    void Camera::SetAnalyzer(kiln::Function<void(const ImageFrame&)> analyzer) {
+        std::lock_guard lock(m_Impl->analysis->mutex);
+        m_Impl->analysis->analyzer = std::move(analyzer);
+    }
+    void Camera::SetTargetRotation(int displayRotation) {
+        m_Impl->targetRotation = displayRotation;
+        m_Impl->analysis->rotation = PreviewRotation(m_Impl->info, displayRotation);
     }
 
     void Camera::SetPreviewSurface(ui::PlatformSurface surface, ui::IntSize size) {

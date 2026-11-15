@@ -46,6 +46,10 @@ namespace kiln::android {
             ANativeWindow* preview = nullptr;
             AImageReader* reader = nullptr;
             ANativeWindow* readerWindow = nullptr;   // owned by the reader
+            AImageReader* analysis = nullptr;        // YUV_420_888 frames for ImageAnalysis
+            ANativeWindow* analysisWindow = nullptr;
+            ACaptureSessionOutput* analysisOutput = nullptr;
+            ACameraOutputTarget* analysisTarget = nullptr;
             media::CameraRequest settings;
             media::CameraHost::Callbacks callbacks;
             std::deque<Done> captures;               // waiting for their JPEG, in order
@@ -54,6 +58,10 @@ namespace kiln::android {
             ACameraCaptureSession_stateCallbacks sessionCallbacks{};
             ACameraCaptureSession_captureCallbacks resultCallbacks{};
             ACameraCaptureSession_captureCallbacks stillCallbacks{};
+            // Held by the image readers' callbacks while they read an image; Close takes it to
+            // mark the device closed before the readers go.
+            std::mutex readerMutex;
+            bool closed = false;
 
             void CloseSession() {
                 if (session) {
@@ -63,20 +71,30 @@ namespace kiln::android {
                 }
                 if (repeating) ACaptureRequest_free(std::exchange(repeating, nullptr));
                 if (previewTarget) ACameraOutputTarget_free(std::exchange(previewTarget, nullptr));
+                if (analysisTarget) ACameraOutputTarget_free(std::exchange(analysisTarget, nullptr));
                 if (jpegTarget) ACameraOutputTarget_free(std::exchange(jpegTarget, nullptr));
                 if (outputs) {
                     if (previewOutput) ACaptureSessionOutputContainer_remove(outputs, previewOutput);
                     if (jpegOutput) ACaptureSessionOutputContainer_remove(outputs, jpegOutput);
+                    if (analysisOutput) ACaptureSessionOutputContainer_remove(outputs, analysisOutput);
                     ACaptureSessionOutputContainer_free(std::exchange(outputs, nullptr));
                 }
                 if (previewOutput) ACaptureSessionOutput_free(std::exchange(previewOutput, nullptr));
                 if (jpegOutput) ACaptureSessionOutput_free(std::exchange(jpegOutput, nullptr));
+                if (analysisOutput) ACaptureSessionOutput_free(std::exchange(analysisOutput, nullptr));
                 if (preview) ANativeWindow_release(std::exchange(preview, nullptr));
             }
-            ~Device() {
+            // On the main thread (Close): the session, the device, then the readers. A callback
+            // may still hold the Device (plain data then), never its camera2 objects.
+            void Shutdown() {
+                {
+                    std::lock_guard lock(readerMutex);
+                    closed = true;
+                }
                 CloseSession();
-                if (device) ACameraDevice_close(device);
-                if (reader) AImageReader_delete(reader);
+                if (device) ACameraDevice_close(std::exchange(device, nullptr));
+                if (reader) AImageReader_delete(std::exchange(reader, nullptr));
+                if (analysis) AImageReader_delete(std::exchange(analysis, nullptr));
             }
         };
 
@@ -242,6 +260,10 @@ namespace kiln::android {
             d->main->PostFromAnyThread([done = std::move(done), why]() mutable { done({}, why); });
         }
         void OnJpeg(void* context, AImageReader* reader) {
+            auto owner = Find(context);
+            if (!owner) return;
+            std::unique_lock guard(owner->readerMutex);
+            if (owner->closed) return;
             AImage* image = nullptr;
             if (AImageReader_acquireNextImage(reader, &image) != AMEDIA_OK || !image) return;
             std::uint8_t* data = nullptr;
@@ -249,8 +271,8 @@ namespace kiln::android {
             std::vector<std::uint8_t> jpeg;
             if (AImage_getPlaneData(image, 0, &data, &length) == AMEDIA_OK && data && length > 0) jpeg.assign(data, data + length);
             AImage_delete(image);
-            auto d = Find(context);
-            if (!d) return;
+            guard.unlock();
+            auto& d = owner;
             Done done;
             {
                 std::lock_guard lock(g_Mutex);
@@ -259,6 +281,40 @@ namespace kiln::android {
                 d->captures.pop_front();
             }
             d->main->PostFromAnyThread([done = std::move(done), jpeg = std::move(jpeg)]() mutable { done(std::move(jpeg), {}); });
+        }
+
+        // The latest YUV frame to the analyzer, on the reader's thread (older ones are dropped).
+        void OnAnalysis(void* context, AImageReader* reader) {
+            auto d = Find(context);
+            if (!d) return;
+            std::lock_guard guard(d->readerMutex);
+            if (d->closed) return;
+            AImage* image = nullptr;
+            if (AImageReader_acquireLatestImage(reader, &image) != AMEDIA_OK || !image) return;
+            if (d && d->callbacks.onAnalysisFrame) {
+                media::ImageFrame f;
+                std::int32_t w = 0, h = 0, planes = 0;
+                std::int64_t ts = 0;
+                AImage_getWidth(image, &w);
+                AImage_getHeight(image, &h);
+                AImage_getNumberOfPlanes(image, &planes);
+                AImage_getTimestamp(image, &ts);
+                f.width = w;
+                f.height = h;
+                f.timestampNs = ts;
+                f.planeCount = std::min(planes, 3);
+                for (int i = 0; i < f.planeCount; ++i) {
+                    std::uint8_t* data = nullptr;
+                    int length = 0;
+                    std::int32_t row = 0, pixel = 0;
+                    AImage_getPlaneData(image, i, &data, &length);
+                    AImage_getPlaneRowStride(image, i, &row);
+                    AImage_getPlanePixelStride(image, i, &pixel);
+                    f.planes[std::size_t(i)] = { data, std::size_t(length), row, pixel };
+                }
+                d->callbacks.onAnalysisFrame(f);
+            }
+            AImage_delete(image);
         }
 
         std::uint64_t Open(const std::string& id, media::CameraHost::Callbacks callbacks) {
@@ -305,7 +361,14 @@ namespace kiln::android {
                 AImageReader_setImageListener(d->reader, &listener);
                 AImageReader_getWindow(d->reader, &d->readerWindow);
             }
-            if (!outputs.preview.nativeWindow && !d->readerWindow) return true;   // nothing to stream to yet
+            if (outputs.analysisSize.width > 0 && !d->analysis) {
+                if (AImageReader_new(outputs.analysisSize.width, outputs.analysisSize.height, AIMAGE_FORMAT_YUV_420_888, 2, &d->analysis) != AMEDIA_OK)
+                    return false;
+                AImageReader_ImageListener listener{ ctx, &OnAnalysis };
+                AImageReader_setImageListener(d->analysis, &listener);
+                AImageReader_getWindow(d->analysis, &d->analysisWindow);
+            }
+            if (!outputs.preview.nativeWindow && !d->readerWindow && !d->analysisWindow) return true;   // nothing to stream to yet
             if (ACaptureSessionOutputContainer_create(&d->outputs) != ACAMERA_OK) return false;
             if (outputs.preview.nativeWindow) {
                 d->preview = static_cast<ANativeWindow*>(outputs.preview.nativeWindow);
@@ -319,6 +382,12 @@ namespace kiln::android {
                 if (ACaptureSessionOutput_create(d->readerWindow, &d->jpegOutput) != ACAMERA_OK
                     || ACaptureSessionOutputContainer_add(d->outputs, d->jpegOutput) != ACAMERA_OK
                     || ACameraOutputTarget_create(d->readerWindow, &d->jpegTarget) != ACAMERA_OK)
+                    return false;
+            }
+            if (d->analysisWindow) {
+                if (ACaptureSessionOutput_create(d->analysisWindow, &d->analysisOutput) != ACAMERA_OK
+                    || ACaptureSessionOutputContainer_add(d->outputs, d->analysisOutput) != ACAMERA_OK
+                    || ACameraOutputTarget_create(d->analysisWindow, &d->analysisTarget) != ACAMERA_OK)
                     return false;
             }
             d->sessionCallbacks.context = ctx;
@@ -335,9 +404,10 @@ namespace kiln::android {
             d->resultCallbacks.onCaptureCompleted = &OnCompleted;
             d->stillCallbacks = d->resultCallbacks;
             d->stillCallbacks.onCaptureFailed = &OnStillFailed;
-            if (d->previewTarget) {
+            if (d->previewTarget || d->analysisTarget) {
                 if (ACameraDevice_createCaptureRequest(d->device, TEMPLATE_PREVIEW, &d->repeating) != ACAMERA_OK) return false;
-                ACaptureRequest_addTarget(d->repeating, d->previewTarget);
+                if (d->previewTarget) ACaptureRequest_addTarget(d->repeating, d->previewTarget);
+                if (d->analysisTarget) ACaptureRequest_addTarget(d->repeating, d->analysisTarget);
                 Apply(d->repeating, request);
                 s = ACameraCaptureSession_setRepeatingRequest(d->session, &d->resultCallbacks, 1, &d->repeating, nullptr);
                 if (s != ACAMERA_OK) ReportError(d, media::CameraState::Error::OtherRecoverable, StatusText(s));
@@ -356,10 +426,10 @@ namespace kiln::android {
 
         void Trigger(std::uint64_t handle, const media::CameraRequest& request, media::CameraTrigger trigger) {
             auto d = Find(handle);
-            if (!d || !d->session || !d->previewTarget) return;
+            if (!d || !d->session || (!d->previewTarget && !d->analysisTarget)) return;
             ACaptureRequest* r = nullptr;
             if (ACameraDevice_createCaptureRequest(d->device, TEMPLATE_PREVIEW, &r) != ACAMERA_OK) return;
-            ACaptureRequest_addTarget(r, d->previewTarget);
+            ACaptureRequest_addTarget(r, d->previewTarget ? d->previewTarget : d->analysisTarget);
             Apply(r, request, trigger);
             ACameraCaptureSession_capture(d->session, &d->resultCallbacks, 1, &r, nullptr);
             ACaptureRequest_free(r);
@@ -412,7 +482,8 @@ namespace kiln::android {
                 g_Devices.erase(it);
             }
             // Closing the session and device here (synchronously) frees the windows; callbacks
-            // still in flight find no device.
+            // still in flight find no device, or a closed one.
+            d->Shutdown();
         }
     }
 

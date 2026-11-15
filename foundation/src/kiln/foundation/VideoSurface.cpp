@@ -36,11 +36,48 @@ namespace kiln::foundation {
         });
     }
 
+    namespace {
+        // PreviewView's ScaleGestureDetector: two or more fingers spreading or pinching, past the
+        // touch slop; one finger is left alone (a parent scrolls).
+        rt::Task<> DetectPinch(PointerInputScope& s, kiln::Function<void(float zoom)> onZoom) {
+            for (;;) {
+                auto e = co_await s.AwaitPointerEvent(PointerEventPass::Main);
+                int pressed = 0;
+                for (const auto& c : e->changes) pressed += c.pressed ? 1 : 0;
+                if (pressed < 2) continue;
+                float zoom = 1;
+                bool pastSlop = false;
+                const float slop = s.Config().touchSlop;
+                for (;;) {
+                    pressed = 0;
+                    bool consumed = false;
+                    for (const auto& c : e->changes) {
+                        pressed += c.pressed ? 1 : 0;
+                        consumed = consumed || c.IsConsumed();
+                    }
+                    if (pressed < 2 || consumed) break;
+                    const float change = CalculateZoom(*e);
+                    if (!pastSlop) {
+                        zoom *= change;
+                        pastSlop = std::abs(1 - zoom) * CalculateCentroidSize(*e, false) > slop;
+                    }
+                    if (pastSlop) {
+                        if (change != 1) onZoom(change);
+                        for (auto& c : e->changes) if (!(c.position == c.previousPosition)) c.Consume();
+                    }
+                    e = co_await s.AwaitPointerEvent(PointerEventPass::Main);
+                }
+            }
+        }
+    }
+
     void CameraPreview(const Modifier& modifier, media::Camera& camera, CameraPreviewOptions options) {
         auto& c = *rt::Composition::Current();
         const media::CameraInfo& info = camera.Info();
         const ui::IntSize size = camera.PreviewSize();
-        const int rotation = media::PreviewRotation(info, c.Read(ui::LocalConfiguration).displayRotation);
+        const int displayRotation = c.Read(ui::LocalConfiguration).displayRotation;
+        const int rotation = media::PreviewRotation(info, displayRotation);
+        c.SideEffect([&camera, displayRotation] { camera.SetTargetRotation(displayRotation); });
         const bool mirror = info.facing == media::LensFacing::Front;
         // The frames come in the sensor's orientation (an image reader takes no transform from
         // the camera) and are turned here, as CameraX turns a TextureView's.
@@ -70,8 +107,7 @@ namespace kiln::foundation {
         }
         if (options.pinchToZoom) {
             m = PointerInput(m, rt::Keys{ cam }, [cam](PointerInputScope& scope) -> rt::Task<> {
-                co_await DetectTransformGestures(scope, false, [cam](Offset, Offset, float zoom, float) {
-                    if (zoom == 1) return;
+                co_await DetectPinch(scope, [cam](float zoom) {
                     const media::ZoomState z = cam->State().zoom;
                     const float faster = zoom > 1 ? 1 + (zoom - 1) * 2 : 1 - (1 - zoom) * 2;
                     cam->SetZoomRatio(std::clamp(z.zoomRatio * faster, z.minZoomRatio, z.maxZoomRatio));

@@ -397,3 +397,47 @@ TEST(CameraTakesPicturesAsCameraX) {
     d.RunPending();
     d.SetVirtualTime(wasVirtual);
 }
+
+TEST(CameraImageAnalysisAsCameraX) {
+    // libyuv's full-swing BT.601: grey stays grey; pure chroma as JPEG's matrix gives it.
+    std::uint8_t y[4] = { 128, 128, 255, 0 }, u[1] = { 128 }, v[1] = { 255 };
+    ImageFrame f;
+    f.width = 2;
+    f.height = 2;
+    f.planeCount = 3;
+    f.planes[0] = { y, 4, 2, 1 };
+    f.planes[1] = { u, 1, 1, 1 };
+    f.planes[2] = { v, 1, 1, 1 };
+    auto rgba = YuvToRgba(f);
+    CHECK(rgba.size() == 16);
+    // Y 128, V +127: R = 128 + 1.402 * 127 -> 255 (clamped), G = 128 - 0.714136 * 127 = 37, B = 128.
+    CHECK(rgba[0] == 255 && rgba[1] == 37 && rgba[2] == 128 && rgba[3] == 255);
+    v[0] = 128;
+    rgba = YuvToRgba(f);
+    CHECK(rgba[0] == 128 && rgba[1] == 128 && rgba[2] == 128 && rgba[8] == 255 && rgba[12] == 0);
+    // Analysis size: 4:3, the smallest covering 640x480.
+    CHECK((ChooseAnalysisSize({ { 1920, 1080 }, { 1280, 960 }, { 800, 600 }, { 320, 240 } }, { 640, 480 }) == ui::IntSize{ 800, 600 }));
+    CHECK((ChooseAnalysisSize({ { 320, 240 }, { 160, 120 } }, { 640, 480 }) == ui::IntSize{ 320, 240 }));
+
+    FakeCamera fake;
+    fake.info.yuvSizes = { { 1280, 960 }, { 640, 480 } };
+    fake.Install();
+    Camera camera("0", { .imageAnalysis = ImageAnalysisOptions{ .format = AnalysisFormat::Rgba8888 } });
+    fake.callbacks.onOpened();
+    CHECK((fake.outputs.analysisSize == ui::IntSize{ 640, 480 }) && fake.outputs.jpegSize.width == 0);
+    int frames = 0;
+    ImageFrame seen;
+    std::vector<std::uint8_t> copy;
+    camera.SetAnalyzer([&](const ImageFrame& frame) {
+        ++frames;
+        seen = frame;
+        copy.assign(frame.planes[0].data, frame.planes[0].data + frame.planes[0].size);
+    });
+    camera.SetTargetRotation(90);
+    fake.callbacks.onAnalysisFrame(f);
+    CHECK(frames == 1 && seen.format == AnalysisFormat::Rgba8888 && seen.planeCount == 1 && seen.planes[0].rowStride == 8);
+    CHECK(seen.rotationDegrees == 0 && copy.size() == 16 && copy[0] == 128);   // sensor 90, display 90
+    camera.SetAnalyzer({});
+    fake.callbacks.onAnalysisFrame(f);
+    CHECK(frames == 1);
+}

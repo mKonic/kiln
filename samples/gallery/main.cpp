@@ -367,9 +367,31 @@ namespace {
     void CameraDemo(const std::string& id) {
         using namespace kiln::foundation;
         auto& c = *kiln::rt::Composition::Current();
-        auto& camera = c.RememberNew<kiln::media::Camera>(kiln::rt::Keys{ id }, {}, id, kiln::media::CameraOptions{ .imageCapture = kiln::media::ImageCaptureOptions{} });
+        auto& camera = c.RememberNew<kiln::media::Camera>(kiln::rt::Keys{ id }, {}, id, kiln::media::CameraOptions{
+            .imageCapture = kiln::media::ImageCaptureOptions{}, .imageAnalysis = kiln::media::ImageAnalysisOptions{} });
         const kiln::media::CameraState& s = kiln::rt::CollectAsState(camera.StateFlow()).Get();
         auto& status = RememberState(std::string());
+        // ImageAnalysis: each frame's mean brightness, on the camera's thread, shown twice a second.
+        auto& analysis = RememberState(std::string());
+        c.DisposableEffect(kiln::rt::Keys{ &camera }, [&camera, &analysis] {
+            auto last = std::make_shared<std::chrono::steady_clock::time_point>();
+            // The main thread's dispatcher, taken here (Dispatcher::Main() is the calling thread's).
+            kiln::rt::Dispatcher* main = &kiln::rt::Dispatcher::Main();
+            camera.SetAnalyzer([&analysis, last, main](const kiln::media::ImageFrame& f) {
+                const auto now = std::chrono::steady_clock::now();
+                if (now - *last < std::chrono::milliseconds(500)) return;
+                *last = now;
+                const auto& y = f.planes[0];
+                std::uint64_t sum = 0;
+                for (int row = 0; row < f.height; row += 8)
+                    for (int x = 0; x < f.width; x += 8) sum += y.data[std::size_t(row) * y.rowStride + std::size_t(x) * y.pixelStride];
+                const int mean = int(sum / std::uint64_t(std::max(1, ((f.height + 7) / 8) * ((f.width + 7) / 8))));
+                std::string text = std::to_string(f.width) + "x" + std::to_string(f.height) + ", mean luma " + std::to_string(mean) + ", rotation " +
+                                   std::to_string(f.rotationDegrees);
+                main->PostFromAnyThread([&analysis, text] { analysis.Set(text); });
+            });
+            return [&camera] { camera.SetAnalyzer({}); };
+        });
         CameraPreview(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), camera,
                       { .onTapToFocus = [&status](bool focused) { status.Set(focused ? "Focused" : "Not focused"); } });
         FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&camera, &s, &status, &c] {
@@ -392,6 +414,7 @@ namespace {
         std::snprintf(zoom, sizeof zoom, "%.1fx", double(s.zoom.zoomRatio));
         BasicText(std::string(zoom) + (s.errorMessage.empty() ? "" : " - " + s.errorMessage) + (status.Get().empty() ? "" : " - " + status.Get()),
                   Padding(Modifier{}, 16_dp, 0_dp), { 14, kOnSurface });
+        if (!analysis.Get().empty()) BasicText("Analysis: " + analysis.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kOnSurface });
     }
 
     // media::Player in a VideoSurface, and a camera's preview once the permission is granted.

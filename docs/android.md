@@ -925,6 +925,12 @@ camera.TakePicture({ .file = kiln::ui::CacheDir() + "/photo.jpg" }, [&](kiln::me
   - `CaptureMode::MaximizeQuality` also locks focus and white balance before the shot.
   - The JPEG is turned upright for the display rotation you pass.
   - Pictures are taken one at a time and saved whole, or handed to you as bytes.
+* **Analysis.** Add `.imageAnalysis = kiln::media::ImageAnalysisOptions{}` to the options and
+  call `SetAnalyzer`. The analyzer gets each frame (YUV_420_888 by default, 640x480 or the size
+  you ask for) on the camera's thread, along with the rotation that turns it upright. Frames
+  that arrive while it runs are dropped, as CameraX's keep-only-latest strategy does.
+  `AnalysisFormat::Rgba8888` converts frames the way CameraX does. To hand results to the UI,
+  take `rt::Dispatcher::Main()` on the main thread, then call its `PostFromAnyThread`.
 
 ### Your own rendering
 
