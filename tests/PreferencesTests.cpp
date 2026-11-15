@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstdio>
 #include <thread>
+#include <sys/stat.h>
 #include <unistd.h>
 
 using namespace kiln;
@@ -95,6 +96,27 @@ TEST(PreferencesDataStoreStartsOverFromACorruptFile) {
     RunUntil(edit);
     CHECK(store->Current().Get(kDark) == std::optional<bool>(true));
     std::remove(path.c_str());
+}
+
+// FileStorage's readData: a file that exists but cannot be read fails the read and the edit,
+// rather than reading as empty preferences an edit would write over.
+TEST(PreferencesDataStoreUnreadableFileFailsWithoutOverwriting) {
+    const std::string dir = TempDir();
+    const std::string path = dir + "/unreadable.preferences";
+    ::mkdir(path.c_str(), 0700);   // there, but not a readable file
+    auto store = PreferencesDataStore::OpenFile(path);
+    struct Out { bool readFailed = false, editFailed = false; };
+    auto out = std::make_shared<Out>();
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), [](std::shared_ptr<PreferencesDataStore> s, std::shared_ptr<Out> o) -> rt::Task<> {
+        try { co_await rt::First(s->Data()); } catch (const std::exception&) { o->readFailed = true; }
+        try { co_await s->Edit([](MutablePreferences& p) { p.Set(kDark, true); }); } catch (const std::exception&) { o->editFailed = true; }
+    }(store, out));
+    RunUntil(job);
+    CHECK(job.Done() && out->readFailed && out->editFailed);
+    CHECK(!store->Current().Contains(kDark));
+    struct stat st{};
+    CHECK(::stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode));
+    ::rmdir(path.c_str());
 }
 
 TEST(AppDirectoriesExistAndCanBeSet) {

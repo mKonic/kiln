@@ -82,7 +82,9 @@ namespace kiln::datastore {
         // A store at `path` (tests, or a file elsewhere).
         static std::shared_ptr<PreferencesDataStore> OpenFile(const std::string& path);
 
-        // data: the current preferences, read from the file on first use, then each change.
+        // data: the current preferences, read from the file on first use, then each change. A
+        // missing file is empty preferences; a file that cannot be read throws (from the flow,
+        // and from Edit), and the next read tries again.
         rt::Flow<Preferences> Data();
         // The preferences now (empty until the file was read).
         const Preferences& Current() const { return m_State.Value(); }

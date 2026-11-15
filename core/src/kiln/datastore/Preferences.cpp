@@ -58,14 +58,22 @@ namespace kiln::datastore {
             for (std::size_t i = 1; i < path.size(); ++i)
                 if (path[i] == '/') ::mkdir(path.substr(0, i).c_str(), 0700);
         }
+        // nullopt when there is no file; any other failure throws (FileStorage's readData: a
+        // file that exists but cannot be read is an error, not empty data an edit would then
+        // write over).
         std::optional<std::string> ReadFile(const std::string& path) {
             FILE* f = std::fopen(path.c_str(), "rb");
-            if (!f) return std::nullopt;
+            if (!f) {
+                if (errno == ENOENT) return std::nullopt;
+                throw std::runtime_error("kiln: cannot read " + path + ": " + std::strerror(errno));
+            }
             std::string out;
             char buf[16384];
             std::size_t n;
             while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) out.append(buf, n);
+            const bool failed = std::ferror(f) != 0;
             std::fclose(f);
+            if (failed) throw std::runtime_error("kiln: cannot read " + path);
             return out;
         }
         // Writes `bytes` to a temporary file next to `path`, syncs it and renames it over `path`.
