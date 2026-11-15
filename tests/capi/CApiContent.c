@@ -193,6 +193,30 @@ void capi_media(void* user) {
     kiln_media_session_set_extras(session, &key, &value, 1);
 }
 
+/* A camera with still capture: zoom, a picture into a file; the outcomes are logged. */
+char capi_camera_log[256];
+static void camera_log(const char* s) {
+    size_t n = strlen(capi_camera_log);
+    snprintf(capi_camera_log + n, sizeof capi_camera_log - n, "%s;", s);
+}
+static void camera_zoomed(void* user, const char* error) { (void)user; camera_log(error ? error : "zoomed"); }
+static void camera_picture(void* user, int32_t error, const char* text) {
+    (void)user;
+    char line[160];
+    snprintf(line, sizeof line, "picture %d %s", (int)error, text);
+    camera_log(line);
+}
+void capi_camera(void* user) {
+    (void)user;
+    kiln_camera* camera = kiln_remember_camera(KILN_HERE, "0", true, 1, 2);
+    kiln_camera_state s;
+    kiln_camera_get_state(camera, &s);
+    if (s.type == 2 && s.zoom_ratio == 1.0f && !capi_camera_log[0]) {
+        kiln_camera_set_zoom_ratio(camera, 20, (kiln_fn_camera_done){ camera_zoomed, NULL, NULL });
+        kiln_camera_take_picture(camera, "/tmp/kiln-capi-camera.jpg", 0, (kiln_fn_picture){ camera_picture, NULL, NULL });
+    }
+}
+
 /* Speech: a remembered engine and recognizer; the listeners' events are logged. */
 char capi_speech_log[256];
 static void speech_log(const char* s) {

@@ -84,6 +84,8 @@ __kiln_callback!(sys::kiln_fn_worker, (name: *const std::ffi::c_char, input: *co
 __kiln_callback!(sys::kiln_fn_biometric, (ok: bool, code: i32, msg: *const std::ffi::c_char) -> ());
 __kiln_callback!(sys::kiln_fn_int, (v: i32) -> ());
 __kiln_callback!(sys::kiln_fn_str, (s: *const ::std::ffi::c_char) -> ());
+__kiln_callback!(sys::kiln_fn_camera_done, (error: *const ::std::ffi::c_char) -> ());
+__kiln_callback!(sys::kiln_fn_picture, (error: i32, text: *const ::std::ffi::c_char) -> ());
 __kiln_callback!(sys::kiln_fn_rating, (kind: i32, rated: bool, liked: bool, max_stars: i32, value: f32) -> ());
 __kiln_callback!(sys::kiln_fn_media_request, (media_id: *const ::std::ffi::c_char, uri: *const ::std::ffi::c_char, query: *const ::std::ffi::c_char) -> *const ::std::ffi::c_char);
 __kiln_callback!(sys::kiln_fn_float, (v: f32) -> ());
@@ -937,6 +939,57 @@ pub fn find_camera(facing: i32) -> Option<String> {
 pub fn camera_preview(camera_id: &str, modifier: Modifier) {
     let c = CStrBuf::new(camera_id);
     unsafe { sys::kiln_camera_preview(here(), modifier.0, c.ptr()) }
+}
+/// A camera with its use cases (see `kiln_remember_camera`).
+#[derive(Clone, Copy)]
+pub struct Camera(*mut sys::kiln_camera);
+/// A camera remembered at the call; `image_capture` binds still capture.
+#[track_caller]
+pub fn remember_camera(camera_id: &str, image_capture: bool, capture_mode: i32, flash_mode: i32) -> Camera {
+    let id = CStrBuf::new(camera_id);
+    Camera(unsafe { sys::kiln_remember_camera(here(), id.ptr(), image_capture, capture_mode, flash_mode) })
+}
+fn camera_done(done: Option<impl FnMut(Option<String>) + 'static>) -> sys::kiln_fn_camera_done {
+    match done {
+        Some(mut f) => (move |e: *const std::ffi::c_char| f(if e.is_null() { None } else { Some(from_c(e)) })).into_callback(),
+        None => Default::default(),
+    }
+}
+impl Camera {
+    pub fn state(&self) -> sys::kiln_camera_state {
+        let mut s: sys::kiln_camera_state = unsafe { std::mem::zeroed() };
+        unsafe { sys::kiln_camera_get_state(self.0, &mut s) };
+        s
+    }
+    /// `done` gets None on success, else why it failed.
+    pub fn set_zoom_ratio(&self, ratio: f32, done: Option<impl FnMut(Option<String>) + 'static>) {
+        unsafe { sys::kiln_camera_set_zoom_ratio(self.0, ratio, camera_done(done)) }
+    }
+    pub fn set_linear_zoom(&self, zoom: f32, done: Option<impl FnMut(Option<String>) + 'static>) {
+        unsafe { sys::kiln_camera_set_linear_zoom(self.0, zoom, camera_done(done)) }
+    }
+    pub fn enable_torch(&self, on: bool, done: Option<impl FnMut(Option<String>) + 'static>) {
+        unsafe { sys::kiln_camera_enable_torch(self.0, on, camera_done(done)) }
+    }
+    pub fn set_exposure_compensation_index(&self, index: i32, done: Option<impl FnMut(Option<String>) + 'static>) {
+        unsafe { sys::kiln_camera_set_exposure_compensation_index(self.0, index, camera_done(done)) }
+    }
+    pub fn focus_and_meter(&self, x: f32, y: f32, done: impl FnMut(bool) + 'static) {
+        unsafe { sys::kiln_camera_focus_and_meter(self.0, x, y, done.into_callback()) }
+    }
+    pub fn cancel_focus_and_metering(&self) { unsafe { sys::kiln_camera_cancel_focus_and_metering(self.0) } }
+    pub fn set_flash_mode(&self, mode: i32) { unsafe { sys::kiln_camera_set_flash_mode(self.0, mode) } }
+    /// `done(Ok(file))` or `done(Err((code, message)))`.
+    pub fn take_picture(&self, file: &str, display_rotation: i32, mut done: impl FnMut(Result<String, (i32, String)>) + 'static) {
+        let f = CStrBuf::new(file);
+        let cb = (move |e: i32, t: *const std::ffi::c_char| done(if e < 0 { Ok(from_c(t)) } else { Err((e, from_c(t))) })).into_callback();
+        unsafe { sys::kiln_camera_take_picture(self.0, f.ptr(), display_rotation, cb) }
+    }
+    /// Its preview; a tap focuses, a pinch zooms.
+    #[track_caller]
+    pub fn preview(&self, modifier: Modifier, tap_to_focus: bool, pinch_to_zoom: bool) {
+        unsafe { sys::kiln_camera_preview_of(here(), modifier.0, self.0, tap_to_focus, pinch_to_zoom) }
+    }
 }
 /// The default async image options, to change before passing to [`async_image`].
 pub fn async_image_options() -> sys::kiln_async_image_options {

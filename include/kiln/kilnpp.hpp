@@ -636,6 +636,37 @@ namespace kpp {
         kiln_video_surface(key, m, player.get(), keepAspectRatio);
     }
     inline void camera_preview(const char* cameraId, Modifier m = {}, Key key = {}) { kiln_camera_preview(key, m, cameraId); }
+    // A camera with its use cases, remembered at the call; see kiln_remember_camera.
+    class Camera {
+    public:
+        explicit Camera(const char* cameraId, bool imageCapture = true, int32_t captureMode = 1, int32_t flashMode = 2, Key key = {})
+            : m_C(kiln_remember_camera(key, cameraId, imageCapture, captureMode, flashMode)) {}
+        kiln_camera_state state() const {
+            kiln_camera_state s;
+            kiln_camera_get_state(m_C, &s);
+            return s;
+        }
+        void setZoomRatio(float ratio, Callback<kiln_fn_camera_done> done = {}) { kiln_camera_set_zoom_ratio(m_C, ratio, done.release()); }
+        void setLinearZoom(float z, Callback<kiln_fn_camera_done> done = {}) { kiln_camera_set_linear_zoom(m_C, z, done.release()); }
+        void enableTorch(bool on, Callback<kiln_fn_camera_done> done = {}) { kiln_camera_enable_torch(m_C, on, done.release()); }
+        void setExposureCompensationIndex(int32_t i, Callback<kiln_fn_camera_done> done = {}) {
+            kiln_camera_set_exposure_compensation_index(m_C, i, done.release());
+        }
+        void focusAndMeter(float x, float y, Callback<kiln_fn_bool> done = {}) { kiln_camera_focus_and_meter(m_C, x, y, done.release()); }
+        void cancelFocusAndMetering() { kiln_camera_cancel_focus_and_metering(m_C); }
+        void setFlashMode(int32_t mode) { kiln_camera_set_flash_mode(m_C, mode); }
+        // done(error: -1 none, uri or message).
+        void takePicture(const std::string& file, Callback<kiln_fn_picture> done, int32_t displayRotation = 0) {
+            kiln_camera_take_picture(m_C, file.c_str(), displayRotation, done.release());
+        }
+        void preview(Modifier m = {}, bool tapToFocus = true, bool pinchToZoom = true, Key key = {}) {
+            kiln_camera_preview_of(key, m, m_C, tapToFocus, pinchToZoom);
+        }
+        kiln_camera* get() const { return m_C; }
+
+    private:
+        kiln_camera* m_C;
+    };
 
     class TextFieldState {
     public:

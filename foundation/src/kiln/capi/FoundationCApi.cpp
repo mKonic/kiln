@@ -2064,6 +2064,100 @@ KILN_API void kiln_camera_preview(kiln_key key, const kiln_modifier* m, const ch
     } CATCH_VOID
 }
 
+struct kiln_camera {
+    kiln::media::Camera* camera;
+};
+namespace {
+    kiln::media::CameraDone CameraDone(kiln_fn_camera_done f) {
+        auto o = Own(f);
+        if (!o) return {};
+        return [o](std::optional<kiln::media::CameraError> e) {
+            CallbackScope s;
+            o->f.call(o->f.user, e ? e->message.c_str() : nullptr);
+        };
+    }
+}
+KILN_API kiln_camera* kiln_remember_camera(kiln_key key, const char* id, bool imageCapture, int32_t captureMode, int32_t flashMode) {
+    TRY {
+        kiln_camera* out = nullptr;
+        const std::string cameraId = ToString(id);
+        InGroup(key, [&] {
+            auto& c = *rt::Composition::Current();
+            kiln::media::CameraOptions options;
+            if (imageCapture)
+                options.imageCapture = kiln::media::ImageCaptureOptions{ .captureMode = kiln::media::CaptureMode(captureMode == 0 ? 0 : 1),
+                                                                         .flashMode = kiln::media::FlashMode(std::clamp(flashMode, 0, 2)) };
+            auto& cam = c.RememberNew<kiln::media::Camera>(rt::Keys{ cameraId, imageCapture }, {}, cameraId, options);
+            auto& handle = c.Remember<kiln_camera>([&] { return kiln_camera{ &cam }; });
+            handle.camera = &cam;
+            out = &handle;
+        });
+        return out;
+    } CATCH(nullptr)
+}
+KILN_API void kiln_camera_get_state(kiln_camera* cam, kiln_camera_state* out) {
+    TRY {
+        if (!cam || !out) return;
+        const kiln::media::CameraState& s = rt::Composition::Current() ? rt::CollectAsState(cam->camera->StateFlow()).Get() : cam->camera->State();
+        static thread_local std::string message;
+        message = s.errorMessage;
+        *out = {};
+        out->type = int32_t(s.type);
+        out->error = int32_t(s.error);
+        out->error_message = message.c_str();
+        out->zoom_ratio = s.zoom.zoomRatio;
+        out->min_zoom_ratio = s.zoom.minZoomRatio;
+        out->max_zoom_ratio = s.zoom.maxZoomRatio;
+        out->linear_zoom = s.zoom.linearZoom;
+        out->exposure_index = s.exposure.exposureCompensationIndex;
+        out->exposure_min = s.exposure.rangeLower;
+        out->exposure_max = s.exposure.rangeUpper;
+        out->torch = s.torch == kiln::media::TorchState::On;
+        out->has_flash_unit = cam->camera->Info().hasFlashUnit;
+    } CATCH_VOID
+}
+KILN_API void kiln_camera_set_zoom_ratio(kiln_camera* c, float r, kiln_fn_camera_done d) { TRY { if (c) c->camera->SetZoomRatio(r, CameraDone(d)); } CATCH_VOID }
+KILN_API void kiln_camera_set_linear_zoom(kiln_camera* c, float z, kiln_fn_camera_done d) { TRY { if (c) c->camera->SetLinearZoom(z, CameraDone(d)); } CATCH_VOID }
+KILN_API void kiln_camera_enable_torch(kiln_camera* c, bool on, kiln_fn_camera_done d) { TRY { if (c) c->camera->EnableTorch(on, CameraDone(d)); } CATCH_VOID }
+KILN_API void kiln_camera_set_exposure_compensation_index(kiln_camera* c, int32_t i, kiln_fn_camera_done d) {
+    TRY { if (c) c->camera->SetExposureCompensationIndex(i, CameraDone(d)); } CATCH_VOID
+}
+KILN_API void kiln_camera_focus_and_meter(kiln_camera* c, float x, float y, kiln_fn_bool done) {
+    TRY {
+        if (!c) return;
+        auto o = Own(done);
+        c->camera->StartFocusAndMetering(kiln::media::FocusMeteringAction::Of({ x, y }),
+                                         [o](std::optional<kiln::media::FocusMeteringResult> r, std::optional<kiln::media::CameraError>) {
+            if (!o) return;
+            CallbackScope s;
+            o->f.call(o->f.user, r && r->isFocusSuccessful);
+        });
+    } CATCH_VOID
+}
+KILN_API void kiln_camera_cancel_focus_and_metering(kiln_camera* c) { TRY { if (c) c->camera->CancelFocusAndMetering(); } CATCH_VOID }
+KILN_API void kiln_camera_set_flash_mode(kiln_camera* c, int32_t mode) {
+    TRY { if (c) c->camera->SetFlashMode(kiln::media::FlashMode(std::clamp(mode, 0, 2))); } CATCH_VOID
+}
+KILN_API void kiln_camera_take_picture(kiln_camera* c, const char* file, int32_t rotation, kiln_fn_picture done) {
+    TRY {
+        if (!c) return;
+        auto o = Own(done);
+        c->camera->TakePicture({ .file = ToString(file) }, [o](kiln::media::ImageCaptureResult r) {
+            if (!o) return;
+            CallbackScope s;
+            const bool ok = r.error == kiln::media::ImageCaptureResult::Error::None;
+            o->f.call(o->f.user, int32_t(r.error), ok ? r.savedUri.c_str() : r.message.c_str());
+        }, rotation);
+    } CATCH_VOID
+}
+KILN_API void kiln_camera_preview_of(kiln_key key, const kiln_modifier* m, kiln_camera* c, bool tap, bool pinch) {
+    TRY {
+        if (!c) return;
+        const ui::Modifier mod = ToModifier(m);
+        InGroup(key, [&] { fd::CameraPreview(mod, *c->camera, { .tapToFocus = tap, .pinchToZoom = pinch }); });
+    } CATCH_VOID
+}
+
 KILN_API kiln_text_field_state* kiln_remember_text_field_state(kiln_key key, const char* initial) {
     TRY {
         kiln_text_field_state* out = nullptr;

@@ -16,6 +16,7 @@
 #include "kiln/ui/ActivityIntent.h"
 #include "kiln/ui/Semantics.h"
 #include "kiln/ui/Volition.h"
+#include "kiln/media/Camera.h"
 #include "kiln/media/MediaSession.h"
 #include "kiln/ui/FileProvider.h"
 #include "kiln/speech/SpeechRecognizer.h"
@@ -30,6 +31,8 @@ using namespace kiln;
 extern "C" {
     extern int capi_media_next;
     extern char capi_media_log[128];
+    extern char capi_camera_log[256];
+    void capi_camera(void*);
     void capi_media(void* user);
     extern kiln_player_state capi_playlist_state;
     extern kiln_track capi_playlist_track;
@@ -898,6 +901,36 @@ TEST(CApiMediaSessionAndAudioFocus) {
     CHECK(noisy == 0 && capi_live_callbacks == 0);
     media::SetMediaSessionHost({});
     media::SetAudioHost({});
+}
+
+TEST(CApiCameraControlsAndPictures) {
+    capi_camera_log[0] = 0;
+    media::CameraHost::Callbacks callbacks;
+    media::CameraInfo info;
+    info.id = "0";
+    info.jpegSizes = { { 640, 480 } };
+    info.maxZoomRatio = 4;
+    media::SetCameraHost({
+        .cameras = [&] { return std::vector<media::CameraInfo>{ info }; },
+        .open = [&](const std::string&, media::CameraHost::Callbacks c) {
+            callbacks = std::move(c);
+            rt::Dispatcher::Main().Post([&] { callbacks.onOpened(); });
+            return std::uint64_t(1);
+        },
+        .configure = [](std::uint64_t, const media::CameraOutputs&, const media::CameraRequest&) { return true; },
+        .setRequest = [](std::uint64_t, const media::CameraRequest&) {},
+        .capture = [](std::uint64_t, const media::CameraRequest&, int, int, auto done) { done({ 0xFF, 0xD8 }, {}); },
+        .close = [](std::uint64_t) {},
+    });
+    {
+        Harness h;
+        h.Run(capi_camera);
+        h.Pump();
+        h.Pump();
+        CHECK(std::string(capi_camera_log) == "Requested zoomRatio 20 is not within valid range [1, 4];picture -1 /tmp/kiln-capi-camera.jpg;");
+    }
+    std::remove("/tmp/kiln-capi-camera.jpg");
+    media::SetCameraHost({});
 }
 
 TEST(CApiPlayerPlaylistAndTracks) {

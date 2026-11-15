@@ -1260,6 +1260,37 @@ KILN_API void kiln_video_surface(kiln_key key, const kiln_modifier* modifier, ki
 /* facing: 0 front, 1 back, 2 external. The id is valid until the next call; NULL: none. */
 KILN_API const char* kiln_find_camera(int32_t facing);
 KILN_API void kiln_camera_preview(kiln_key key, const kiln_modifier* modifier, const char* camera_id);
+/* A camera opened with its use cases (media::Camera, CameraX's Camera): still capture when
+ * image_capture (capture_mode: 0 maximize quality, 1 minimize latency; flash_mode: 0 auto, 1 on,
+ * 2 off). Remembered at the call; closed when the call leaves. */
+typedef struct kiln_camera kiln_camera;
+typedef struct kiln_camera_state {
+    int32_t type;                       /* 0 pending open, 1 opening, 2 open, 3 closing, 4 closed */
+    int32_t error;                      /* CameraState.ERROR_*; 0 none */
+    const char* error_message;          /* valid until the next call */
+    float zoom_ratio, min_zoom_ratio, max_zoom_ratio, linear_zoom;
+    int32_t exposure_index, exposure_min, exposure_max;
+    bool torch, has_flash_unit;
+} kiln_camera_state;
+/* A control's outcome: NULL on success, else why it failed. */
+typedef struct kiln_fn_camera_done { void (*call)(void* user, const char* error); void* user; void (*drop)(void* user); } kiln_fn_camera_done;
+/* A picture: error (ImageCaptureException's code, -1 none), and the file saved or the message. */
+typedef struct kiln_fn_picture { void (*call)(void* user, int32_t error, const char* uri_or_message); void* user; void (*drop)(void* user); } kiln_fn_picture;
+KILN_API kiln_camera* kiln_remember_camera(kiln_key key, const char* camera_id, bool image_capture, int32_t capture_mode, int32_t flash_mode);
+KILN_API void kiln_camera_get_state(kiln_camera* camera, kiln_camera_state* out);
+KILN_API void kiln_camera_set_zoom_ratio(kiln_camera* camera, float ratio, kiln_fn_camera_done done);
+KILN_API void kiln_camera_set_linear_zoom(kiln_camera* camera, float linear_zoom, kiln_fn_camera_done done);
+KILN_API void kiln_camera_enable_torch(kiln_camera* camera, bool on, kiln_fn_camera_done done);
+KILN_API void kiln_camera_set_exposure_compensation_index(kiln_camera* camera, int32_t index, kiln_fn_camera_done done);
+/* Focuses (AF) and meters (AE, AWB) on a point normalized in the camera's frame; done gets
+ * whether it focused (kiln_fn_bool; false on failure too). */
+KILN_API void kiln_camera_focus_and_meter(kiln_camera* camera, float x, float y, kiln_fn_bool done);
+KILN_API void kiln_camera_cancel_focus_and_metering(kiln_camera* camera);
+KILN_API void kiln_camera_set_flash_mode(kiln_camera* camera, int32_t flash_mode);
+/* Takes a picture into file, upright for the display rotation (degrees). */
+KILN_API void kiln_camera_take_picture(kiln_camera* camera, const char* file, int32_t display_rotation, kiln_fn_picture done);
+/* The camera's preview; a tap focuses there, a pinch zooms. */
+KILN_API void kiln_camera_preview_of(kiln_key key, const kiln_modifier* modifier, kiln_camera* camera, bool tap_to_focus, bool pinch_to_zoom);
 
 /* BasicTextField over a remembered text field state. */
 typedef struct kiln_text_field_state kiln_text_field_state;
