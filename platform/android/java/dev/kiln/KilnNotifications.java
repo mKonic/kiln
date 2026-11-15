@@ -58,7 +58,7 @@ final class KilnNotifications {
 
     /**
      * strings: channel, title, text, bigText, smallIcon, data, tag, group; ints: id, progress,
-     * progressMax, flags (1 autoCancel, 2 ongoing, 4 onlyAlertOnce, 8 indeterminate); actions: title,
+     * progressMax, flags (1 autoCancel, 2 ongoing, 4 onlyAlertOnce, 8 indeterminate, 16 group summary); actions: title,
      * data, icon per action.
      */
     static boolean notify(String[] s, int[] n, long when, String[] actions) {
@@ -73,7 +73,11 @@ final class KilnNotifications {
             b.setAutoCancel((n[3] & 1) != 0).setOngoing((n[3] & 2) != 0).setOnlyAlertOnce((n[3] & 4) != 0);
             if (n[2] > 0 || (n[3] & 8) != 0) b.setProgress(n[2], n[1], (n[3] & 8) != 0);
             if (!s[7].isEmpty()) b.setGroup(s[7]);
-            if (when != 0) b.setWhen(when).setShowWhen(true);
+            if ((n[3] & 16) != 0) b.setGroupSummary(true);
+            // NotificationCompat shows the time by default; the platform's builder does not
+            // for apps that target Android 7 and later.
+            b.setShowWhen(true);
+            if (when != 0) b.setWhen(when);
             for (int i = 0; i + 2 < actions.length; i += 3)
                 b.addAction(new Notification.Action.Builder(icon(actions[i + 2]), actions[i], open(actions[i + 1])).build());
             nm.notify(s[6].isEmpty() ? null : s[6], n[0], b.build());

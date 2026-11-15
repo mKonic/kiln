@@ -329,6 +329,8 @@ void NotifySynced(int count) {
 * A notification with the same `id` (and `tag`) replaces the previous one: update a progress
   bar (`progress`, `progressMax`, `indeterminate`) with `onlyAlertOnce` so it does not sound
   each time. `ongoing` keeps it from being swiped away.
+* Notifications with the same `group` bundle together under the one posted with
+  `groupSummary`, which is what shows when the group is collapsed.
 * `smallIcon` names a white-on-transparent drawable in the app's `res/` for the status bar;
   without one the launcher icon is used.
 * With `ACTIVITY_ATTRIBUTES "android:launchMode=\"singleTop\""` a tap reaches the running

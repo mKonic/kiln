@@ -321,7 +321,8 @@ namespace kiln::android {
                     for (const auto& a : n.actions) { actions.push_back(a.title); actions.push_back(a.data); actions.push_back(a.icon); }
                     jobjectArray acts = strings(e, actions);
                     const jint ints[4] = { n.id, n.progress, n.progressMax,
-                                           (n.autoCancel ? 1 : 0) | (n.ongoing ? 2 : 0) | (n.onlyAlertOnce ? 4 : 0) | (n.indeterminate ? 8 : 0) };
+                                           (n.autoCancel ? 1 : 0) | (n.ongoing ? 2 : 0) | (n.onlyAlertOnce ? 4 : 0) | (n.indeterminate ? 8 : 0) |
+                                           (n.groupSummary ? 16 : 0) };
                     jintArray ji = e->NewIntArray(4);
                     e->SetIntArrayRegion(ji, 0, 4, ints);
                     const bool ok = e->CallStaticBooleanMethod(notes, notify, s, ji, jlong(n.whenMillis), acts);

@@ -51,8 +51,11 @@ namespace kiln::ui {
         // A progress bar: max 0 hides it; indeterminate ignores progress.
         int progress = 0, progressMax = 0;
         bool indeterminate = false;
+        // Notifications of a group bundle under its summary (one with groupSummary set), which
+        // shows when the group collapses (NotificationCompat.setGroup / setGroupSummary).
         std::string group;
-        std::int64_t whenMillis = 0;     // 0: when posted
+        bool groupSummary = false;
+        std::int64_t whenMillis = 0;     // shown with the notification; 0: when posted
         std::vector<NotificationAction> actions;   // up to 3 shown
         bool operator==(const Notification&) const = default;
     };
