@@ -59,6 +59,33 @@ modules = [
 ]
 
 [renamed]
+# Members spelled as C++ operators or shorter names.
+"Cubic.plus" = "operator"
+"Cubic.times" = "operator"
+"Cubic.div" = "operator"
+"PointTransformer.transform" = "operator"   # a function type, called
+"Morph.forEachCubic" = "AsCubics"
+"BoundsTransform.createAnimationSpec" = "operator"   # a function type, called
+"SizeTransform.createAnimationSpec" = "spec"
+"ContentTransform.initialContentExit" = "exit"
+"ContentTransform.targetContentEnter" = "enter"
+"EnterTransition.plus" = "operator"
+"ExitTransition.plus" = "operator"
+"SlideConfig.slideOffset" = "offset"
+"SplineBasedFloatDecayAnimationSpec.getValueFromNanos" = "ValueAt"
+"SplineBasedFloatDecayAnimationSpec.getVelocityFromNanos" = "VelocityAt"
+"RippleNodeConfiguration.pressConfiguration" = "press"
+"RippleNodeConfiguration.hoverConfiguration" = "hover"
+"RippleNodeConfiguration.dragConfiguration" = "drag"
+"ExtendedPaneScaffoldScope.focusRequesters" = "FocusRequesterOf"
+"ThreePaneMotion.get" = "operator"
+"ThreePaneScaffoldAdaptStrategies.get" = "operator"
+"ThreePaneScaffoldValue.get" = "operator"
+"ThreePaneScaffoldHorizontalOrder.get" = "operator"
+"ThreePaneScaffoldHorizontalOrder.forEachIndexed" = "operator"   # [i] for i < size
+"ThreePaneScaffoldHorizontalOrder.forEachIndexedReversed" = "operator"
+"PaneScaffoldHorizontalOrder.forEachIndexed" = "operator"
+"PaneScaffoldHorizontalOrder.forEachIndexedReversed" = "operator"
 # savedstate: a SavedStateRegistry is rt::SaveableStateRegistry (SavedStateRegistryOwner's), a
 # SavedState / its reader and writer are rt::SavedValue.
 "SavedStateRegistry.consumeRestoredStateForKey" = "ConsumeRestored"
