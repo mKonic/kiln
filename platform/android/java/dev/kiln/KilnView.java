@@ -1993,6 +1993,11 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
     // FLAG_SECURE on the window: the native side asks, and reads the window's own flag on attach.
     // Secure external surfaces keep it set too (updateExternalSecure).
     private boolean appFlagSecure, externalFlagSecure;
+    /** ui::ReportDrawn*: Activity.reportFullyDrawn (ComponentActivity's FullyDrawnReporter's report). */
+    void reportFullyDrawnFromNative() {
+        if (getContext() instanceof android.app.Activity) ((android.app.Activity) getContext()).reportFullyDrawn();
+    }
+
     void setFlagSecureFromNative(boolean secure) {
         appFlagSecure = secure;
         applyFlagSecure();

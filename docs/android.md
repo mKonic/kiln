@@ -12,6 +12,22 @@ shows the two ways to build one, and how kiln works with the platform.
 The activity handles configuration changes such as rotation, dark theme and font size in
 the same process, and keeps saved state across process death.
 
+Android times startup to the first frame. To also report when the first screen shows real
+content, the "time to full display" that Play vitals and Macrobenchmark measure, use
+`ui::ReportDrawnWhen` or `ui::ReportDrawnAfter` (`kiln/ui/FullyDrawn.h`):
+
+```cpp
+#include <kiln/runtime/State.h>
+#include <kiln/ui/FullyDrawn.h>
+
+void Feed(kiln::rt::State<bool>& loaded) {
+    kiln::ui::ReportDrawnWhen([&] { return loaded.Get(); });
+}
+```
+
+Each call holds the report back until its condition holds or its block finishes. The
+activity reports once all of them are done, after the next frame.
+
 ## Build with tools/kiln
 
 `tools/kiln` builds, packs and installs the apps in `apps/` (see

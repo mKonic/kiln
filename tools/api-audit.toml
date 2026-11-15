@@ -59,6 +59,7 @@ modules = [
 ]
 
 [renamed]
+FullyDrawnReporterOwner = "LocalFullyDrawnReporter"   # the host owns the reporter
 # Members spelled as C++ operators or shorter names.
 "Cubic.plus" = "operator"
 "Cubic.times" = "operator"

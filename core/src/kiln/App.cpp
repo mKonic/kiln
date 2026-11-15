@@ -38,6 +38,9 @@ namespace kiln {
         m_Dispatcher.requestFrame = [this] { RequestFrame(); };
         m_LocalesListener = ui::AddApplicationLocalesListener([this] { SetConfiguration(m_SystemConfiguration); });
         m_NightModeListener = ui::AddNightModeListener([this] { SetConfiguration(m_SystemConfiguration); });
+        m_FullyDrawn = std::make_unique<ui::FullyDrawnReporter>(
+            [this](kiln::Function<void()> run) { m_AfterPresent.push_back(std::move(run)); RequestFrame(); },
+            [] { ui::ReportFullyDrawnToHost(); });
         m_Owner.SetText(m_Services.text);
         m_Owner.SetRequestFrame([this] { RequestFrame(); });
         m_Owner.SetOffscreenRenderer([this](int w, int h, const kiln::Function<void(ui::DrawScope&)>& draw) { return RenderToPixels(w, h, draw); });
@@ -260,6 +263,10 @@ namespace kiln {
         rt::State<ui::Configuration>* config = m_Configuration.get();
         rt::State<bool>* is24Hour = m_Is24Hour.get();
         auto hostOwner = m_Lifecycle;
+        ui::FullyDrawnReporter* fullyDrawn = m_FullyDrawn.get();
+        content = [fullyDrawn, content = std::move(content)] {
+            rt::Composition::Current()->Provide(ui::LocalFullyDrawnReporter, fullyDrawn, content);
+        };
         content = [config, is24Hour, window, owner, hostOwner, content = std::move(content)] {
             auto* c = rt::Composition::Current();
             c->Provide(lifecycle::LocalViewModelStoreOwner, lifecycle::ViewModelStoreOwnerPtr(hostOwner), [c, hostOwner, config, is24Hour, window, owner, content] {
@@ -762,6 +769,12 @@ namespace kiln {
         }
         m_Device->EndFrame();
         m_MainPresented = true;
+        // The report executor's work: after the frame that is now on screen.
+        if (!m_AfterPresent.empty()) {
+            auto run = std::move(m_AfterPresent);
+            m_AfterPresent.clear();
+            for (auto& f : run) f();
+        }
     }
 
     bool App::Presented(const Window* window) const { return window ? window->presented : m_MainPresented; }

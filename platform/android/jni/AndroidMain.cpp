@@ -14,6 +14,7 @@
 #include "kiln/ui/ActivityIntent.h"
 #include "kiln/ui/AppDirectories.h"
 #include "kiln/ui/FileProvider.h"
+#include "kiln/ui/FullyDrawn.h"
 
 namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JNIEnv* env, jobject assets); }
 
@@ -1448,6 +1449,11 @@ namespace {
         g_Host->view = env->NewGlobalRef(view);
         jclass viewClass = env->GetObjectClass(view);
         g_Host->requestFocus = env->GetMethodID(viewClass, "requestOwnerFocus", "()Z");
+        {
+            // ui::ReportDrawn*: the activity's reportFullyDrawn.
+            static jmethodID reportDrawn = env->GetMethodID(viewClass, "reportFullyDrawnFromNative", "()V");
+            kiln::ui::SetReportFullyDrawnHost([] { if (g_Host && g_Host->view) MainEnv()->CallVoidMethod(g_Host->view, reportDrawn); });
+        }
         env->DeleteLocalRef(viewClass);
         {
             auto main = std::make_unique<Win>();

@@ -13,6 +13,7 @@
 #include "kiln/runtime/Task.h"
 #include "kiln/ui/LayoutNode.h"
 #include "kiln/ui/NestedScroll.h"
+#include "kiln/ui/FullyDrawn.h"
 
 #include <kiln/kiln.h>
 
@@ -207,6 +208,9 @@ namespace kiln {
         ui::Configuration m_SystemConfiguration;   // as the platform last gave it
         int m_LocalesListener = 0;
         int m_NightModeListener = 0;
+        // ComponentActivity.fullyDrawnReporter: reports after the frame its reporters finish in.
+        std::unique_ptr<ui::FullyDrawnReporter> m_FullyDrawn;
+        std::vector<kiln::Function<void()>> m_AfterPresent;
         std::unique_ptr<rt::State<bool>> m_Is24Hour = std::make_unique<rt::State<bool>>(false);
         std::unique_ptr<rt::State<ui::LayoutDirection>> m_Direction = std::make_unique<rt::State<ui::LayoutDirection>>(ui::LayoutDirection::Ltr);
         std::unique_ptr<rt::Composition> m_Composition;
