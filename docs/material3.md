@@ -40,6 +40,24 @@ Read the theme inside content with `MaterialTheme::colorScheme()`,
 The baseline functions take a callback that changes individual roles:
 `LightColorScheme([](ColorScheme& c) { c.primary = Color(0xFF00658Fu); })`.
 
+To color a screen after an image, as androidx's Palette does, use `gfx::Palette`
+(`kiln/graphics/Palette.h`). It picks swatches from a bitmap: vibrant, light vibrant, dark
+vibrant, muted, light muted and dark muted, plus the dominant one.
+
+```cpp
+#include <kiln/graphics/Palette.h>
+
+kiln::ui::Color HeaderColor(const kiln::gfx::ImageBitmap& cover) {
+    const kiln::gfx::Palette p = kiln::gfx::Palette::From(cover).Generate();
+    const auto* s = p.VibrantSwatch();
+    return kiln::ui::Color(s ? s->Rgb() : p.DominantColor(0xFF6750A4u));
+}
+```
+
+Each swatch has `TitleTextColor()` and `BodyTextColor()` that read on it. `Generate()` works
+on a 112 × 112 copy of the image, but run it off the main thread for large images. A swatch
+color makes a seed for `ColorSchemeFromSeed`.
+
 ### Type, shapes and motion
 
 * `Typography` holds the type scale, from `displayLarge` to `labelSmall`, with the
