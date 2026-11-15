@@ -112,6 +112,7 @@ namespace kiln::media {
         // The playlist (getCurrentMediaItemIndex, getMediaItemCount ...).
         int currentMediaItemIndex = 0;
         int mediaItemCount = 0;
+        std::uint32_t playlistVersion = 0;    // changes with the playlist or its metadata (onTimelineChanged, onPlaylistMetadataChanged)
         std::string currentMediaId;
         MediaMetadata mediaMetadata;          // the current item's (getMediaMetadata)
         bool hasNextMediaItem = false, hasPreviousMediaItem = false;

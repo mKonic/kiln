@@ -80,6 +80,7 @@ namespace kiln::media {
 
         // The playlist.
         std::vector<MediaItem> items;
+        std::uint32_t playlistVersion = 0;
         int current = 0;                     // the current item (0 while empty)
         std::int64_t positionMs = 0;         // in the current item (its clipped window)
         ShuffleOrder shuffle{ 0 };
@@ -451,6 +452,7 @@ namespace kiln::media {
             }
             s.currentMediaItemIndex = current;
             s.mediaItemCount = Count();
+            s.playlistVersion = playlistVersion;
             s.hasNextMediaItem = NextIndex(current, NavigationMode()) != kIndexUnset;
             s.hasPreviousMediaItem = PreviousIndex(current, NavigationMode()) != kIndexUnset;
             s.repeatMode = repeatMode;
@@ -573,6 +575,7 @@ namespace kiln::media {
             const std::optional<MediaItem> before = current < Count() ? std::optional(items[std::size_t(current)]) : std::nullopt;
             const PositionInfo was = Position();
             items = std::move(next);
+            ++playlistVersion;
             shuffle = shuffle.CloneAndClear().CloneAndInsert(0, Count());
             bool invalidSeek = false;
             if (resetToFirst) {
@@ -610,6 +613,7 @@ namespace kiln::media {
             if (count == 0) return;
             const bool wasEmpty = items.empty();
             items.insert(items.begin() + index, std::make_move_iterator(added.begin()), std::make_move_iterator(added.end()));
+            ++playlistVersion;
             shuffle = shuffle.CloneAndInsert(index, count);
             if (wasEmpty) {
                 current = shuffleEnabled ? First() : 0;
@@ -652,6 +656,7 @@ namespace kiln::media {
                 resolved = ResolveSubsequent(current, removed, newIndexOf, *this);
             }
             items.erase(items.begin() + from, items.begin() + to);
+            ++playlistVersion;
             shuffle = shuffle.CloneAndRemove(from, to);
             if (!removesCurrent) {
                 if (current >= to) current -= to - from;
@@ -695,6 +700,7 @@ namespace kiln::media {
                 if (order[std::size_t(i)] == current) newCurrent = i;
             }
             items = std::move(next);
+            ++playlistVersion;
             current = newCurrent;
             Publish();
         }
@@ -825,7 +831,9 @@ namespace kiln::media {
         Shared& s = *m_Shared;
         if (s.playlistMetadata == metadata) return;
         s.playlistMetadata = std::move(metadata);
+        ++s.playlistVersion;
         s.Notify([&](PlayerListener& l) { if (l.onPlaylistMetadataChanged) l.onPlaylistMetadataChanged(s.playlistMetadata); });
+        s.Publish();
     }
     const MediaMetadata& Player::PlaylistMetadata() const { return m_Shared->playlistMetadata; }
 

@@ -399,3 +399,126 @@ TEST(MediaSessionShowsTheNotificationAndKeepsTheServiceAsMedia3Does) {
     d.RunPending();
     d.SetVirtualTime(wasVirtual);
 }
+
+// media3's media button preferences (CommandButtonTest.getCustomLayoutFromMediaButtonPreferences,
+// DefaultMediaNotificationProvider.getMediaButtons / addNotificationActions), the legacy session's
+// queue, rating, custom actions and play-from requests (MediaSessionLegacyStub).
+TEST(MediaSessionButtonsQueueRatingsAndRequestsAsMedia3) {
+    auto& d = rt::Dispatcher::Main();
+    FakeEngine* engine = nullptr;
+    SetPlayerEngineFactory([&] {
+        auto e = std::make_unique<FakeEngine>();
+        engine = e.get();
+        return std::unique_ptr<PlayerEngine>(std::move(e));
+    });
+    std::map<int, MediaSessionSnapshot> shown;
+    SetMediaSessionHost({ .update = [&](int id, const MediaSessionSnapshot& s) { shown[id] = s; }, .release = [](int) {} });
+    {
+        Player p;
+        std::vector<std::string> custom;
+        std::vector<Rating> ratings;
+        std::vector<MediaItem> requested;
+        MediaSession session(p, {
+            .onCustomCommand = [&](const std::string& a) { custom.push_back(a); },
+            .onSetRating = [&](const Rating& r) { ratings.push_back(r); },
+            .onAddMediaItems = [&](std::vector<MediaItem> items) -> std::optional<std::vector<MediaItem>> {
+                requested = items;
+                if (items[0].requestMetadata.searchQuery == "nothing") return std::nullopt;
+                MediaItem found = MediaItem::FromUri("asset:///found.mp3");
+                found.mediaId = items[0].mediaId;
+                return std::vector<MediaItem>{ found };
+            },
+        });
+        auto now = [&] { d.RunPending(); return shown[session.Id()]; };
+        auto actionsOf = [](const std::vector<SessionButton>& v) {
+            std::vector<std::string> out;
+            for (const auto& b : v) out.push_back(b.customAction.empty() ? "cmd" + std::to_string(b.playerCommand) : b.customAction);
+            return out;
+        };
+        using CB = CommandButton;
+        // withBackSlot: the first back button that can go there, then the overflow ones.
+        session.SetMediaButtonPreferences({
+            { .icon = CB::Album, .customAction = "action1", .slots = { CB::kSlotOverflow, CB::kSlotBack } },
+            { .icon = CB::Previous, .customAction = "action2", .slots = { CB::kSlotBack, CB::kSlotOverflow } },
+            { .icon = CB::Next, .customAction = "action3", .slots = { CB::kSlotForwardSecondary } },
+            { .icon = CB::Rewind, .customAction = "action4", .slots = { CB::kSlotBackSecondary, CB::kSlotOverflow } },
+            { .icon = CB::Block, .customAction = "off", .enabled = false },
+        });
+        MediaItem a = MediaItem::FromUri("asset:///a.mp3");
+        a.mediaId = "a";
+        a.mediaMetadata.title = "A";
+        a.mediaMetadata.artist = "Band";
+        a.mediaMetadata.writer = "Writer";
+        a.mediaMetadata.composer = "Composer";
+        a.mediaMetadata.userRating = Rating{ .kind = Rating::Kind::Heart, .isRated = true, .liked = true };
+        MediaItem b = MediaItem::FromUri("asset:///b.mp3");
+        b.mediaMetadata.displayTitle = "Shown";
+        b.mediaMetadata.title = "B";
+        b.mediaMetadata.subtitle = "Sub";
+        p.SetMediaItems({ a, b });
+        p.SetPlaylistMetadata({ .title = "Mix" });
+        MediaSessionSnapshot s = now();
+        CHECK((actionsOf(s.customActions) == std::vector<std::string>{ "action2", "action1", "action4" }));
+        CHECK(s.customBack && !s.customForward);
+        // The notification: the custom back button, play, next, then the overflow; collapsed:
+        // back, play, next.
+        CHECK((actionsOf(s.notificationButtons) == std::vector<std::string>{ "action2", "cmd1", "cmd8", "action1", "action4" }));
+        CHECK((s.compactView == std::vector<int>{ 0, 1, 2 }));
+        CHECK(s.notificationButtons[0].drawable == std::string("media3_icon_previous") && s.notificationButtons[1].drawable == std::string("media3_icon_play"));
+        CHECK(s.notificationButtons[1].displayName == "Play" && s.notificationButtons[1].icon == CB::Play);
+        // Skip to previous is the custom button's: not a platform action.
+        CHECK(!(s.actions & 16) && (s.actions & 32) && (s.actions & 128) && (s.actions & 4) && (s.actions & 1024));
+        // The queue (displayTitle, else the first three texts set), its title, the rating.
+        CHECK(s.queue.size() == 2);
+        if (s.queue.size() != 2) return;
+        CHECK(s.queue[0].mediaId == "a" && s.queue[0].title == "A" && s.queue[0].subtitle == "Band" && s.queue[0].description == "Writer");
+        CHECK(s.queue[1].title == "Shown" && s.queue[1].subtitle == "Sub");
+        CHECK(s.queueTitle == "Mix" && s.ratingType == 1 && s.userRating && s.userRating->liked);
+        session.SetSessionExtras({ { "k", "v" } });
+        CHECK(now().extras.at("k") == "v" && session.SessionExtras().size() == 1);
+        session.SetSessionActivity("app://player");
+        CHECK(now().sessionActivityUri == "app://player" && session.SessionActivity() == "app://player");
+
+        // Custom actions go to the app; ratings too.
+        OnMediaSessionCustomAction(session.Id(), "action1");
+        OnMediaSessionSetRating(session.Id(), Rating{ .kind = Rating::Kind::Heart, .isRated = true });
+        CHECK((custom == std::vector<std::string>{ "action1" }) && ratings.size() == 1 && !ratings[0].liked);
+
+        // Player-command buttons in the layout become the predefined custom actions that run them.
+        session.SetMediaButtonPreferences({
+            { .icon = CB::ShuffleOff, .playerCommand = PlayerCommand::SetShuffleMode, .slots = { CB::kSlotOverflow } },
+            { .icon = CB::Next, .playerCommand = PlayerCommand::SeekToNext, .compactViewIndex = 0 },
+            { .icon = CB::Artist, .playerCommand = PlayerCommand::GetAudioAttributes, .slots = { CB::kSlotOverflow } },   // needs no button
+        });
+        s = now();
+        CHECK((actionsOf(s.customActions) == std::vector<std::string>{ "androidx.media3.session.PLAYER_COMMAND_9", "androidx.media3.session.PLAYER_COMMAND_14" }));
+        CHECK(s.customForward && !s.customBack && (s.actions & 16) && !(s.actions & 32));
+        CHECK((actionsOf(s.notificationButtons) == std::vector<std::string>{ "cmd6", "cmd1", "androidx.media3.session.PLAYER_COMMAND_9", "androidx.media3.session.PLAYER_COMMAND_14" }));
+        CHECK((s.compactView == std::vector<int>{ 2 }));   // its index only (0), then the first not given
+        OnMediaSessionCustomAction(session.Id(), "androidx.media3.session.PLAYER_COMMAND_14");
+        CHECK(p.ShuffleModeEnabled() && custom.size() == 1);
+        // The repeat button cycles off, one, all; play / pause by the button shown.
+        OnMediaSessionCommand(session.Id(), MediaSessionCommand::PlayerCommand, int(PlayerCommand::SetRepeatMode));
+        CHECK(p.GetRepeatMode() == RepeatMode::One);
+        OnMediaSessionCommand(session.Id(), MediaSessionCommand::PlayerCommand, int(PlayerCommand::SetRepeatMode));
+        OnMediaSessionCommand(session.Id(), MediaSessionCommand::PlayerCommand, int(PlayerCommand::SetRepeatMode));
+        CHECK(p.GetRepeatMode() == RepeatMode::Off);
+        OnMediaSessionCommand(session.Id(), MediaSessionCommand::PlayerCommand, int(PlayerCommand::PlayPause));
+        CHECK(p.State().playWhenReady && engine->play);
+        OnMediaSessionCommand(session.Id(), MediaSessionCommand::PlayerCommand, int(PlayerCommand::PlayPause));
+        CHECK(!p.State().playWhenReady);
+
+        // Play from a media id: onAddMediaItems, set, prepare, play; refused: nothing changes.
+        OnMediaSessionMediaRequest(session.Id(), "", "", "nothing", true);
+        CHECK(requested.size() == 1 && p.MediaItemCount() == 2);
+        OnMediaSessionMediaRequest(session.Id(), "id7", "", "", true);
+        CHECK(requested[0].mediaId == "id7" && p.MediaItemCount() == 1 && p.MediaItemAt(0).mediaId == "id7");
+        CHECK(p.State().playWhenReady && engine->load.uri == "asset:///found.mp3");
+        OnMediaSessionMediaRequest(session.Id(), "", "https://x/y.mp3", "", false);
+        CHECK(requested[0].requestMetadata.mediaUri == "https://x/y.mp3" && requested[0].uri.empty());
+        CHECK(now().queue.size() == 1 && now().ratingType == 0);
+    }
+    SetMediaSessionHost({});
+    SetPlayerEngineFactory({});
+    d.RunPending();
+}

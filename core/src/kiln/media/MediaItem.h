@@ -50,7 +50,7 @@ namespace kiln::media {
         std::optional<bool> isBrowsable, isPlayable;
         std::optional<int> recordingYear, recordingMonth, recordingDay;
         std::optional<int> releaseYear, releaseMonth, releaseDay;
-        std::string writer, composer, conductor;
+        std::string writer, composer, conductor, author;
         std::string discSubtitle;
         std::optional<int> discNumber, totalDiscCount;
         std::string genre, compilation, station;

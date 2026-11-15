@@ -29,6 +29,7 @@ using namespace kiln;
 
 extern "C" {
     extern int capi_media_next;
+    extern char capi_media_log[128];
     void capi_media(void* user);
     extern kiln_player_state capi_playlist_state;
     extern kiln_track capi_playlist_track;
@@ -869,6 +870,7 @@ TEST(CApiAsyncImageReportsItsStates) {
 
 TEST(CApiMediaSessionAndAudioFocus) {
     capi_live_callbacks = capi_media_next = 0;
+    capi_media_log[0] = 0;
     std::map<int, media::MediaSessionSnapshot> shown;
     int noisy = 0;
     media::SetMediaSessionHost({ .update = [&](int id, const media::MediaSessionSnapshot& s) { shown[id] = s; } });
@@ -881,6 +883,17 @@ TEST(CApiMediaSessionAndAudioFocus) {
         CHECK(!shown.begin()->second.canSkipToPrevious && noisy == 1);
         media::OnMediaSessionCommand(shown.begin()->first, media::MediaSessionCommand::SkipToNext);
         CHECK(capi_media_next == 1);
+        const auto& s = shown.begin()->second;
+        CHECK(s.customActions.size() == 1 && s.customActions[0].customAction == "like" && s.customActions[0].drawable == "media3_icon_heart_unfilled");
+        CHECK(s.extras.size() == 1 && s.extras.at("k") == "v");
+        const int id = shown.begin()->first;
+        media::OnMediaSessionCustomAction(id, "like");
+        media::OnMediaSessionSetRating(id, media::Rating{ .kind = media::Rating::Kind::Thumb, .isRated = true, .liked = true });
+        media::OnMediaSessionMediaRequest(id, "unknown", "", "", false);
+        media::OnMediaSessionMediaRequest(id, "known", "", "", false);
+        h.Pump();
+        CHECK(std::string(capi_media_log) == "custom like;rating 1 1 1;");
+        CHECK(shown.begin()->second.queue.size() == 1 && shown.begin()->second.queue[0].mediaId == "known");
     }
     CHECK(noisy == 0 && capi_live_callbacks == 0);
     media::SetMediaSessionHost({});

@@ -14,7 +14,9 @@ import android.graphics.drawable.Icon;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
+import android.media.MediaDescription;
 import android.media.MediaMetadata;
+import android.media.Rating;
 import android.media.session.MediaSession;
 import android.os.Bundle;
 import android.media.session.PlaybackState;
@@ -26,6 +28,9 @@ import android.util.Log;
 import android.util.SparseArray;
 
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * kiln::media's platform side: audio focus (AudioFocusManager's requests), the becoming-noisy
@@ -39,7 +44,9 @@ final class KilnMedia {
     static final String ACTION_COMMAND = "dev.kiln.media.COMMAND";
     // media::MediaSessionCommand
     static final int PLAY = 0, PAUSE = 1, STOP = 2, PREVIOUS = 3, NEXT = 4, SEEK = 5, DISMISSED = 6,
-            PREPARE = 7, REWIND = 8, FAST_FORWARD = 9, SKIP_TO_QUEUE_ITEM = 10, SET_SPEED = 11;
+            PREPARE = 7, REWIND = 8, FAST_FORWARD = 9, SKIP_TO_QUEUE_ITEM = 10, SET_SPEED = 11, PLAYER_COMMAND = 12;
+    static final int PLAY_PAUSE = 1;      // media::PlayerCommand::PlayPause
+    static final int ICON_PLAY = 0xe037;  // CommandButton.ICON_PLAY
 
     private static Context sContext;
     private static final Handler sMain = new Handler(Looper.getMainLooper());
@@ -48,6 +55,9 @@ final class KilnMedia {
     static native void becomingNoisy(int id);
     static native void volumeChanged(int id);
     static native void sessionCommand(int id, int command, long positionMs, float speed);
+    static native void customAction(int id, String action);
+    static native void setRating(int id, int style, boolean rated, boolean liked, float value);
+    static native void mediaRequest(int id, String mediaId, String uri, String query, boolean play);
 
     private KilnMedia() {}
 
@@ -226,6 +236,14 @@ final class KilnMedia {
         boolean show, foreground;
         String artworkUri = "";
         Bitmap artwork;
+        // From layout(): the notification's buttons (drawable, name, custom action, player
+        // command) and icons, the compact view, the custom actions, the queue, the rating, extras.
+        String[] buttons = new String[0], custom = new String[0], queue = null, extras = null;
+        int[] buttonIcons = new int[0], customIcons = new int[0], compact = new int[0];
+        String queueTitle = null;
+        int ratingType = -1;
+        float[] rating = new float[0];
+        long actions;
 
         Session(int id) {
             this.id = id;
@@ -242,12 +260,96 @@ final class KilnMedia {
                 @Override public void onFastForward() { sessionCommand(id, FAST_FORWARD, 0, 0); }
                 @Override public void onSkipToQueueItem(long queueId) { sessionCommand(id, SKIP_TO_QUEUE_ITEM, queueId, 0); }
                 @Override public void onSetPlaybackSpeed(float speed) { sessionCommand(id, SET_SPEED, 0, speed); }
+                @Override public void onCustomAction(String action, Bundle extras) { customAction(id, action); }
+                @Override public void onSetRating(Rating r) {
+                    if (r == null) return;
+                    int style = r.getRatingStyle();
+                    boolean rated = r.isRated();
+                    boolean liked = rated && (style == Rating.RATING_HEART ? r.hasHeart() : style == Rating.RATING_THUMB_UP_DOWN && r.isThumbUp());
+                    float value = !rated ? 0 : style == Rating.RATING_PERCENTAGE ? r.getPercentRating()
+                            : style >= Rating.RATING_3_STARS && style <= Rating.RATING_5_STARS ? r.getStarRating() : 0;
+                    setRating(id, style, rated, liked, value);
+                }
+                @Override public void onPlayFromMediaId(String mediaId, Bundle extras) { mediaRequest(id, nz(mediaId), "", "", true); }
+                @Override public void onPlayFromSearch(String query, Bundle extras) { mediaRequest(id, "", "", nz(query), true); }
+                @Override public void onPlayFromUri(Uri uri, Bundle extras) { mediaRequest(id, "", uri == null ? "" : uri.toString(), "", true); }
+                @Override public void onPrepareFromMediaId(String mediaId, Bundle extras) { mediaRequest(id, nz(mediaId), "", "", false); }
+                @Override public void onPrepareFromSearch(String query, Bundle extras) { mediaRequest(id, "", "", nz(query), false); }
+                @Override public void onPrepareFromUri(Uri uri, Bundle extras) { mediaRequest(id, "", uri == null ? "" : uri.toString(), "", false); }
             }, sMain);
             session.setActive(true);
         }
     }
 
     private static final SparseArray<Session> sSessions = new SparseArray<>();
+
+    private static String nz(String s) { return s == null ? "" : s; }
+
+    private static Session session(int id) {
+        Session x = sSessions.get(id);
+        if (x == null) {
+            x = new Session(id);
+            sSessions.put(id, x);
+        }
+        return x;
+    }
+
+    /**
+     * Before update(): buttons (4 a button: drawable, name, custom action, player command) with
+     * their icons, the compact view, the custom layout's custom actions (3 each: drawable,
+     * name, action) and icons, the queue (5 an item: mediaId, title, subtitle, description,
+     * iconUri), its title, the RatingCompat style, the user rating (empty or style, rated,
+     * liked, value), extras (key, value pairs) and the PlaybackState actions.
+     */
+    static void layout(int id, String[] buttons, int[] buttonIcons, int[] compact, String[] custom, int[] customIcons,
+                       String[] queue, String queueTitle, int ratingType, float[] rating, String[] extras, long actions) {
+        if (sContext == null) return;
+        Session x = session(id);
+        x.buttons = buttons;
+        x.buttonIcons = buttonIcons;
+        x.compact = compact;
+        x.custom = custom;
+        x.customIcons = customIcons;
+        x.rating = rating;
+        x.actions = actions;
+        // MediaSessionLegacyStub: the queue (QueueItem ids are the indices) and its title.
+        if (!Arrays.equals(queue, x.queue)) {
+            x.queue = queue;
+            List<MediaSession.QueueItem> items = new ArrayList<>();
+            for (int i = 0; i + 4 < queue.length; i += 5) {
+                MediaDescription.Builder d = new MediaDescription.Builder().setMediaId(queue[i].isEmpty() ? null : queue[i])
+                        .setTitle(queue[i + 1]).setSubtitle(queue[i + 2]).setDescription(queue[i + 3]);
+                if (!queue[i + 4].isEmpty()) d.setIconUri(Uri.parse(queue[i + 4]));
+                items.add(new MediaSession.QueueItem(d.build(), i / 5));
+            }
+            x.session.setQueue(items.isEmpty() ? null : items);
+        }
+        if (!queueTitle.equals(x.queueTitle)) {
+            x.queueTitle = queueTitle;
+            x.session.setQueueTitle(queueTitle.isEmpty() ? null : queueTitle);
+        }
+        if (ratingType != x.ratingType) {
+            x.ratingType = ratingType;
+            x.session.setRatingType(ratingType);
+        }
+        if (!Arrays.equals(extras, x.extras)) {
+            x.extras = extras;
+            Bundle b = new Bundle();
+            for (int i = 0; i + 1 < extras.length; i += 2) b.putString(extras[i], extras[i + 1]);
+            x.session.setExtras(b);
+        }
+    }
+
+    /** LegacyConversions.convertToRatingCompat. */
+    private static Rating toRating(float[] r) {
+        if (r.length != 4) return null;
+        int style = (int) r[0];
+        if (r[1] == 0) return Rating.newUnratedRating(style);
+        if (style == Rating.RATING_HEART) return Rating.newHeartRating(r[2] != 0);
+        if (style == Rating.RATING_THUMB_UP_DOWN) return Rating.newThumbRating(r[2] != 0);
+        if (style == Rating.RATING_PERCENTAGE) return Rating.newPercentageRating(r[3]);
+        return Rating.newStarRating(style, r[3]);
+    }
 
     /**
      * strings: title, artist, album, artworkUri, error, sessionActivityUri, mediaId; state:
@@ -257,11 +359,7 @@ final class KilnMedia {
                        long durationMs, long bufferedMs, float speed, int queueItemId, boolean canPrevious,
                        boolean canNext, boolean canSeek, boolean show, boolean foreground) {
         if (sContext == null) return;
-        Session x = sSessions.get(id);
-        if (x == null) {
-            x = new Session(id);
-            sSessions.put(id, x);
-        }
+        Session x = session(id);
         if (!s[3].equals(x.artworkUri)) {
             x.artworkUri = s[3];
             x.artwork = s[3].isEmpty() ? null : loadBitmap(s[3]);
@@ -272,6 +370,8 @@ final class KilnMedia {
                 .putString(MediaMetadata.METADATA_KEY_ALBUM, s[2]);
         if (durationMs >= 0) m.putLong(MediaMetadata.METADATA_KEY_DURATION, durationMs);
         if (x.artwork != null) m.putBitmap(MediaMetadata.METADATA_KEY_ART, x.artwork);
+        Rating userRating = toRating(x.rating);
+        if (userRating != null) m.putRating(MediaMetadata.METADATA_KEY_USER_RATING, userRating);
         x.session.setMetadata(m.build());
 
         // MediaSessionLegacyStub's conversion of the player's state.
@@ -281,14 +381,7 @@ final class KilnMedia {
         else if (state == 1) platformState = playWhenReady ? PlaybackState.STATE_BUFFERING : PlaybackState.STATE_PAUSED;
         else if (state == 3) platformState = PlaybackState.STATE_STOPPED;
         else platformState = playWhenReady ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED;
-        // convertCommandToPlaybackStateActions: play or pause by Util.shouldShowPlayButton.
-        boolean showPlay = !playWhenReady || state == 0 || state == 3;
-        long actions = (showPlay ? PlaybackState.ACTION_PLAY : PlaybackState.ACTION_PAUSE) | PlaybackState.ACTION_PLAY_PAUSE
-                | PlaybackState.ACTION_STOP | PlaybackState.ACTION_PREPARE | PlaybackState.ACTION_SET_PLAYBACK_SPEED;
-        if (canSeek) actions |= PlaybackState.ACTION_SEEK_TO | PlaybackState.ACTION_REWIND | PlaybackState.ACTION_FAST_FORWARD
-                | PlaybackState.ACTION_SKIP_TO_QUEUE_ITEM;
-        if (canPrevious) actions |= PlaybackState.ACTION_SKIP_TO_PREVIOUS;
-        if (canNext) actions |= PlaybackState.ACTION_SKIP_TO_NEXT;
+        long actions = x.actions;   // computed as MediaSessionLegacyStub does, by the native side
         // The position moves at the playback speed while playing; the speed itself in "EXO_SPEED".
         Bundle extras = new Bundle();
         extras.putFloat("EXO_SPEED", speed);
@@ -299,13 +392,21 @@ final class KilnMedia {
                 .setBufferedPosition(bufferedMs)
                 .setActiveQueueItemId(queueItemId < 0 ? MediaSession.QueueItem.UNKNOWN_ID : queueItemId)
                 .setExtras(extras);
+        // The custom layout's custom commands, with their icon in the action's extras.
+        for (int i = 0, j = 0; i + 2 < x.custom.length; i += 3, j++) {
+            Bundle a = new Bundle();
+            if (j < x.customIcons.length && x.customIcons[j] != 0)
+                a.putInt("androidx.media3.session.EXTRAS_KEY_COMMAND_BUTTON_ICON_COMPAT", x.customIcons[j]);
+            p.addCustomAction(new PlaybackState.CustomAction.Builder(x.custom[i + 2], x.custom[i + 1], drawable(x.custom[i]))
+                    .setExtras(a).build());
+        }
         if (!s[4].isEmpty()) p.setErrorMessage(s[4]);
         x.session.setPlaybackState(p.build());
         x.session.setSessionActivity(open(s[5]));
 
         x.show = show;
         x.foreground = foreground;
-        x.notification = show ? buildNotification(x, s, playWhenReady, canPrevious, canNext) : null;
+        x.notification = show ? buildNotification(x, s) : null;
         KilnMediaService.sync();
     }
 
@@ -335,28 +436,40 @@ final class KilnMedia {
                 : PendingIntent.getService(sContext, code, i, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
-    /** DefaultMediaNotificationProvider: previous, play / pause and next, all in the compact view. */
-    private static Notification buildNotification(Session x, String[] s, boolean playWhenReady, boolean canPrevious, boolean canNext) {
+    /** A notification button's intent: its player command, or its custom action
+     *  (DefaultActionFactory); play starts the service in the foreground. */
+    private static PendingIntent button(int id, int index, String customAction, int playerCommand, boolean play) {
+        Intent i = new Intent(sContext, KilnMediaService.class).setAction(ACTION_COMMAND).putExtra("id", id);
+        if (!customAction.isEmpty()) {
+            i.putExtra("custom", customAction);
+            i.setData(Uri.parse("kiln-media:" + id + "/" + Uri.encode(customAction)));   // one PendingIntent an action
+        } else {
+            i.putExtra("command", PLAYER_COMMAND).putExtra("position", (long) playerCommand);
+        }
+        int code = 65536 + id * 64 + index;
+        int flags = PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT;
+        return play ? PendingIntent.getForegroundService(sContext, code, i, flags) : PendingIntent.getService(sContext, code, i, flags);
+    }
+
+    /** A media3_icon_* drawable (kiln's res) or the app's own, by name. */
+    private static int drawable(String name) {
+        int id = name.isEmpty() ? 0 : sContext.getResources().getIdentifier(name, "drawable", sContext.getPackageName());
+        return id != 0 ? id : android.R.drawable.ic_menu_more;
+    }
+
+    /** DefaultMediaNotificationProvider: getMediaButtons' buttons, the compact view from their slots. */
+    private static Notification buildNotification(Session x, String[] s) {
         NotificationManager nm = sContext.getSystemService(NotificationManager.class);
         if (nm != null && nm.getNotificationChannel(CHANNEL) == null)
             nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Now playing", NotificationManager.IMPORTANCE_LOW));
         Notification.Builder b = new Notification.Builder(sContext, CHANNEL);
-        int n = 0;
-        if (canPrevious) {
-            b.addAction(new Notification.Action.Builder(Icon.createWithResource(sContext, android.R.drawable.ic_media_previous), "Previous", command(x.id, PREVIOUS)).build());
-            n++;
+        for (int i = 0, j = 0; i + 3 < x.buttons.length; i += 4, j++) {
+            int command = Integer.parseInt(x.buttons[i + 3]);
+            boolean play = command == PLAY_PAUSE && j < x.buttonIcons.length && x.buttonIcons[j] == ICON_PLAY;
+            b.addAction(new Notification.Action.Builder(Icon.createWithResource(sContext, drawable(x.buttons[i])), x.buttons[i + 1],
+                    button(x.id, j, x.buttons[i + 2], command, play)).build());
         }
-        b.addAction(playWhenReady
-                ? new Notification.Action.Builder(Icon.createWithResource(sContext, android.R.drawable.ic_media_pause), "Pause", command(x.id, PAUSE)).build()
-                : new Notification.Action.Builder(Icon.createWithResource(sContext, android.R.drawable.ic_media_play), "Play", command(x.id, PLAY)).build());
-        n++;
-        if (canNext) {
-            b.addAction(new Notification.Action.Builder(Icon.createWithResource(sContext, android.R.drawable.ic_media_next), "Next", command(x.id, NEXT)).build());
-            n++;
-        }
-        int[] compact = new int[n];
-        for (int i = 0; i < n; i++) compact[i] = i;
-        Notification.MediaStyle style = new Notification.MediaStyle().setMediaSession(x.session.getSessionToken()).setShowActionsInCompactView(compact);
+        Notification.MediaStyle style = new Notification.MediaStyle().setMediaSession(x.session.getSessionToken()).setShowActionsInCompactView(x.compact);
         b.setContentTitle(s[0]).setContentText(s[1]).setSubText(s[2].isEmpty() ? null : s[2]);
         if (x.artwork != null) b.setLargeIcon(x.artwork);
         return b.setContentIntent(open(s[5]))

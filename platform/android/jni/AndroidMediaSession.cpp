@@ -15,6 +15,7 @@ namespace kiln::android {
     namespace {
         jvm::Global<jclass> g_Media;
         jmethodID g_Request = nullptr, g_Abandon = nullptr, g_Noisy = nullptr, g_Update = nullptr, g_Release = nullptr;
+        jmethodID g_Layout = nullptr;
         jmethodID g_StreamVolume = nullptr, g_SetStreamVolume = nullptr, g_AdjustStreamVolume = nullptr, g_VolumeReceiver = nullptr, g_Locks = nullptr;
 
         void Clear(JNIEnv* env) {
@@ -28,8 +29,75 @@ namespace kiln::android {
         void BecomingNoisy(JNIEnv*, jclass, jint id) { media::OnAudioBecomingNoisy(id); }
         void VolumeChanged(JNIEnv*, jclass, jint id) { media::OnStreamVolumeChanged(id); }
         void SessionCommand(JNIEnv*, jclass, jint id, jint command, jlong positionMs, jfloat speed) {
-            if (command < 0 || command > int(media::MediaSessionCommand::SetPlaybackSpeed)) return;
+            if (command < 0 || command > int(media::MediaSessionCommand::PlayerCommand)) return;
             media::OnMediaSessionCommand(id, media::MediaSessionCommand(command), positionMs, speed);
+        }
+        void CustomAction(JNIEnv* env, jclass, jint id, jstring action) { media::OnMediaSessionCustomAction(id, jvm::ToString(env, action)); }
+        // android.media.Rating's style (RATING_HEART 1, THUMB_UP_DOWN 2, 3-5 STARS 3..5, PERCENTAGE 6).
+        void SetRating(JNIEnv*, jclass, jint id, jint style, jboolean rated, jboolean liked, jfloat value) {
+            media::Rating r;
+            r.isRated = rated;
+            if (style == 1) r.kind = media::Rating::Kind::Heart;
+            else if (style == 2) r.kind = media::Rating::Kind::Thumb;
+            else if (style >= 3 && style <= 5) {
+                r.kind = media::Rating::Kind::Star;
+                r.maxStars = style;
+            } else if (style == 6) r.kind = media::Rating::Kind::Percentage;
+            else return;
+            r.liked = rated && liked;
+            r.value = rated ? value : 0;
+            media::OnMediaSessionSetRating(id, r);
+        }
+        void MediaRequest(JNIEnv* env, jclass, jint id, jstring mediaId, jstring uri, jstring query, jboolean play) {
+            media::OnMediaSessionMediaRequest(id, jvm::ToString(env, mediaId), jvm::ToString(env, uri), jvm::ToString(env, query), play);
+        }
+
+        jvm::Local<jobjectArray> Strings(JNIEnv* env, const std::vector<std::string>& v) {
+            jvm::Local<jclass> stringClass(env->FindClass("java/lang/String"), env);
+            jvm::Local<jobjectArray> a(env->NewObjectArray(jsize(v.size()), stringClass.get(), nullptr), env);
+            for (std::size_t i = 0; i < v.size(); ++i) {
+                jvm::Local<jstring> s = jvm::ToJava(env, v[i]);
+                env->SetObjectArrayElement(a.get(), jsize(i), s.get());
+            }
+            return a;
+        }
+        jvm::Local<jintArray> Ints(JNIEnv* env, const std::vector<int>& v) {
+            jvm::Local<jintArray> a(env->NewIntArray(jsize(v.size())), env);
+            if (!v.empty()) env->SetIntArrayRegion(a.get(), 0, jsize(v.size()), reinterpret_cast<const jint*>(v.data()));
+            return a;
+        }
+
+        void PushLayout(JNIEnv* env, int id, const media::MediaSessionSnapshot& s) {
+            std::vector<std::string> buttons, custom, queue, extras;
+            std::vector<int> buttonIcons, customIcons;
+            for (const auto& b : s.notificationButtons) {
+                buttons.insert(buttons.end(), { b.drawable, b.displayName, b.customAction, std::to_string(b.playerCommand) });
+                buttonIcons.push_back(b.icon);
+            }
+            for (const auto& b : s.customActions) {
+                custom.insert(custom.end(), { b.drawable, b.displayName, b.customAction });
+                customIcons.push_back(b.icon);
+            }
+            for (const auto& q : s.queue) queue.insert(queue.end(), { q.mediaId, q.title, q.subtitle, q.description, q.iconUri });
+            for (const auto& [k, v] : s.extras) extras.insert(extras.end(), { k, v });
+            float rating[4] = {};
+            jsize ratingLength = 0;
+            if (s.userRating && s.ratingType) {
+                const media::Rating& r = *s.userRating;
+                rating[0] = float(s.ratingType);
+                rating[1] = r.isRated ? 1 : 0;
+                rating[2] = r.liked ? 1 : 0;
+                rating[3] = r.value;
+                ratingLength = 4;
+            }
+            jvm::Local<jfloatArray> ratingArray(env->NewFloatArray(ratingLength), env);
+            if (ratingLength) env->SetFloatArrayRegion(ratingArray.get(), 0, ratingLength, rating);
+            jvm::Local<jstring> queueTitle = jvm::ToJava(env, s.queueTitle);
+            env->CallStaticVoidMethod(g_Media.get(), g_Layout, jint(id), Strings(env, buttons).get(), Ints(env, buttonIcons).get(),
+                                      Ints(env, s.compactView).get(), Strings(env, custom).get(), Ints(env, customIcons).get(),
+                                      Strings(env, queue).get(), queueTitle.get(), jint(s.ratingType), ratingArray.get(),
+                                      Strings(env, extras).get(), jlong(s.actions));
+            Clear(env);
         }
     }
 
@@ -42,6 +110,7 @@ namespace kiln::android {
             g_Noisy = jvm::detail::StaticMethod(env, c, "setNoisyReceiver", "(IZ)V");
             g_Update = jvm::detail::StaticMethod(env, c, "update", "(I[Ljava/lang/String;IZZJJJFIZZZZZ)V");
             g_Release = jvm::detail::StaticMethod(env, c, "release", "(I)V");
+            g_Layout = jvm::detail::StaticMethod(env, c, "layout", "(I[Ljava/lang/String;[I[I[Ljava/lang/String;[I[Ljava/lang/String;Ljava/lang/String;I[F[Ljava/lang/String;J)V");
             g_StreamVolume = jvm::detail::StaticMethod(env, c, "streamVolume", "(I)[I");
             g_SetStreamVolume = jvm::detail::StaticMethod(env, c, "setStreamVolume", "(III)V");
             g_AdjustStreamVolume = jvm::detail::StaticMethod(env, c, "adjustStreamVolume", "(III)V");
@@ -52,8 +121,11 @@ namespace kiln::android {
                 { "becomingNoisy", "(I)V", reinterpret_cast<void*>(&BecomingNoisy) },
                 { "volumeChanged", "(I)V", reinterpret_cast<void*>(&VolumeChanged) },
                 { "sessionCommand", "(IIJF)V", reinterpret_cast<void*>(&SessionCommand) },
+                { "customAction", "(ILjava/lang/String;)V", reinterpret_cast<void*>(&CustomAction) },
+                { "setRating", "(IIZZF)V", reinterpret_cast<void*>(&SetRating) },
+                { "mediaRequest", "(ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V", reinterpret_cast<void*>(&MediaRequest) },
             };
-            jvm::detail::RegisterNatives(env, c, natives, 4);
+            jvm::detail::RegisterNatives(env, c, natives, 7);
         } catch (const std::exception& e) {
             __android_log_print(ANDROID_LOG_ERROR, "kiln", "media: no audio focus or session host: %s", e.what());
             return;
@@ -114,6 +186,7 @@ namespace kiln::android {
         media::SetMediaSessionHost({
             .update = [](int id, const media::MediaSessionSnapshot& s) {
                 JNIEnv* env = jvm::Env();
+                PushLayout(env, id, s);
                 const std::string strings[] = { s.metadata.title, s.metadata.artist, s.metadata.albumTitle, s.metadata.artworkUri, s.error, s.sessionActivityUri, s.mediaId };
                 jvm::Local<jclass> stringClass(env->FindClass("java/lang/String"), env);
                 jvm::Local<jobjectArray> a(env->NewObjectArray(7, stringClass.get(), nullptr), env);

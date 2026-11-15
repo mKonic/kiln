@@ -36,6 +36,7 @@ namespace kiln::media {
         text(writer, o.writer);
         text(composer, o.composer);
         text(conductor, o.conductor);
+        text(author, o.author);
         text(discSubtitle, o.discSubtitle);
         opt(discNumber, o.discNumber);
         opt(totalDiscCount, o.totalDiscCount);

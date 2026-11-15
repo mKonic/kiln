@@ -83,6 +83,9 @@ __kiln_callback!(sys::kiln_fn_alarm, (name: *const std::ffi::c_char, payload: *c
 __kiln_callback!(sys::kiln_fn_worker, (name: *const std::ffi::c_char, input: *const std::ffi::c_char, attempt: i32, done: *mut sys::kiln_work_done) -> ());
 __kiln_callback!(sys::kiln_fn_biometric, (ok: bool, code: i32, msg: *const std::ffi::c_char) -> ());
 __kiln_callback!(sys::kiln_fn_int, (v: i32) -> ());
+__kiln_callback!(sys::kiln_fn_str, (s: *const ::std::ffi::c_char) -> ());
+__kiln_callback!(sys::kiln_fn_rating, (kind: i32, rated: bool, liked: bool, max_stars: i32, value: f32) -> ());
+__kiln_callback!(sys::kiln_fn_media_request, (media_id: *const ::std::ffi::c_char, uri: *const ::std::ffi::c_char, query: *const ::std::ffi::c_char) -> *const ::std::ffi::c_char);
 __kiln_callback!(sys::kiln_fn_float, (v: f32) -> ());
 __kiln_callback!(sys::kiln_fn_lazy, (s: *mut sys::kiln_lazy_scope) -> ());
 __kiln_callback!(sys::kiln_fn_item_key, (i: i32) -> sys::kiln_key);
@@ -838,6 +841,74 @@ impl MediaSession {
         let (t, a, b, w) = (CStrBuf::new(title), CStrBuf::new(artist), CStrBuf::new(album_title), CStrBuf::new(artwork_uri));
         unsafe { sys::kiln_media_session_set_metadata(self.0, t.ptr(), a.ptr(), b.ptr(), w.ptr()) }
     }
+    /// setMediaButtonPreferences (see `kiln_command_button`).
+    pub fn set_media_button_preferences(&self, buttons: &[CommandButton]) {
+        let strings: Vec<(CStrBuf, CStrBuf, CStrBuf)> = buttons.iter()
+            .map(|b| (CStrBuf::new(&b.display_name), CStrBuf::new(&b.custom_action), CStrBuf::new(&b.icon_resource)))
+            .collect();
+        let c: Vec<sys::kiln_command_button> = buttons.iter().zip(&strings).map(|(b, (name, action, res))| {
+            let mut x: sys::kiln_command_button = unsafe { std::mem::zeroed() };
+            unsafe { sys::kiln_command_button_init(&mut x) };
+            x.icon = b.icon;
+            x.display_name = name.ptr();
+            x.custom_action = if b.custom_action.is_empty() { std::ptr::null() } else { action.ptr() };
+            x.icon_resource = if b.icon_resource.is_empty() { std::ptr::null() } else { res.ptr() };
+            x.player_command = b.player_command;
+            x.slots = b.slots.as_ptr();
+            x.slot_count = b.slots.len();
+            x.enabled = b.enabled;
+            x.compact_view_index = b.compact_view_index;
+            x
+        }).collect();
+        unsafe { sys::kiln_media_session_set_media_button_preferences(self.0, c.as_ptr(), c.len()) }
+    }
+    /// setSessionExtras.
+    pub fn set_extras(&self, extras: &[(&str, &str)]) {
+        let bufs: Vec<(CStrBuf, CStrBuf)> = extras.iter().map(|(k, v)| (CStrBuf::new(k), CStrBuf::new(v))).collect();
+        let k: Vec<*const std::ffi::c_char> = bufs.iter().map(|b| b.0.ptr()).collect();
+        let v: Vec<*const std::ffi::c_char> = bufs.iter().map(|b| b.1.ptr()).collect();
+        unsafe { sys::kiln_media_session_set_extras(self.0, k.as_ptr(), v.as_ptr(), k.len()) }
+    }
+}
+/// A media3 CommandButton: a custom action, or a player command (media3's `Player.COMMAND_*`).
+#[derive(Clone, Debug)]
+pub struct CommandButton {
+    pub icon: i32,
+    pub display_name: String,
+    pub custom_action: String,
+    pub icon_resource: String,
+    pub player_command: i32,
+    pub slots: Vec<i32>,
+    pub enabled: bool,
+    pub compact_view_index: i32,
+}
+impl Default for CommandButton {
+    fn default() -> Self {
+        CommandButton { icon: 0, display_name: String::new(), custom_action: String::new(), icon_resource: String::new(),
+                        player_command: 0, slots: Vec::new(), enabled: true, compact_view_index: -1 }
+    }
+}
+/// The rest of a media session's options (see `kiln_media_session_options`).
+#[derive(Default)]
+pub struct MediaSessionCallbacks {
+    pub on_custom_command: sys::kiln_fn_str,
+    pub on_set_rating: sys::kiln_fn_rating,
+    pub on_media_request: sys::kiln_fn_media_request,
+}
+/// A media session with the custom command, rating and media request callbacks too.
+#[track_caller]
+pub fn remember_media_session_with(player: Player, on_skip_to_previous: Option<impl FnMut() + 'static>,
+                                   on_skip_to_next: Option<impl FnMut() + 'static>, notification: bool,
+                                   callbacks: MediaSessionCallbacks) -> MediaSession {
+    let mut o: sys::kiln_media_session_options = unsafe { std::mem::zeroed() };
+    unsafe { sys::kiln_media_session_options_init(&mut o) };
+    if let Some(f) = on_skip_to_previous { o.on_skip_to_previous = f.into_callback(); }
+    if let Some(f) = on_skip_to_next { o.on_skip_to_next = f.into_callback(); }
+    o.notification = notification;
+    o.on_custom_command = callbacks.on_custom_command;
+    o.on_set_rating = callbacks.on_set_rating;
+    o.on_media_request = callbacks.on_media_request;
+    MediaSession(unsafe { sys::kiln_remember_media_session(here(), player.0, &o) })
 }
 /// A media session remembered at the call; the skip callbacks show their buttons (taken the
 /// first time).

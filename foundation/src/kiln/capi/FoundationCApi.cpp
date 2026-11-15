@@ -1975,11 +1975,63 @@ KILN_API kiln_media_session* kiln_remember_media_session(kiln_key key, kiln_play
             if (o.on_skip_to_next.call) options.onSkipToNext = Fn(o.on_skip_to_next);
             options.sessionActivityUri = ToString(o.session_activity_uri);
             options.notification = o.notification;
+            if (o.on_custom_command.call) options.onCustomCommand = Fn(o.on_custom_command);
+            if (auto f = Own(o.on_set_rating))
+                options.onSetRating = [f](const kiln::media::Rating& r) {
+                    CallbackScope scope;
+                    f->f.call(f->f.user, int32_t(r.kind), r.isRated, r.liked, r.maxStars, r.value);
+                };
+            if (auto f = Own(o.on_media_request))
+                options.onAddMediaItems = [f](std::vector<kiln::media::MediaItem> items) -> std::optional<std::vector<kiln::media::MediaItem>> {
+                    if (items.empty()) return std::nullopt;
+                    const auto& r = items[0];
+                    CallbackScope scope;
+                    const char* uri = f->f.call(f->f.user, r.mediaId.c_str(), r.requestMetadata.mediaUri.c_str(), r.requestMetadata.searchQuery.c_str());
+                    if (!uri) return std::nullopt;
+                    kiln::media::MediaItem item = kiln::media::MediaItem::FromUri(uri);
+                    item.mediaId = r.mediaId;
+                    item.requestMetadata = r.requestMetadata;
+                    return std::vector<kiln::media::MediaItem>{ std::move(item) };
+                };
             auto& session = c.RememberNew<kiln::media::MediaSession>({}, {}, *p->player, std::move(options));
             out = &c.Remember<kiln_media_session>([&] { return kiln_media_session{ &session }; });
         });
         return out;
     } CATCH(nullptr)
+}
+KILN_API void kiln_command_button_init(kiln_command_button* b) {
+    if (!b) return;
+    *b = {};
+    b->enabled = true;
+    b->compact_view_index = -1;
+}
+KILN_API void kiln_media_session_set_media_button_preferences(kiln_media_session* s, const kiln_command_button* buttons, size_t count) {
+    TRY {
+        if (!s) return;
+        std::vector<kiln::media::CommandButton> out;
+        for (size_t i = 0; buttons && i < count; ++i) {
+            const kiln_command_button& b = buttons[i];
+            kiln::media::CommandButton c;
+            c.icon = b.icon;
+            c.iconResource = ToString(b.icon_resource);
+            c.displayName = ToString(b.display_name);
+            c.customAction = ToString(b.custom_action);
+            if (c.customAction.empty() && b.player_command > 0) c.playerCommand = kiln::media::PlayerCommand(b.player_command);
+            for (size_t j = 0; b.slots && j < b.slot_count; ++j) c.slots.push_back(b.slots[j]);
+            c.enabled = b.enabled;
+            c.compactViewIndex = b.compact_view_index;
+            out.push_back(std::move(c));
+        }
+        s->session->SetMediaButtonPreferences(std::move(out));
+    } CATCH_VOID
+}
+KILN_API void kiln_media_session_set_extras(kiln_media_session* s, const char* const* keys, const char* const* values, size_t count) {
+    TRY {
+        if (!s) return;
+        std::map<std::string, std::string> extras;
+        for (size_t i = 0; keys && values && i < count; ++i) extras[ToString(keys[i])] = ToString(values[i]);
+        s->session->SetSessionExtras(std::move(extras));
+    } CATCH_VOID
 }
 KILN_API void kiln_media_session_set_metadata(kiln_media_session* s, const char* title, const char* artist, const char* album, const char* artwork) {
     TRY {

@@ -843,6 +843,41 @@ void StartPlaying() {
   and `android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK` in `PERMISSIONS`. A player
   remembered in content stops when its screen goes, so keep it at process scope to play on.
 
+#### Extra buttons, the queue and requests from other devices
+
+`SetMediaButtonPreferences` adds buttons to the media controls, as media3's
+`setMediaButtonPreferences` does. A button runs either a custom action, which your
+`onCustomCommand` receives, or a player command:
+
+<!-- prelude: kiln::media::MediaSession& Session(); bool liked = false; -->
+```cpp
+using B = kiln::media::CommandButton;
+Session().SetMediaButtonPreferences({
+    { .icon = liked ? B::HeartFilled : B::HeartUnfilled, .displayName = "Like", .customAction = "like",
+      .slots = { B::kSlotOverflow } },
+    { .icon = B::ShuffleOff, .displayName = "Shuffle", .playerCommand = kiln::media::PlayerCommand::SetShuffleMode,
+      .slots = { B::kSlotOverflow } },
+});
+```
+
+* **Placement.** `slots` lists where a button may go, in order of preference. Without slots, the
+  icon or command decides: play/pause goes in the centre, skip back and rewind go back, skip
+  forward and fast forward go forward, and everything else goes in the overflow. A button in the
+  back or forward slot replaces the previous or next button.
+* **Icons.** The icons are media3's own drawables. Set `iconResource` to use a drawable of your
+  app's instead.
+* **The collapsed notification.** It shows the back, centre and forward buttons. Set
+  `compactViewIndex` to choose its buttons yourself.
+* **The queue.** Controllers (Android Auto, Wear, Bluetooth) see the playlist. Each item's title
+  is its `displayTitle`, or else its title, artist and album. The queue's title is the playlist
+  metadata's title.
+* **Ratings.** The current item's `userRating` sets the rating kind the session offers, and
+  `onSetRating` receives the ratings controllers send.
+* **Requests from other devices.** An assistant or a car may ask to play something by media id,
+  URI or search. `onAddMediaItems` turns the request into playable items, and the session plays
+  them. Without the callback, requests are refused, as in media3.
+* **Extras.** `SetSessionExtras` sets the session's extras.
+
 ### Camera preview
 
 `CameraPreview` shows a camera's live picture, upright on the display. Ask for

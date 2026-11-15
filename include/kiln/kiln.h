@@ -1217,16 +1217,45 @@ KILN_API bool kiln_speech_recognition_available(bool on_device);
  * headset buttons) and playback in a media foreground service (the app declares
  * FOREGROUND_SERVICE and FOREGROUND_SERVICE_MEDIA_PLAYBACK). Remembered at the call. */
 typedef struct kiln_media_session kiln_media_session;
+/* A user rating (media3 Rating): kind 0 heart, 1 thumb, 2 stars (max_stars), 3 percentage. */
+typedef struct kiln_fn_rating { void (*call)(void* user, int32_t kind, bool rated, bool liked, int32_t max_stars, float value); void* user; void (*drop)(void* user); } kiln_fn_rating;
+/* A controller asks to play (or prepare) media by id, URI or search query (the others empty):
+ * return the URI to play, or NULL to refuse (onAddMediaItems). The string is copied. */
+typedef struct kiln_fn_media_request { const char* (*call)(void* user, const char* media_id, const char* uri, const char* query); void* user; void (*drop)(void* user); } kiln_fn_media_request;
 typedef struct kiln_media_session_options {
     size_t size;
     kiln_fn on_skip_to_previous, on_skip_to_next;   /* buttons shown when set */
     const char* session_activity_uri;              /* the notification's deep link; NULL: launch */
     bool notification;                             /* true */
+    kiln_fn_str on_custom_command;                 /* a command button's custom action */
+    kiln_fn_rating on_set_rating;
+    kiln_fn_media_request on_media_request;        /* unset: requests are refused */
 } kiln_media_session_options;
+/* media3 CommandButton: a custom action, or a player command (media3's Player.COMMAND_* value:
+ * 1 play / pause, 3 stop, 11 seek back, 12 seek forward, 14 shuffle, 15 repeat ...). icon:
+ * CommandButton.ICON_* (0xe037 play ...), drawn with media3's drawable unless icon_resource names
+ * one of the app's. slots: SLOT_* (1 central, 2 back, 3 forward, 4 back secondary, 5 forward
+ * secondary, 6 overflow) in preference order; none: by the icon or command. */
+typedef struct kiln_command_button {
+    int32_t icon;
+    const char* icon_resource;
+    const char* display_name;
+    const char* custom_action;      /* NULL: player_command */
+    int32_t player_command;
+    const int32_t* slots;
+    size_t slot_count;
+    bool enabled;                   /* true */
+    int32_t compact_view_index;     /* its place in the collapsed notification (0-2); -1 by its slot */
+} kiln_command_button;
+KILN_API void kiln_command_button_init(kiln_command_button* button);
 KILN_API void kiln_media_session_options_init(kiln_media_session_options* options);
 KILN_API kiln_media_session* kiln_remember_media_session(kiln_key key, kiln_player* player, const kiln_media_session_options* options);
 KILN_API void kiln_media_session_set_metadata(kiln_media_session* session, const char* title, const char* artist,
                                               const char* album_title, const char* artwork_uri);
+/* setMediaButtonPreferences: the notification's and controllers' extra buttons. */
+KILN_API void kiln_media_session_set_media_button_preferences(kiln_media_session* session, const kiln_command_button* buttons, size_t count);
+/* setSessionExtras: key, value pairs. */
+KILN_API void kiln_media_session_set_extras(kiln_media_session* session, const char* const* keys, const char* const* values, size_t count);
 KILN_API void kiln_video_surface(kiln_key key, const kiln_modifier* modifier, kiln_player* player, bool keep_aspect_ratio);
 /* facing: 0 front, 1 back, 2 external. The id is valid until the next call; NULL: none. */
 KILN_API const char* kiln_find_camera(int32_t facing);

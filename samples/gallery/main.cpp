@@ -369,7 +369,33 @@ namespace {
         auto& player = c.RememberNew<kiln::media::Player>({}, {});
         // The system's media controls (notification, lock screen, headset buttons), playback going
         // on in the background, pausing for calls and when headphones are unplugged.
-        auto& session = c.RememberNew<kiln::media::MediaSession>({}, {}, player, kiln::media::MediaSessionOptions{});
+        // Its extra buttons (media button preferences): a like button (a custom command) and
+        // shuffle (a player command), shown in the notification after the transport controls.
+        struct Buttons {
+            kiln::media::MediaSession* session = nullptr;
+            bool liked = false, shuffle = false, shown = false;
+            void Show(bool shuffleOn) {
+                if (shown && shuffleOn == shuffle) return;
+                shown = true;
+                shuffle = shuffleOn;
+                using B = kiln::media::CommandButton;
+                session->SetMediaButtonPreferences({
+                    { .icon = liked ? B::HeartFilled : B::HeartUnfilled, .displayName = liked ? "Unlike" : "Like", .customAction = "like",
+                      .slots = { B::kSlotOverflow } },
+                    { .icon = shuffle ? B::ShuffleOn : B::ShuffleOff, .displayName = shuffle ? "Shuffle off" : "Shuffle on",
+                      .playerCommand = kiln::media::PlayerCommand::SetShuffleMode, .slots = { B::kSlotOverflow } },
+                });
+            }
+        };
+        auto& buttons = c.RememberNew<Buttons>({}, {});
+        auto& session = c.RememberNew<kiln::media::MediaSession>({}, {}, player, kiln::media::MediaSessionOptions{
+            .onCustomCommand = [&buttons](const std::string& action) {
+                if (action != "like") return;
+                buttons.liked = !buttons.liked;
+                buttons.shown = false;
+                buttons.Show(buttons.shuffle);
+            } });
+        buttons.session = &session;
         c.LaunchedEffect(kiln::rt::Keys{}, [&player, &session]() -> kiln::rt::Task<> {
             player.SetAudioAttributes({ .usage = kiln::media::AudioUsage::Media, .contentType = kiln::media::AudioContentType::Movie }, true);
             player.SetHandleAudioBecomingNoisy(true);
@@ -392,6 +418,7 @@ namespace {
             co_return;
         });
         const kiln::media::PlayerState& s = kiln::rt::CollectAsState(player.StateFlow()).Get();
+        c.SideEffect([&buttons, on = s.shuffleModeEnabled] { buttons.Show(on); });
         auto& cameraOn = RememberState(false);
         auto& cameraError = RememberState(std::string());
         auto askCamera = RememberLauncherForActivityResult<std::string, bool>(

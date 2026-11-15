@@ -49,7 +49,11 @@ public class KilnMediaService extends Service {
         }
         if (intent != null && KilnMedia.ACTION_COMMAND.equals(intent.getAction())) {
             int id = intent.getIntExtra("id", 0), command = intent.getIntExtra("command", -1);
-            if (KilnMedia.sessionCount() > 0) KilnMedia.sessionCommand(id, command, 0, 0);
+            String custom = intent.getStringExtra("custom");
+            if (KilnMedia.sessionCount() > 0) {
+                if (custom != null) KilnMedia.customAction(id, custom);
+                else KilnMedia.sessionCommand(id, command, intent.getLongExtra("position", 0), 0);
+            }
         }
         if (KilnMedia.sessionCount() == 0) stopSelf();   // the process was restarted: nothing plays
         return START_NOT_STICKY;

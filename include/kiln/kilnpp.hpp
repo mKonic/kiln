@@ -573,6 +573,18 @@ namespace kpp {
             Callback<kiln_fn> onSkipToPrevious, onSkipToNext;
             const char* sessionActivityUri = nullptr;
             bool notification = true;
+            Callback<kiln_fn_str> onCustomCommand;                // (const char* action)
+            Callback<kiln_fn_rating> onSetRating;                 // (kind, rated, liked, maxStars, value)
+            Callback<kiln_fn_media_request> onMediaRequest;       // (mediaId, uri, query) -> the URI to play, or nullptr
+        };
+        // A CommandButton (kiln_command_button): a custom action or a player command.
+        struct Button {
+            int32_t icon = 0;
+            std::string displayName, customAction, iconResource;
+            int32_t playerCommand = 0;
+            std::vector<int32_t> slots;
+            bool enabled = true;
+            int32_t compactViewIndex = -1;
         };
         explicit MediaSession(const Player& player) : MediaSession(player, Options{}) {}
         MediaSession(const Player& player, Options o, Key key = {}) {
@@ -582,7 +594,35 @@ namespace kpp {
             c.on_skip_to_next = o.onSkipToNext.release();
             c.session_activity_uri = o.sessionActivityUri;
             c.notification = o.notification;
+            c.on_custom_command = o.onCustomCommand.release();
+            c.on_set_rating = o.onSetRating.release();
+            c.on_media_request = o.onMediaRequest.release();
             m_S = kiln_remember_media_session(key, player.get(), &c);
+        }
+        void setMediaButtonPreferences(const std::vector<Button>& buttons) {
+            std::vector<kiln_command_button> c(buttons.size());
+            for (std::size_t i = 0; i < buttons.size(); ++i) {
+                const Button& b = buttons[i];
+                kiln_command_button_init(&c[i]);
+                c[i].icon = b.icon;
+                c[i].icon_resource = b.iconResource.empty() ? nullptr : b.iconResource.c_str();
+                c[i].display_name = b.displayName.c_str();
+                c[i].custom_action = b.customAction.empty() ? nullptr : b.customAction.c_str();
+                c[i].player_command = b.playerCommand;
+                c[i].slots = b.slots.data();
+                c[i].slot_count = b.slots.size();
+                c[i].enabled = b.enabled;
+                c[i].compact_view_index = b.compactViewIndex;
+            }
+            kiln_media_session_set_media_button_preferences(m_S, c.data(), c.size());
+        }
+        void setExtras(const std::vector<std::pair<std::string, std::string>>& extras) {
+            std::vector<const char*> k, v;
+            for (const auto& [a, b] : extras) {
+                k.push_back(a.c_str());
+                v.push_back(b.c_str());
+            }
+            kiln_media_session_set_extras(m_S, k.data(), v.data(), k.size());
         }
         void setMetadata(const std::string& title, const std::string& artist = {}, const std::string& albumTitle = {},
                          const std::string& artworkUri = {}) {

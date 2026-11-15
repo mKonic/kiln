@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* Read by the tests. */
 int capi_live_callbacks;      /* callbacks handed to kiln and not dropped yet */
@@ -149,7 +150,22 @@ void capi_annotated(void* user) {
 
 /* A player with audio focus and a media session whose next button counts. */
 int capi_media_next;
+char capi_media_log[128];
 static void media_next(void* user) { (void)user; ++capi_media_next; }
+static void media_custom(void* user, const char* action) {
+    (void)user;
+    size_t n = strlen(capi_media_log);
+    snprintf(capi_media_log + n, sizeof capi_media_log - n, "custom %s;", action);
+}
+static void media_rating(void* user, int32_t kind, bool rated, bool liked, int32_t max_stars, float value) {
+    (void)user; (void)max_stars; (void)value;
+    size_t n = strlen(capi_media_log);
+    snprintf(capi_media_log + n, sizeof capi_media_log - n, "rating %d %d %d;", (int)kind, (int)rated, (int)liked);
+}
+static const char* media_request(void* user, const char* media_id, const char* uri, const char* query) {
+    (void)user; (void)uri; (void)query;
+    return strcmp(media_id, "known") == 0 ? "asset:///known.mp3" : NULL;
+}
 void capi_media(void* user) {
     (void)user;
     kiln_player* player = kiln_remember_player(KILN_HERE);
@@ -158,8 +174,23 @@ void capi_media(void* user) {
     kiln_media_session_options options;
     kiln_media_session_options_init(&options);
     options.on_skip_to_next = counted(media_next, NULL);
+    options.on_custom_command = (kiln_fn_str){ media_custom, NULL, NULL };
+    options.on_set_rating = (kiln_fn_rating){ media_rating, NULL, NULL };
+    options.on_media_request = (kiln_fn_media_request){ media_request, NULL, NULL };
     kiln_media_session* session = kiln_remember_media_session(KILN_HERE, player, &options);
     kiln_media_session_set_metadata(session, "Song", "Band", "", "");
+    kiln_command_button heart;
+    kiln_command_button_init(&heart);
+    heart.icon = 0xe87d;   /* ICON_HEART_UNFILLED */
+    heart.display_name = "Like";
+    heart.custom_action = "like";
+    int32_t overflow = 6;
+    heart.slots = &overflow;
+    heart.slot_count = 1;
+    kiln_media_session_set_media_button_preferences(session, &heart, 1);
+    const char* key = "k";
+    const char* value = "v";
+    kiln_media_session_set_extras(session, &key, &value, 1);
 }
 
 /* Speech: a remembered engine and recognizer; the listeners' events are logged. */
