@@ -137,6 +137,10 @@ void Search(SearchModel& model) {
   value, as in Kotlin.
 * `CollectAsState` collects while the caller is composed. `CollectAsStateWithLifecycle`
   (`kiln/lifecycle/LifecycleCompose.h`) pauses while the app is in the background.
+* For the whole app rather than one screen, observe
+  `lifecycle::ProcessLifecycleOwner::Get().GetLifecycle()`
+  (`kiln/lifecycle/ProcessLifecycleOwner.h`). It is started while any activity is, and
+  stops 700 ms after the last one, so a screen rotating does not count as leaving.
 * `StateIn(flow, scope, SharingStarted::WhileSubscribed(5000), initial)` shares one
   upstream between collectors, as in a ViewModel.
 * Flows run on the main thread. Do blocking work in `co_await WithContext(...)` inside the

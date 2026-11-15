@@ -1344,6 +1344,7 @@ namespace {
         kiln::android::InstallCamera();
         kiln::android::InstallMediaSession(env);
         kiln::android::InstallLocales(env);
+        kiln::android::InstallProcessLifecycle(env);
         kiln::android::InstallSecurity(env);
         kiln::android::InstallAlarms(env);
         kiln::android::InstallSpeech(env);

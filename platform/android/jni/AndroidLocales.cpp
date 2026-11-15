@@ -5,6 +5,7 @@
 #include "kiln/jvm/Jvm.h"
 #include "kiln/ui/AppLocales.h"
 #include "kiln/ui/NightMode.h"
+#include "kiln/lifecycle/ProcessLifecycleOwner.h"
 
 #include <android/log.h>
 
@@ -25,6 +26,25 @@ namespace kiln::android {
             }
             return out;
         }
+    }
+
+    // lifecycle::ProcessLifecycleOwner: dev.kiln.KilnProcessLifecycle reports every activity.
+    void InstallProcessLifecycle(JNIEnv* env) {
+        jclass c = env->FindClass("dev/kiln/KilnProcessLifecycle");
+        if (!c) {
+            env->ExceptionClear();
+            return;
+        }
+        using P = lifecycle::ProcessLifecycleOwner;
+        static const JNINativeMethod methods[] = {
+            { "started", "()V", reinterpret_cast<void*>(+[](JNIEnv*, jclass) { P::Get().ActivityStarted(); }) },
+            { "resumed", "()V", reinterpret_cast<void*>(+[](JNIEnv*, jclass) { P::Get().ActivityResumed(); }) },
+            { "paused", "()V", reinterpret_cast<void*>(+[](JNIEnv*, jclass) { P::Get().ActivityPaused(); }) },
+            { "stopped", "()V", reinterpret_cast<void*>(+[](JNIEnv*, jclass) { P::Get().ActivityStopped(); }) },
+        };
+        if (env->RegisterNatives(c, methods, 4) != 0) env->ExceptionClear();
+        else P::Get().SetPlatformDriven(true);
+        env->DeleteLocalRef(c);
     }
 
     void InstallLocales(JNIEnv* env) {

@@ -104,7 +104,7 @@ namespace kiln {
         // The window's lifecycle (LocalLifecycleOwner where content provides none): CREATED from
         // construction; the host sends the activity's events (on desktop, RESUMED while the
         // window is open, DESTROYED before the app goes).
-        void HandleLifecycleEvent(lifecycle::Event event) { m_Lifecycle->registry.HandleLifecycleEvent(event); }
+        void HandleLifecycleEvent(lifecycle::Event event);
         lifecycle::Lifecycle& GetLifecycle() { return m_Lifecycle->registry; }
         // Input from the host, positions in surface pixels. Layout is brought up to date first
         // so hit testing sees what is on screen (AndroidComposeView.handleMotionEvent).

@@ -389,6 +389,7 @@ ResourceFont = "Font"
 toFontFamily = "FontFamily Of"
 
 [skipped]
+ProcessLifecycleInitializer = "an androidx.startup initializer; kiln attaches ProcessLifecycleOwner itself as an activity is created"
 # AppCompatDelegate: the night mode is ui::SetDefaultNightMode (renamed above); the rest is the
 # delegate an AppCompatActivity forwards its View-system calls through.
 # media3 not played by kiln's engine: ads (IMA), DRM (MediaDrm), live streams (they need HLS /

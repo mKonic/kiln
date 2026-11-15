@@ -4,6 +4,7 @@
 #include "kiln/ui/Locals.h"
 #include "kiln/ui/AppLocales.h"
 #include "kiln/ui/NightMode.h"
+#include "kiln/lifecycle/ProcessLifecycleOwner.h"
 #include "kiln/image/ImageLoader.h"
 #include "kiln/Trace.h"
 #include "kiln/text/HighContrastText.h"
@@ -174,6 +175,20 @@ namespace kiln {
         m_Direction->Set(d);
         m_Owner.SetDirection(d);
         RequestFrame();
+    }
+
+    void App::HandleLifecycleEvent(lifecycle::Event event) {
+        m_Lifecycle->registry.HandleLifecycleEvent(event);
+        // ProcessLifecycleOwner: the app's windows, where the platform does not report activities.
+        auto& process = lifecycle::ProcessLifecycleOwner::Get();
+        if (process.PlatformDriven()) return;
+        switch (event) {
+            case lifecycle::Event::OnStart: process.ActivityStarted(); break;
+            case lifecycle::Event::OnResume: process.ActivityResumed(); break;
+            case lifecycle::Event::OnPause: process.ActivityPaused(); break;
+            case lifecycle::Event::OnStop: process.ActivityStopped(); break;
+            default: break;
+        }
     }
 
     void App::SetConfiguration(ui::Configuration config) {
