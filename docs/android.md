@@ -457,9 +457,11 @@ g::ActionCallbackRegistration tap("tap", [](const g::ActionContext&) { ++taps; }
   appwidget-provider info in `res/xml/counter_widget.xml` (its size, resize modes and
   category). A Gradle app declares a receiver class extending `dev.kiln.KilnWidgetReceiver`
   instead, with `<meta-data android:name="dev.kiln.widget" android:value="counter" />` and the
-  provider info.
-* `SizeMode::Single` draws once, at the widget's minimum size. `Exact` draws for every size
-  the launcher uses. `Responsive` draws for the sizes you list, and the launcher picks among
+  provider info. Its intent filter takes `android.intent.action.LOCALE_CHANGED` as well as
+  `APPWIDGET_UPDATE`, so the widget is redrawn in a new language.
+* `SizeMode::Single` draws once, at the widget's minimum size from its provider info (the
+  resize minimum when it resizes). `Exact` draws for every size the launcher uses, or for a
+  portrait and a landscape size when the launcher does not list them. `Responsive` draws for the sizes you list, and the launcher picks among
   them. `WidgetContext::size` is the size being drawn.
 * `RunCallback` runs a registered callback in the app's process, then redraws the widget.
   `StartActivity` opens the app at a deep link. A `CheckBox` or `Switch` reports its new state in

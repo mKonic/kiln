@@ -1,6 +1,7 @@
 package dev.kiln;
 
 import android.appwidget.AppWidgetManager;
+import android.appwidget.AppWidgetProviderInfo;
 import android.appwidget.AppWidgetProvider;
 import android.content.ComponentName;
 import android.content.Context;
@@ -80,6 +81,14 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
             updateAll(name);
             return;
         }
+        if (Intent.ACTION_LOCALE_CHANGED.equals(intent.getAction())) {
+            // Redrawn in the new language, as GlanceAppWidgetReceiver does.
+            ensureLoaded(context);
+            AppWidgetManager manager = AppWidgetManager.getInstance(context);
+            ComponentName receiver = new ComponentName(context, getClass());
+            for (int id : manager.getAppWidgetIds(receiver)) draw(context, manager, receiver, widgetName(context), id);
+            return;
+        }
         super.onReceive(context, intent);
     }
 
@@ -90,13 +99,23 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
         }
         Bundle options = manager.getAppWidgetOptions(id);
         ArrayList<SizeF> sizes = sizes(options);
-        float[] launcher = new float[sizes == null ? 0 : sizes.size() * 2];
-        for (int i = 0; sizes != null && i < sizes.size(); i++) {
+        if (sizes == null || sizes.isEmpty()) sizes = estimateSizes(options);
+        float[] launcher = new float[sizes.size() * 2];
+        for (int i = 0; i < sizes.size(); i++) {
             launcher[2 * i] = sizes.get(i).getWidth();
             launcher[2 * i + 1] = sizes.get(i).getHeight();
         }
-        float minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
-        float minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
+        // Glance's appWidgetMinSize: the provider's minimum (its resize minimum when it resizes).
+        float minWidth = 0, minHeight = 0;
+        AppWidgetProviderInfo info = manager.getAppWidgetInfo(id);
+        if (info != null) {
+            float density = context.getResources().getDisplayMetrics().density;
+            int w = info.minWidth, h = info.minHeight;
+            if ((info.resizeMode & AppWidgetProviderInfo.RESIZE_HORIZONTAL) != 0) w = Math.min(w, info.minResizeWidth);
+            if ((info.resizeMode & AppWidgetProviderInfo.RESIZE_VERTICAL) != 0) h = Math.min(h, info.minResizeHeight);
+            minWidth = w / density;
+            minHeight = h / density;
+        }
         Object[] drawn = render(name, id, launcher, minWidth, minHeight);
         if (drawn == null) {
             Log.e("kiln", "widget: no widget named " + name + " (register it with a static glance::WidgetRegistration)");
@@ -120,6 +139,22 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
             return;
         }
         manager.updateAppWidget(id, views);
+    }
+
+    /**
+     * Without OPTION_APPWIDGET_SIZES, Glance's estimateSizes: portrait is the minimum width and
+     * maximum height, landscape the maximum width and minimum height; none when unknown.
+     */
+    private static ArrayList<SizeF> estimateSizes(Bundle options) {
+        ArrayList<SizeF> out = new ArrayList<>();
+        int minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
+        int maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+        int minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
+        int maxWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 0);
+        if (minHeight == 0 || maxHeight == 0 || minWidth == 0 || maxWidth == 0) return out;
+        out.add(new SizeF(minWidth, maxHeight));
+        out.add(new SizeF(maxWidth, minHeight));
+        return out;
     }
 
     /** OPTION_APPWIDGET_SIZES (the typed getParcelableArrayList is API 33). */
