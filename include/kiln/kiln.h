@@ -499,6 +499,17 @@ KILN_API const char* kiln_get_uri_for_file(const char* path, const char* display
  * most preferred first; "" or NULL follows the system again. The get is valid until the next call. */
 KILN_API void kiln_set_application_locales(const char* language_tags);
 KILN_API const char* kiln_get_application_locales(void);
+/* The app's own light / dark choice (AppCompatDelegate.setDefaultNightMode), not stored: set it
+ * as the app starts. */
+typedef enum kiln_night_mode {
+    KILN_NIGHT_MODE_FOLLOW_SYSTEM = -1,
+    KILN_NIGHT_MODE_AUTO_TIME = 0,      /* dark from sunset to sunrise */
+    KILN_NIGHT_MODE_NO = 1,
+    KILN_NIGHT_MODE_YES = 2,
+    KILN_NIGHT_MODE_AUTO_BATTERY = 3,   /* dark while battery saver is on */
+} kiln_night_mode;
+KILN_API void kiln_set_default_night_mode(kiln_night_mode mode);
+KILN_API kiln_night_mode kiln_get_default_night_mode(void);
 KILN_API bool kiln_should_show_permission_rationale(const char* permission);
 
 /* A Custom Tab: the URL in the user's browser inside the app, with the toolbar colour

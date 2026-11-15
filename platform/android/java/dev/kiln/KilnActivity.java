@@ -25,9 +25,13 @@ public class KilnActivity extends Activity {
     @Override
     protected void attachBaseContext(android.content.Context base) {
         super.attachBaseContext(base);
-        // ui::SetApplicationLocales before Android 13: the stored locales, as AppCompat applies them.
+        // ui::SetApplicationLocales before Android 13: the stored locales, as AppCompat applies
+        // them; ui::SetDefaultNightMode: the app's night mode. One override holds both.
         android.content.res.Configuration locales = KilnLocales.override(base);
-        if (locales != null) applyOverrideConfiguration(locales);
+        android.content.res.Configuration night = KilnNightMode.override(base);
+        if (locales != null && night != null) locales.uiMode = night.uiMode;
+        android.content.res.Configuration override = locales != null ? locales : night;
+        if (override != null) applyOverrideConfiguration(override);
     }
 
     @Override
@@ -52,6 +56,7 @@ public class KilnActivity extends Activity {
         byte[] saved = savedInstanceState != null ? savedInstanceState.getByteArray(SAVED_STATE_KEY) : null;
         view = new KilnView(this, saved);
         setContentView(view);
+        KilnNightMode.attach(this);
         keepSplashScreen();
     }
 
@@ -146,6 +151,7 @@ public class KilnActivity extends Activity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        newConfig = KilnNightMode.correct(this, newConfig);
         KilnEdgeToEdge.enable(this, statusBarStyle, navigationBarStyle);
         view.onHostConfigurationChanged(newConfig);
     }

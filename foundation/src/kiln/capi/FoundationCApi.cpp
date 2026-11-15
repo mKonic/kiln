@@ -30,6 +30,7 @@
 #include "kiln/media/MediaSession.h"
 #include "kiln/ui/FileProvider.h"
 #include "kiln/ui/AppLocales.h"
+#include "kiln/ui/NightMode.h"
 #include "kiln/security/SecureStore.h"
 #include "kiln/work/Alarm.h"
 #include "kiln/speech/SpeechRecognizer.h"
@@ -2828,6 +2829,12 @@ KILN_API void kiln_set_application_locales(const char* tags) {
         }
         kiln::ui::SetApplicationLocales(std::move(out));
     } CATCH_VOID
+}
+KILN_API void kiln_set_default_night_mode(kiln_night_mode mode) {
+    TRY { kiln::ui::SetDefaultNightMode(kiln::ui::NightMode(int(mode))); } CATCH_VOID
+}
+KILN_API kiln_night_mode kiln_get_default_night_mode(void) {
+    TRY { return kiln_night_mode(int(kiln::ui::GetDefaultNightMode())); } CATCH(KILN_NIGHT_MODE_FOLLOW_SYSTEM)
 }
 KILN_API const char* kiln_get_application_locales(void) {
     TRY {

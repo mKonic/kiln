@@ -1084,6 +1084,9 @@ namespace kpp {
         const char* t = kiln_get_application_locales();
         return t ? t : "";
     }
+    // See kiln_set_default_night_mode.
+    inline void set_default_night_mode(kiln_night_mode mode) { kiln_set_default_night_mode(mode); }
+    inline kiln_night_mode get_default_night_mode() { return kiln_get_default_night_mode(); }
     // See kiln_get_uri_for_file; empty for a file outside the app's folders.
     inline std::string get_uri_for_file(const std::string& path, const std::string& displayName = {}) {
         const char* u = kiln_get_uri_for_file(path.c_str(), displayName.c_str());

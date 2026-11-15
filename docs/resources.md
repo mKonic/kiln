@@ -85,6 +85,26 @@ void UseSystemLanguage() { kiln::ui::SetApplicationLocales({}); }
   supported language ahead of the choice, and the layout direction follows that language. An
   app without Arabic strings set to Arabic shows English, left to right.
 
+## Choosing light or dark
+
+An app can offer its own light / dark setting. `ui::SetDefaultNightMode`
+(`kiln/ui/NightMode.h`) does what AppCompat's `setDefaultNightMode` does:
+
+```cpp
+#include <kiln/ui/NightMode.h>
+
+void UseDark() { kiln::ui::SetDefaultNightMode(kiln::ui::NightMode::Yes); }
+void UseSystemSetting() { kiln::ui::SetDefaultNightMode(kiln::ui::NightMode::FollowSystem); }
+```
+
+* The configuration's night mode changes at once, so `IsSystemInDarkTheme()`, `values-night`
+  resources and the colour scheme built from them follow, with no restart.
+* `Yes` and `No` hold whatever the system's dark theme does. `AutoBattery` is dark while
+  battery saver is on. `AutoTime` is dark from sunset to sunrise: from the last known location
+  when the app may read it, otherwise from 22:00 to 6:00.
+* As with AppCompat the choice is not stored. Keep the user's setting, for example in
+  `datastore`, and set it again as the app starts.
+
 ## On Android and on the desktop
 
 On a device the values come from Android's resources, so language fallback, plural

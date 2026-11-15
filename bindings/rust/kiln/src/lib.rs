@@ -1115,6 +1115,29 @@ pub fn get_application_locales() -> String {
     let p = unsafe { sys::kiln_get_application_locales() };
     if p.is_null() { String::new() } else { from_c(p) }
 }
+/// The app's own light / dark choice (AppCompatDelegate.setDefaultNightMode); not stored, so
+/// set it as the app starts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NightMode { FollowSystem, AutoTime, No, Yes, AutoBattery }
+pub fn set_default_night_mode(mode: NightMode) {
+    let m = match mode {
+        NightMode::FollowSystem => sys::kiln_night_mode::KILN_NIGHT_MODE_FOLLOW_SYSTEM,
+        NightMode::AutoTime => sys::kiln_night_mode::KILN_NIGHT_MODE_AUTO_TIME,
+        NightMode::No => sys::kiln_night_mode::KILN_NIGHT_MODE_NO,
+        NightMode::Yes => sys::kiln_night_mode::KILN_NIGHT_MODE_YES,
+        NightMode::AutoBattery => sys::kiln_night_mode::KILN_NIGHT_MODE_AUTO_BATTERY,
+    };
+    unsafe { sys::kiln_set_default_night_mode(m) }
+}
+pub fn get_default_night_mode() -> NightMode {
+    match unsafe { sys::kiln_get_default_night_mode() } {
+        sys::kiln_night_mode::KILN_NIGHT_MODE_AUTO_TIME => NightMode::AutoTime,
+        sys::kiln_night_mode::KILN_NIGHT_MODE_NO => NightMode::No,
+        sys::kiln_night_mode::KILN_NIGHT_MODE_YES => NightMode::Yes,
+        sys::kiln_night_mode::KILN_NIGHT_MODE_AUTO_BATTERY => NightMode::AutoBattery,
+        _ => NightMode::FollowSystem,
+    }
+}
 /// A content:// URI for a file in the app's folders, to share; None outside them.
 pub fn get_uri_for_file(path: &str, display_name: Option<&str>) -> Option<String> {
     let p = CStrBuf::new(path);

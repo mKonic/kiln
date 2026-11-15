@@ -59,6 +59,10 @@ modules = [
 ]
 
 [renamed]
+"AppCompatDelegate.setDefaultNightMode" = "SetDefaultNightMode"
+"AppCompatDelegate.getDefaultNightMode" = "GetDefaultNightMode"
+"AppCompatDelegate.setLocalNightMode" = "SetDefaultNightMode"   # a kiln app is one activity
+"AppCompatDelegate.getLocalNightMode" = "GetDefaultNightMode"
 # media3 Player: getters with the unit in the name, and state read from PlayerState (ExoPlayer's
 # content position is the position: no ads; one period per item).
 PlaybackSuppressionReason = "PlaybackSuppression"
@@ -385,6 +389,8 @@ ResourceFont = "Font"
 toFontFamily = "FontFamily Of"
 
 [skipped]
+# AppCompatDelegate: the night mode is ui::SetDefaultNightMode (renamed above); the rest is the
+# delegate an AppCompatActivity forwards its View-system calls through.
 # media3 not played by kiln's engine: ads (IMA), DRM (MediaDrm), live streams (they need HLS /
 # DASH: capability gap G2); extras and tags are Java object payloads (key app data by mediaId).
 AdsConfiguration = "ads are not played (no IMA extension)"
@@ -700,6 +706,7 @@ StaticLayoutFactory = "Android StaticLayout internals"
 toSpan = "Android spans (TtsSpan)"
 
 [skipped_patterns]
+'^AppCompatDelegate\.(addContentView|applyDayNight|attachBaseContext2|createView|findViewById|getContextForDelegate|getDrawerToggleDelegate|getMenuInflater|getSupportActionBar|hasWindowFeature|installViewFactory|invalidateOptionsMenu|isCompatVectorFromResourcesEnabled|isHandleNativeActionModesEnabled|onConfigurationChanged|onPostCreate|onPostResume|onSaveInstanceState|requestWindowFeature|setCompatVectorFromResourcesEnabled|setContentView|setHandleNativeActionModesEnabled|setOnBackInvokedDispatcher|setSupportActionBar|startSupportActionMode)$' = "the delegate an AppCompatActivity forwards its View-system calls through (action bar, menus, view inflation); kiln applies the night mode itself on each change"
 '^Listener\.on\w+Changed$' = "media3 Player.Listener: PlayerState fields, observed through the player's StateFlow"
 '^(Events\.\w+|Listener\.onEvents)$' = "media3 event batches: kiln publishes the state once per change"
 '^Player\.(set|clear)Video(SurfaceHolder|SurfaceView|TextureView)$' = "Android View types; SetSurface takes the platform surface (VideoSurface makes it)"

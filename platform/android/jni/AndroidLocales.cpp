@@ -4,6 +4,7 @@
 
 #include "kiln/jvm/Jvm.h"
 #include "kiln/ui/AppLocales.h"
+#include "kiln/ui/NightMode.h"
 
 #include <android/log.h>
 
@@ -34,6 +35,23 @@ namespace kiln::android {
         } catch (const std::exception& e) {
             __android_log_print(ANDROID_LOG_ERROR, "kiln", "locales: no host: %s", e.what());
             return;
+        }
+        // ui::SetDefaultNightMode: dev.kiln.KilnNightMode (AppCompat's, in the process).
+        static jvm::Global<jclass> nightClass;
+        static jmethodID nightSet = nullptr;
+        try {
+            nightClass = jvm::FindClass("dev/kiln/KilnNightMode");
+            nightSet = jvm::detail::StaticMethod(env, nightClass.get(), "set", "(I)V");
+            ui::SetNightModeHost({ .set = [](ui::NightMode mode) {
+                JNIEnv* e = jvm::Env();
+                e->CallStaticVoidMethod(nightClass.get(), nightSet, jint(mode));
+                if (e->ExceptionCheck()) {
+                    e->ExceptionDescribe();
+                    e->ExceptionClear();
+                }
+            } });
+        } catch (const std::exception& e) {
+            __android_log_print(ANDROID_LOG_ERROR, "kiln", "night mode: no host: %s", e.what());
         }
         ui::SetAppLocalesHost({
             .set = [](const std::vector<std::string>& tags) {
