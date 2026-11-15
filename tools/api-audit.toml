@@ -59,6 +59,17 @@ modules = [
 ]
 
 [renamed]
+# savedstate: a SavedStateRegistry is rt::SaveableStateRegistry (SavedStateRegistryOwner's), a
+# SavedState / its reader and writer are rt::SavedValue.
+"SavedStateRegistry.consumeRestoredStateForKey" = "ConsumeRestored"
+"SavedStateRegistry.registerSavedStateProvider" = "RegisterProvider"
+"SavedStateRegistry.unregisterSavedStateProvider" = "Unregister"
+SavedStateProvider = "RegisterProvider"   # the provider function it takes
+SavedStateValue = "SavedValue"
+SavedStateReader = "SavedValue"
+SavedStateWriter = "SavedValue"
+"Factory.from" = "ViewModelFactory"   # from(initializers...) = viewModelFactory { initializer ... }
+"NavBackStackEntryInfo.visibleEntry" = "NavBackStackEntry"   # the back event's info is the entry itself
 "AppCompatDelegate.setDefaultNightMode" = "SetDefaultNightMode"
 "AppCompatDelegate.getDefaultNightMode" = "GetDefaultNightMode"
 "AppCompatDelegate.setLocalNightMode" = "SetDefaultNightMode"   # a kiln app is one activity
@@ -389,6 +400,13 @@ ResourceFont = "Font"
 toFontFamily = "FontFamily Of"
 
 [skipped]
+"SaveableStateRegistry.canBeSaved" = "every rt::SavedValue can be saved: the types are checked when compiling"
+"SavedStateRegistry.getSavedStateProvider" = "a key holds a list of providers (Compose's registry); PerformSave reads them all"
+SavedStateRestorer = "restoring is ConsumeRestored by key"
+SavedStateRegistryController = "the host (App, KilnView) restores and saves the registry; there is no controller to attach"
+SavedStateRegistryOwnerFactory = "owners are the host's and navigation entries'; MakeLifecycleOwner covers the lifecycle half"
+ViewTreeSavedStateRegistryOwner = "Android View tree"
+"SavedStateHandle.getLiveData" = "no LiveData: GetStateFlow / GetMutableStateFlow"
 ProcessLifecycleInitializer = "an androidx.startup initializer; kiln attaches ProcessLifecycleOwner itself as an activity is created"
 # AppCompatDelegate: the night mode is ui::SetDefaultNightMode (renamed above); the rest is the
 # delegate an AppCompatActivity forwards its View-system calls through.
@@ -707,6 +725,8 @@ StaticLayoutFactory = "Android StaticLayout internals"
 toSpan = "Android spans (TtsSpan)"
 
 [skipped_patterns]
+'^SavedState(Reader|Writer)\.\w+$' = "Bundle accessors by type: rt::SavedValue is a typed value, read with std::get and made from the value"
+"^(ClassDiscriminatorMode|SavedStateConfiguration|SavedStateContainer|SavedStateSerializer|JavaSerializableSerializer|ParcelableSerializer|SizeSerializer|SizeFSerializer|SparseArraySerializer|MutableStateFlowSerializer|MutableStateSerializer|SnapshotState(List|Map|Set)Serializer|Builder\\.(classDiscriminatorMode|encodeDefaults|serializersModule)|getKotlinSerializable|putKotlinSerializable|encodeToSavedState|decodeFromSavedState|(SavedStateRegistry|SavedStateHandle)\\.(asContainer|getOrCreateContainer))$" = "kotlinx.serialization into a SavedState: kiln saves values through Savers (rt::SavedValue), with no serialization framework"
 '^AppCompatDelegate\.(addContentView|applyDayNight|attachBaseContext2|createView|findViewById|getContextForDelegate|getDrawerToggleDelegate|getMenuInflater|getSupportActionBar|hasWindowFeature|installViewFactory|invalidateOptionsMenu|isCompatVectorFromResourcesEnabled|isHandleNativeActionModesEnabled|onConfigurationChanged|onPostCreate|onPostResume|onSaveInstanceState|requestWindowFeature|setCompatVectorFromResourcesEnabled|setContentView|setHandleNativeActionModesEnabled|setOnBackInvokedDispatcher|setSupportActionBar|startSupportActionMode)$' = "the delegate an AppCompatActivity forwards its View-system calls through (action bar, menus, view inflation); kiln applies the night mode itself on each change"
 '^Listener\.on\w+Changed$' = "media3 Player.Listener: PlayerState fields, observed through the player's StateFlow"
 '^(Events\.\w+|Listener\.onEvents)$' = "media3 event batches: kiln publishes the state once per change"
