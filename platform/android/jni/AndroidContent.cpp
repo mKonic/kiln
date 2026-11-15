@@ -2,6 +2,7 @@
 
 #include "kiln/image/ImageLoader.h"
 #include "kiln/ui/ContentResolver.h"
+#include "kiln/ui/DocumentFile.h"
 
 #include <string>
 
@@ -100,7 +101,116 @@ namespace kiln::android {
         };
     }
 
+    namespace {
+        // ui::DocumentFile's host: dev.kiln.KilnDocuments.
+        class AndroidDocuments final : public ui::DocumentFile::Host {
+        public:
+            explicit AndroidDocuments(JNIEnv* env) {
+                env->GetJavaVM(&m_Vm);
+                jclass c = env->FindClass("dev/kiln/KilnDocuments");
+                m_Class = static_cast<jclass>(env->NewGlobalRef(c));
+                env->DeleteLocalRef(c);
+                const char* S = "(Ljava/lang/String;)Ljava/lang/String;";
+                m_IsDoc = env->GetStaticMethodID(m_Class, "isDocumentUri", "(Ljava/lang/String;)Z");
+                m_Tree = env->GetStaticMethodID(m_Class, "treeDocumentUri", S);
+                m_Query = env->GetStaticMethodID(m_Class, "query", "(Ljava/lang/String;)[Ljava/lang/String;");
+                m_Perm = env->GetStaticMethodID(m_Class, "hasPermission", "(Ljava/lang/String;Z)Z");
+                m_Create = env->GetStaticMethodID(m_Class, "create", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+                m_Delete = env->GetStaticMethodID(m_Class, "delete", "(Ljava/lang/String;)Z");
+                m_Rename = env->GetStaticMethodID(m_Class, "rename", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+                m_Children = env->GetStaticMethodID(m_Class, "children", "(Ljava/lang/String;)[Ljava/lang/String;");
+            }
+            bool IsDocumentUri(const std::string& uri) override {
+                JNIEnv* env = EnvFor(m_Vm);
+                if (!env) return false;
+                jstring u = Str(env, uri);
+                const bool r = env->CallStaticBooleanMethod(m_Class, m_IsDoc, u);
+                Clear(env);
+                env->DeleteLocalRef(u);
+                return r;
+            }
+            std::optional<std::string> TreeDocumentUri(const std::string& treeUri) override { return CallString(m_Tree, { treeUri }); }
+            std::optional<ui::DocumentFile::DocumentInfo> Query(const std::string& uri) override {
+                JNIEnv* env = EnvFor(m_Vm);
+                if (!env) return std::nullopt;
+                jstring u = Str(env, uri);
+                auto* arr = static_cast<jobjectArray>(env->CallStaticObjectMethod(m_Class, m_Query, u));
+                Clear(env);
+                env->DeleteLocalRef(u);
+                if (!arr) return std::nullopt;
+                ui::DocumentFile::DocumentInfo info;
+                info.displayName = Take(env, static_cast<jstring>(env->GetObjectArrayElement(arr, 0)));
+                info.mimeType = Take(env, static_cast<jstring>(env->GetObjectArrayElement(arr, 1)));
+                auto number = [&](int i) -> std::int64_t {
+                    auto s = Take(env, static_cast<jstring>(env->GetObjectArrayElement(arr, i)));
+                    if (!s) return 0;
+                    try { return std::stoll(*s); } catch (...) { return 0; }
+                };
+                info.flags = number(2);
+                info.lastModified = number(3);
+                info.size = number(4);
+                env->DeleteLocalRef(arr);
+                return info;
+            }
+            bool HasPermission(const std::string& uri, bool write) override {
+                JNIEnv* env = EnvFor(m_Vm);
+                if (!env) return false;
+                jstring u = Str(env, uri);
+                const bool r = env->CallStaticBooleanMethod(m_Class, m_Perm, u, jboolean(write));
+                Clear(env);
+                env->DeleteLocalRef(u);
+                return r;
+            }
+            std::optional<std::string> Create(const std::string& parent, const std::string& mime, const std::string& name) override {
+                return CallString(m_Create, { parent, mime, name });
+            }
+            bool Delete(const std::string& uri) override {
+                JNIEnv* env = EnvFor(m_Vm);
+                if (!env) return false;
+                jstring u = Str(env, uri);
+                const bool r = env->CallStaticBooleanMethod(m_Class, m_Delete, u);
+                Clear(env);
+                env->DeleteLocalRef(u);
+                return r;
+            }
+            std::optional<std::string> Rename(const std::string& uri, const std::string& name) override { return CallString(m_Rename, { uri, name }); }
+            std::vector<std::string> Children(const std::string& uri) override {
+                std::vector<std::string> out;
+                JNIEnv* env = EnvFor(m_Vm);
+                if (!env) return out;
+                jstring u = Str(env, uri);
+                auto* arr = static_cast<jobjectArray>(env->CallStaticObjectMethod(m_Class, m_Children, u));
+                Clear(env);
+                env->DeleteLocalRef(u);
+                if (!arr) return out;
+                for (jsize i = 0; i < env->GetArrayLength(arr); ++i)
+                    if (auto s = Take(env, static_cast<jstring>(env->GetObjectArrayElement(arr, i)))) out.push_back(*s);
+                env->DeleteLocalRef(arr);
+                return out;
+            }
+
+        private:
+            std::optional<std::string> CallString(jmethodID m, std::initializer_list<std::string> args) {
+                JNIEnv* env = EnvFor(m_Vm);
+                if (!env) return std::nullopt;
+                std::vector<jstring> js;
+                for (const auto& a : args) js.push_back(Str(env, a));
+                jobject r = nullptr;
+                if (js.size() == 1) r = env->CallStaticObjectMethod(m_Class, m, js[0]);
+                else if (js.size() == 2) r = env->CallStaticObjectMethod(m_Class, m, js[0], js[1]);
+                else r = env->CallStaticObjectMethod(m_Class, m, js[0], js[1], js[2]);
+                Clear(env);
+                for (jstring s : js) env->DeleteLocalRef(s);
+                return Take(env, static_cast<jstring>(r));
+            }
+            JavaVM* m_Vm = nullptr;
+            jclass m_Class = nullptr;
+            jmethodID m_IsDoc{}, m_Tree{}, m_Query{}, m_Perm{}, m_Create{}, m_Delete{}, m_Rename{}, m_Children{};
+        };
+    }
+
     void InstallContentResolver(JNIEnv* env) {
+        ui::DocumentFile::SetHost(std::make_shared<AndroidDocuments>(env));
         ui::SetContentResolver(std::make_shared<AndroidContentResolver>(env));
         // The image loader's memory cache follows the app's memory class.
         if (jclass c = env->FindClass("dev/kiln/KilnContent")) {

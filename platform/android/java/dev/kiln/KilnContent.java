@@ -22,6 +22,7 @@ final class KilnContent {
     private KilnContent() {}
 
     static void attach(Context context) { sContext = context.getApplicationContext(); }
+    static Context context() { return sContext; }
 
     /** The app's memory budget for image caches: { bytes, lowRam } (Coil's totalAvailableMemoryBytes). */
     static long[] memoryClass() {

@@ -726,6 +726,34 @@ std::string Describe(const std::string& uri) {
   restarts.
 * On the desktop the same calls take file paths and `file://` URIs.
 
+`kiln/ui/DocumentFile.h` works inside the folder an `OpenDocumentTree` result names, as
+androidx's DocumentFile does:
+
+```cpp
+#include <kiln/ui/ContentResolver.h>
+#include <kiln/ui/DocumentFile.h>
+
+#include <span>
+
+void SaveNote(const std::string& treeUri, std::span<const std::uint8_t> text) {
+    auto folder = kiln::ui::DocumentFile::FromTreeUri(treeUri);
+    if (!folder || !folder->CanWrite()) return;
+    auto existing = folder->FindFile("note.txt");
+    auto file = existing ? existing : folder->CreateFile("text/plain", "note");
+    if (file) kiln::ui::WriteContent(file->Uri(), text);
+}
+```
+
+* `ListFiles`, `FindFile`, `CreateFile`, `CreateDirectory`, `RenameTo` and `Delete` act on
+  the folder. `Name`, `Type`, `Length`, `LastModified`, `CanRead` and `CanWrite` describe a
+  document.
+* `CreateFile` lets the provider add the extension for the MIME type: `"note"` as
+  `text/plain` becomes `note.txt`.
+* `FromSingleUri` wraps one `OpenDocument` result, which has no children. `FromFile` wraps a
+  path on the file system.
+* Every call asks the provider, which may be a cloud drive: call from a background
+  dispatcher.
+
 ## Video, camera and other surfaces
 
 ### Playing media
