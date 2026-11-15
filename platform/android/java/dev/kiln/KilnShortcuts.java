@@ -25,7 +25,15 @@ final class KilnShortcuts {
         try {
             switch (op) {
                 case 0: return sm.setDynamicShortcuts(infos(context, shortcuts)) ? OK : FAILED;
-                case 1: sm.pushDynamicShortcut(infos(context, shortcuts).get(0)); return OK;
+                case 1: {
+                    // ShortcutManagerCompat.pushDynamicShortcut: nothing when the launcher takes
+                    // no shortcuts, and the push counts as a use (for ranking).
+                    if (sm.getMaxShortcutCountPerActivity() == 0) return FAILED;
+                    ShortcutInfo info = infos(context, shortcuts).get(0);
+                    sm.pushDynamicShortcut(info);
+                    sm.reportShortcutUsed(info.getId());
+                    return OK;
+                }
                 case 2: sm.removeDynamicShortcuts(java.util.Arrays.asList(ids)); return OK;
                 case 3: sm.removeAllDynamicShortcuts(); return OK;
                 case 4: sm.reportShortcutUsed(ids[0]); return OK;

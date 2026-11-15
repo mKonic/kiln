@@ -31,7 +31,8 @@ namespace kiln::ui {
 
     // ShortcutManager.setDynamicShortcuts: replaces the app's dynamic shortcuts.
     bool SetDynamicShortcuts(const std::vector<Shortcut>& shortcuts);
-    // pushDynamicShortcut: adds or updates one, dropping the lowest ranked when full.
+    // pushDynamicShortcut: adds or updates one, dropping the lowest ranked when full, and
+    // reports it used (ShortcutManagerCompat).
     bool PushDynamicShortcut(const Shortcut& shortcut);
     void RemoveDynamicShortcuts(const std::vector<std::string>& ids);
     void RemoveAllDynamicShortcuts();
