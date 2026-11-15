@@ -274,6 +274,128 @@ TEST(HttpEngineCanBeReplaced) {
     SetHttpEngine(real);
 }
 
+// RFC 3986 section 5.4's examples, as HttpUrl.resolve gives them (http only).
+TEST(HttpUrlsResolveAsRfc3986) {
+    const std::string base = "http://a/b/c/d;p?q";
+    const std::pair<const char*, const char*> cases[] = {
+        { "g", "http://a/b/c/g" }, { "./g", "http://a/b/c/g" }, { "g/", "http://a/b/c/g/" }, { "/g", "http://a/g" },
+        { "//g", "http://g/" }, { "?y", "http://a/b/c/d;p?y" }, { "g?y", "http://a/b/c/g?y" }, { "#s", "http://a/b/c/d;p?q#s" },
+        { "g#s", "http://a/b/c/g#s" }, { ";x", "http://a/b/c/;x" }, { "", "http://a/b/c/d;p?q" }, { ".", "http://a/b/c/" },
+        { "./", "http://a/b/c/" }, { "..", "http://a/b/" }, { "../g", "http://a/b/g" }, { "../..", "http://a/" },
+        { "../../g", "http://a/g" }, { "../../../g", "http://a/g" }, { "/./g", "http://a/g" }, { "/../g", "http://a/g" },
+        { "g.", "http://a/b/c/g." }, { "..g", "http://a/b/c/..g" }, { "./../g", "http://a/b/g" }, { "g/./h", "http://a/b/c/g/h" },
+        { "g/../h", "http://a/b/c/h" }, { "HTTPS://b/x", "https://b/x" },
+    };
+    for (const auto& [ref, want] : cases) CHECK(net::detail::ResolveUrl(base, ref) == want);
+    // Unsupported schemes are not followed.
+    CHECK(net::detail::ResolveUrl(base, "ftp://a/b").empty() && net::detail::ResolveUrl(base, "mailto:x@y").empty());
+}
+
+// RetryAndFollowUpInterceptor's follow-ups (OkHttp's CallTest / RetryAndFollowUpInterceptorTest
+// cases), on an engine answering from a script.
+TEST(HttpFollowUpsAsOkHttp) {
+    struct Scripted final : HttpEngine {
+        std::vector<HttpResponse> answers;
+        std::vector<HttpRequest> seen;
+        HttpResponse Execute(const HttpRequest& request, HttpCall&) override {
+            HttpRequest copy;
+            copy.url = request.url; copy.method = request.method; copy.headers = request.headers; copy.body = request.body;
+            seen.push_back(std::move(copy));
+            if (answers.empty()) { HttpResponse r; r.status = 200; r.body = "done"; return r; }
+            HttpResponse r = std::move(answers.front());
+            answers.erase(answers.begin());
+            return r;
+        }
+    };
+    auto respond = [](int status, Headers headers = {}) { HttpResponse r; r.status = status; r.headers = std::move(headers); return r; };
+    auto real = GetHttpEngine();
+    auto engine = std::make_shared<Scripted>();
+    SetHttpEngine(engine);
+    const Headers auth{ { "Authorization", "Basic x" }, { "Content-Type", "text/plain" } };
+
+    // POST + 302 -> GET without the body or its headers; Authorization stays on the same host.
+    engine->answers = { respond(302, { { "Location", "/next" } }) };
+    Outcome o = Do({ .url = "http://h/a/b", .method = "POST", .headers = auth, .body = "data" });
+    CHECK(o.response && o.response->body == "done" && engine->seen.size() == 2);
+    if (engine->seen.size() == 2) {
+        CHECK(engine->seen[1].url == "http://h/next" && engine->seen[1].method == "GET" && engine->seen[1].body.empty());
+        CHECK(!engine->seen[1].headers.Contains("Content-Type") && engine->seen[1].headers.Contains("Authorization"));
+    }
+    // 307 and 308 keep the method and body.
+    for (int code : { 307, 308 }) {
+        engine->seen.clear();
+        engine->answers = { respond(code, { { "Location", "next" } }) };
+        o = Do({ .url = "http://h/a/b", .method = "PUT", .headers = auth, .body = "data" });
+        CHECK(engine->seen.size() == 2 && engine->seen[1].url == "http://h/a/next" && engine->seen[1].method == "PUT" && engine->seen[1].body == "data");
+    }
+    // PROPFIND keeps its method on a 302, QUERY on a 303 does not.
+    engine->seen.clear();
+    engine->answers = { respond(302, { { "Location", "/x" } }) };
+    o = Do({ .url = "http://h/", .method = "PROPFIND", .body = "<x/>" });
+    CHECK(engine->seen.size() == 2 && engine->seen[1].method == "PROPFIND" && engine->seen[1].body == "<x/>");
+    engine->seen.clear();
+    engine->answers = { respond(303, { { "Location", "/x" } }) };
+    o = Do({ .url = "http://h/", .method = "QUERY", .body = "q" });
+    CHECK(engine->seen.size() == 2 && engine->seen[1].method == "GET");
+    // Another host, port or scheme drops Authorization.
+    for (const char* to : { "http://other/x", "http://h:8080/x", "https://h/x" }) {
+        engine->seen.clear();
+        engine->answers = { respond(301, { { "Location", to } }) };
+        o = Do({ .url = "http://h/", .headers = auth });
+        CHECK(engine->seen.size() == 2 && !engine->seen[1].headers.Contains("Authorization") && engine->seen[1].url == to);
+    }
+    engine->seen.clear();
+    engine->answers = { respond(301, { { "Location", "http://H:80/y" } }) };
+    o = Do({ .url = "http://h/", .headers = auth });
+    CHECK(engine->seen.size() == 2 && engine->seen[1].headers.Contains("Authorization"));
+    // 300 is followed; a redirect without Location, or to another scheme, is the response.
+    engine->seen.clear();
+    engine->answers = { respond(300, { { "Location", "/c" } }) };
+    o = Do({ .url = "http://h/" });
+    CHECK(engine->seen.size() == 2 && o.response && o.response->status == 200);
+    engine->answers = { respond(302) };
+    o = Do({ .url = "http://h/" });
+    CHECK(o.response && o.response->status == 302);
+    engine->answers = { respond(302, { { "Location", "ftp://h/f" } }) };
+    o = Do({ .url = "http://h/" });
+    CHECK(o.response && o.response->status == 302);
+    // 20 follow-ups are made, the 21st is an error.
+    engine->seen.clear();
+    engine->answers.assign(20, respond(302, { { "Location", "/r" } }));
+    o = Do({ .url = "http://h/" });
+    CHECK(o.response && o.response->status == 200 && engine->seen.size() == 21);
+    engine->answers.assign(21, respond(302, { { "Location", "/r" } }));
+    o = Do({ .url = "http://h/" });
+    CHECK(o.error == std::optional(HttpError::Kind::TooManyRedirects) && o.message == "Too many follow-up requests: 21");
+    engine->answers.clear();
+    // 408 is retried once, unless Retry-After asks for a delay; 503 only with "Retry-After: 0".
+    engine->seen.clear();
+    engine->answers = { respond(408) };
+    o = Do({ .url = "http://h/", .method = "POST", .body = "b" });
+    CHECK(o.response && o.response->status == 200 && engine->seen.size() == 2 && engine->seen[1].body == "b");
+    engine->answers = { respond(408), respond(408) };
+    o = Do({ .url = "http://h/" });
+    CHECK(o.response && o.response->status == 408);
+    engine->answers = { respond(408, { { "Retry-After", "1" } }) };
+    o = Do({ .url = "http://h/" });
+    CHECK(o.response && o.response->status == 408);
+    engine->answers = { respond(503, { { "Retry-After", "0" } }) };
+    o = Do({ .url = "http://h/" });
+    CHECK(o.response && o.response->status == 200);
+    engine->answers = { respond(503) };
+    o = Do({ .url = "http://h/" });
+    CHECK(o.response && o.response->status == 503);
+    engine->answers = { respond(503, { { "Retry-After", "0" } }), respond(503, { { "Retry-After", "0" } }) };
+    o = Do({ .url = "http://h/" });
+    CHECK(o.response && o.response->status == 503);
+    // Not following keeps the redirect.
+    engine->answers = { respond(302, { { "Location", "/x" } }) };
+    o = Do({ .url = "http://h/", .followRedirects = false });
+    CHECK(o.response && o.response->status == 302);
+    engine->answers.clear();
+    SetHttpEngine(real);
+}
+
 TEST(ConnectivityIsAStateFlow) {
     auto& c = Connectivity();
     const NetworkState before = c.Value();

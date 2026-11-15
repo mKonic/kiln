@@ -69,7 +69,10 @@ namespace kiln::net {
         // the whole transfer.
         int connectTimeoutMs = 10000;
         int readTimeoutMs = 10000;
-        // Follows up to 20 redirects (301, 302, 303 turn a POST into a GET; 307, 308 keep it).
+        // Follows redirects (300, 301, 302, 303, 307, 308; up to 20 follow-ups) as OkHttp does:
+        // 301 / 302 / 303 turn a POST into a GET without its body, 307 / 308 keep both, and a
+        // redirect to another host or port drops the Authorization header. A redirect to
+        // another scheme than http or https is returned as the response.
         bool followRedirects = true;
         // Bytes of the response body received so far, and its length when the server said (-1
         // otherwise). Called on the task's dispatcher.
@@ -144,6 +147,13 @@ namespace kiln::net {
             std::atomic<bool> abandoned{ false };
             std::shared_ptr<HttpCall> call = std::make_shared<HttpCall>();
         };
+        // The request OkHttp's RetryAndFollowUpInterceptor makes next for a response: a redirect,
+        // or the same request again for a 408 or a 503 with "Retry-After: 0" (once each).
+        // `prior` is the status of the response before this one, 0 for none.
+        std::optional<HttpRequest> FollowUp(const HttpRequest& request, const HttpResponse& response, int prior);
+        // `reference` resolved against an absolute http(s) `base` (RFC 3986 section 5.2);
+        // empty when the result is not http or https.
+        std::string ResolveUrl(std::string_view base, std::string_view reference);
         void StartFetch(HttpRequest request, std::shared_ptr<FetchState> state, std::shared_ptr<rt::JobState> job, std::coroutine_handle<> h);
     }
 

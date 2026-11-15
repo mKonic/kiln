@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <limits>
 
 namespace kiln::net {
 
@@ -68,6 +69,173 @@ namespace kiln::net {
 
     namespace detail {
         namespace {
+            struct UrlParts {
+                std::string_view scheme, authority, path, query, fragment;
+                bool hasAuthority = false, hasQuery = false, hasFragment = false;
+            };
+            UrlParts Split(std::string_view u) {
+                UrlParts p;
+                if (const auto hash = u.find('#'); hash != std::string_view::npos) {
+                    p.fragment = u.substr(hash + 1);
+                    p.hasFragment = true;
+                    u = u.substr(0, hash);
+                }
+                if (const auto q = u.find('?'); q != std::string_view::npos) {
+                    p.query = u.substr(q + 1);
+                    p.hasQuery = true;
+                    u = u.substr(0, q);
+                }
+                const auto colon = u.find(':');
+                if (colon != std::string_view::npos && colon > 0 && std::isalpha(static_cast<unsigned char>(u[0])) &&
+                    u.substr(0, colon).find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-.") == std::string_view::npos) {
+                    p.scheme = u.substr(0, colon);
+                    u = u.substr(colon + 1);
+                }
+                if (u.starts_with("//")) {
+                    u = u.substr(2);
+                    const auto slash = u.find('/');
+                    p.authority = u.substr(0, slash);
+                    p.hasAuthority = true;
+                    u = slash == std::string_view::npos ? std::string_view{} : u.substr(slash);
+                }
+                p.path = u;
+                return p;
+            }
+            std::string Lower(std::string_view s) {
+                std::string out(s);
+                for (char& c : out) c = char(std::tolower(static_cast<unsigned char>(c)));
+                return out;
+            }
+            // RFC 3986 5.2.4.
+            std::string RemoveDotSegments(std::string_view in) {
+                std::string out;
+                while (!in.empty()) {
+                    if (in.starts_with("../")) in.remove_prefix(3);
+                    else if (in.starts_with("./")) in.remove_prefix(2);
+                    else if (in.starts_with("/./")) in.remove_prefix(2);
+                    else if (in == "/.") in = "/";
+                    else if (in.starts_with("/../") || in == "/..") {
+                        in = in.size() == 3 ? std::string_view("/") : in.substr(3);
+                        const auto last = out.rfind('/');
+                        out.erase(last == std::string::npos ? 0 : last);
+                    } else if (in == "." || in == "..") in = {};
+                    else {
+                        const auto next = in.find('/', 1);
+                        out += in.substr(0, next);
+                        in = next == std::string_view::npos ? std::string_view{} : in.substr(next);
+                    }
+                }
+                return out;
+            }
+            // Host and port, as HttpUrl.canReuseConnectionFor compares them (with the scheme).
+            std::string Origin(std::string_view url) {
+                const UrlParts p = Split(url);
+                const std::string scheme = Lower(p.scheme);
+                std::string_view hostPort = p.authority;
+                if (const auto at = hostPort.rfind('@'); at != std::string_view::npos) hostPort.remove_prefix(at + 1);
+                std::string_view host = hostPort, port;
+                const auto close = hostPort.rfind(']');
+                if (const auto colon = hostPort.rfind(':'); colon != std::string_view::npos && (close == std::string_view::npos || colon > close)) {
+                    host = hostPort.substr(0, colon);
+                    port = hostPort.substr(colon + 1);
+                }
+                if (port.empty()) port = scheme == "https" ? "443" : "80";
+                return scheme + "://" + Lower(host) + ":" + std::string(port);
+            }
+            int RetryAfter(const HttpResponse& response, int defaultDelay) {
+                const auto header = response.headers.Get("Retry-After");
+                if (!header) return defaultDelay;
+                if (header->empty() || header->find_first_not_of("0123456789") != std::string::npos) return std::numeric_limits<int>::max();
+                try { return std::stoi(*header); } catch (...) { return std::numeric_limits<int>::max(); }
+            }
+        }
+
+        std::string ResolveUrl(std::string_view base, std::string_view reference) {
+            const UrlParts b = Split(base), r = Split(reference);
+            std::string scheme, authority, path, query;
+            bool hasAuthority, hasQuery;
+            if (!r.scheme.empty()) {
+                scheme = Lower(r.scheme);
+                authority = r.authority; hasAuthority = r.hasAuthority;
+                path = RemoveDotSegments(r.path);
+                query = r.query; hasQuery = r.hasQuery;
+            } else {
+                scheme = Lower(b.scheme);
+                if (r.hasAuthority) {
+                    authority = r.authority; hasAuthority = true;
+                    path = RemoveDotSegments(r.path);
+                    query = r.query; hasQuery = r.hasQuery;
+                } else {
+                    authority = b.authority; hasAuthority = b.hasAuthority;
+                    if (r.path.empty()) {
+                        path = b.path;
+                        if (r.hasQuery) { query = r.query; hasQuery = true; }
+                        else { query = b.query; hasQuery = b.hasQuery; }
+                    } else {
+                        if (r.path.starts_with('/')) path = RemoveDotSegments(r.path);
+                        else {
+                            // Merge (5.2.3).
+                            std::string merged;
+                            if (b.hasAuthority && b.path.empty()) merged = "/" + std::string(r.path);
+                            else {
+                                const auto slash = b.path.rfind('/');
+                                merged = std::string(slash == std::string_view::npos ? std::string_view{} : b.path.substr(0, slash + 1)) + std::string(r.path);
+                            }
+                            path = RemoveDotSegments(merged);
+                        }
+                        query = r.query; hasQuery = r.hasQuery;
+                    }
+                }
+            }
+            if ((scheme != "http" && scheme != "https") || !hasAuthority || authority.empty()) return {};
+            if (path.empty()) path = "/";
+            std::string out = scheme + "://" + authority + path;
+            if (hasQuery) out += "?" + query;
+            if (r.hasFragment) out += "#" + std::string(r.fragment);
+            return out;
+        }
+
+        std::optional<HttpRequest> FollowUp(const HttpRequest& request, const HttpResponse& response, int prior) {
+            const int code = response.status;
+            const std::string& method = request.method;
+            switch (code) {
+                case 300: case 301: case 302: case 303: case 307: case 308: {
+                    if (!request.followRedirects) return std::nullopt;
+                    const auto location = response.headers.Get("Location");
+                    if (!location) return std::nullopt;
+                    std::string url = ResolveUrl(request.url, *location);   // unsupported schemes stay unfollowed
+                    if (url.empty()) return std::nullopt;
+                    HttpRequest next = request;
+                    if (method != "GET" && method != "HEAD") {
+                        const bool toGet = code == 303 ? method != "PROPFIND"
+                                         : code == 307 || code == 308 ? false
+                                         : method != "PROPFIND" && method != "QUERY";
+                        if (toGet) {
+                            next.method = "GET";
+                            next.body.clear();
+                            next.bodyFile.clear();
+                            next.headers.Remove("Transfer-Encoding");
+                            next.headers.Remove("Content-Length");
+                            next.headers.Remove("Content-Type");
+                        }
+                    }
+                    // Across hosts the authentication goes.
+                    if (Origin(request.url) != Origin(url)) next.headers.Remove("Authorization");
+                    next.url = std::move(url);
+                    return next;
+                }
+                case 408:
+                    if (prior == 408 || RetryAfter(response, 0) > 0) return std::nullopt;
+                    return request;
+                case 503:
+                    if (prior == 503 || RetryAfter(response, std::numeric_limits<int>::max()) != 0) return std::nullopt;
+                    return request;
+                default:
+                    return std::nullopt;
+            }
+        }
+
+        namespace {
             // The latest progress, handed to the task's dispatcher at most once per pending post.
             struct ProgressRelay {
                 std::atomic<std::int64_t> received{ 0 }, total{ -1 };
@@ -102,7 +270,23 @@ namespace kiln::net {
                 try {
                     if (!engine) throw HttpError(HttpError::Kind::NoEngine, "kiln: no HTTP engine");
                     if (state->call->Cancelled()) throw HttpError(HttpError::Kind::Cancelled, "cancelled");
-                    state->response.emplace(engine->Execute(request, *state->call));
+                    // The engine makes one exchange; redirects and retries are followed here, the
+                    // same on every platform.
+                    HttpRequest current = request;
+                    current.onProgress = nullptr;
+                    int prior = 0;
+                    for (int followUps = 0;;) {
+                        HttpResponse response = engine->Execute(current, *state->call);
+                        std::optional<HttpRequest> next = FollowUp(current, response, prior);
+                        if (!next) {
+                            state->response.emplace(std::move(response));
+                            break;
+                        }
+                        if (++followUps > 20) throw HttpError(HttpError::Kind::TooManyRedirects, "Too many follow-up requests: " + std::to_string(followUps));
+                        if (state->call->Cancelled()) throw HttpError(HttpError::Kind::Cancelled, "cancelled");
+                        prior = response.status;
+                        current = std::move(*next);
+                    }
                 } catch (...) {
                     state->error = std::current_exception();
                     if (!request.responseFile.empty()) std::remove(request.responseFile.c_str());

@@ -49,7 +49,7 @@ namespace kiln::android {
                 env->GetJavaVM(&m_Vm);
                 m_Class = static_cast<jclass>(env->NewGlobalRef(c));
                 m_Execute = env->GetStaticMethodID(m_Class, "execute",
-                    "(JLjava/lang/String;Ljava/lang/String;[Ljava/lang/String;[BLjava/lang/String;Ljava/lang/String;IIZ)[Ljava/lang/Object;");
+                    "(JLjava/lang/String;Ljava/lang/String;[Ljava/lang/String;[BLjava/lang/String;Ljava/lang/String;II)[Ljava/lang/Object;");
                 m_Cancel = env->GetStaticMethodID(m_Class, "cancel", "(J)V");
                 jclass s = env->FindClass("java/lang/String");
                 m_String = static_cast<jclass>(env->NewGlobalRef(s));
@@ -95,7 +95,7 @@ namespace kiln::android {
                     }
                 });
                 auto* result = static_cast<jobjectArray>(env->CallStaticObjectMethod(m_Class, m_Execute, handle, method, url, headers, body, bodyFile,
-                    responseFile, jint(request.connectTimeoutMs), jint(request.readTimeoutMs), jboolean(request.followRedirects)));
+                    responseFile, jint(request.connectTimeoutMs), jint(request.readTimeoutMs)));
                 call.SetAbort(nullptr);
                 if (env->ExceptionCheck()) {
                     env->ExceptionClear();

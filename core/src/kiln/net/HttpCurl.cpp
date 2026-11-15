@@ -114,8 +114,7 @@ namespace kiln::net {
                 curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
                 curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, error);
                 curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");   // gzip, decoded, as the platform does
-                curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, request.followRedirects ? 1L : 0L);
-                curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 20L);
+                curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);   // net::Fetch follows redirects
                 curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, long(request.connectTimeoutMs));
                 if (request.readTimeoutMs > 0) {
                     // Nothing received for the read timeout: under 1 byte/s for that long.

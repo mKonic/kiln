@@ -275,7 +275,10 @@ rt::Task<> FetchCover(std::string file, rt::State<float>& progress) {
   response to a file as it arrives, for anything large. `onProgress` reports the bytes
   received on the task's thread.
 * `connectTimeoutMs` and `readTimeoutMs` default to 10 seconds; 0 waits without limit.
-  Up to 20 redirects are followed unless `followRedirects` is false.
+* Redirects are followed as OkHttp follows them, unless `followRedirects` is false. A 301, 302
+  or 303 turns a POST into a GET without its body, while a 307 or 308 keeps both. A redirect
+  to another host drops the `Authorization` header. A 408, or a 503 with `Retry-After: 0`, is
+  retried once. More than 20 follow-ups is a `TooManyRedirects` error.
 * Android refuses `http://` URLs unless the app allows them. Put a
   [network security config](https://developer.android.com/privacy-and-security/security-config)
   in `res/xml/` and name it with
