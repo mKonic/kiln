@@ -81,11 +81,15 @@ final class KilnDevice {
                 || sContext.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
     }
 
-    /** The best enabled provider: fused, then GPS, then network. */
+    /**
+     * The best enabled provider: fused, then GPS, then network. GPS only with precise location:
+     * with approximate location alone the system refuses it (SecurityException).
+     */
     private static String provider(LocationManager lm, String asked) {
         if (!asked.isEmpty()) return asked;
         if (lm.hasProvider(LocationManager.FUSED_PROVIDER) && lm.isProviderEnabled(LocationManager.FUSED_PROVIDER)) return LocationManager.FUSED_PROVIDER;
-        if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) return LocationManager.GPS_PROVIDER;
+        boolean fine = sContext.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        if (fine && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) return LocationManager.GPS_PROVIDER;
         return LocationManager.NETWORK_PROVIDER;
     }
 
