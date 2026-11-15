@@ -373,7 +373,9 @@ void ScheduleSync() {
   stops it early, because a constraint stopped holding or its time ran out, the worker's task
   is cancelled and the job runs again later.
 * Network constraints need `android.permission.ACCESS_NETWORK_STATE`. Jobs survive a reboot
-  when the app holds `android.permission.RECEIVE_BOOT_COMPLETED`.
+  when the app holds `android.permission.RECEIVE_BOOT_COMPLETED`. A force stop cancels them,
+  as does a reboot without that permission; kiln keeps each job and schedules it again when
+  the app next starts, at once if it is due.
 * On the desktop, work runs in the app's process when it is due, and constraints are
   ignored.
 
@@ -418,6 +420,7 @@ void RemindAt(std::int64_t atMillis, std::string text) {
 * The platform forgets alarms on a reboot. kiln keeps them and sets them again after the
   reboot (with `android.permission.RECEIVE_BOOT_COMPLETED`), and also when exact alarms are
   allowed again. An alarm whose time passed while the device was off goes off as it starts.
+  A force stop cancels the app's alarms too; they are set again when the app next starts.
 * On the desktop, alarms go off in the app's process, on the main dispatcher's clock.
 
 From C, `kiln_alarm_register_handler` and `kiln_alarm_schedule` do the same. kiln++ has
