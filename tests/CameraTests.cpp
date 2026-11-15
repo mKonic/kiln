@@ -441,3 +441,89 @@ TEST(CameraImageAnalysisAsCameraX) {
     fake.callbacks.onAnalysisFrame(f);
     CHECK(frames == 1);
 }
+
+TEST(CameraVideoCaptureAsCameraX) {
+    // QualitySelector.getPrioritizedQualities.
+    const std::vector<Quality> supported{ Quality::Uhd, Quality::Fhd, Quality::Hd, Quality::Sd };
+    CHECK((QualitySelector{}.PrioritizedQualities(supported) == std::vector<Quality>{ Quality::Fhd, Quality::Hd, Quality::Sd, Quality::Uhd }));
+    CHECK((QualitySelector{ { Quality::Qhd }, FallbackRule::None }.PrioritizedQualities(supported).empty()));
+    CHECK((QualitySelector{ { Quality::Qhd }, FallbackRule::Lower, Quality::Qhd }.PrioritizedQualities(supported) ==
+           std::vector<Quality>{ Quality::Fhd, Quality::Hd, Quality::Sd }));
+    CHECK((QualitySelector{ { Quality::Qhd }, FallbackRule::LowerOrHigher, Quality::Qhd }.PrioritizedQualities(supported) ==
+           std::vector<Quality>{ Quality::Fhd, Quality::Hd, Quality::Sd, Quality::Uhd }));
+    CHECK((QualitySelector{ { Quality::Lowest } }.PrioritizedQualities(supported) ==
+           std::vector<Quality>{ Quality::Sd, Quality::Hd, Quality::Fhd, Quality::Uhd }));
+    CHECK((QualitySelector{ { Quality::Highest } }.PrioritizedQualities(supported).front() == Quality::Uhd));
+    // Bitrates: 4 Mbps at 720p30, scaled; AAC 156 kbps at stereo 48 kHz.
+    CHECK(DefaultVideoBitrate({ 1280, 720 }) == 4'000'000 && DefaultVideoBitrate({ 1920, 1080 }) == 9'000'000);
+    CHECK(DefaultAudioBitrate(2, 48'000) == 156'000 && DefaultAudioBitrate(1, 44'100) == 71'662);
+
+    auto& d = rt::Dispatcher::Main();
+    FakeCamera fake;
+    fake.info.previewSizes = { { 1920, 1080 }, { 1440, 1080 }, { 1280, 720 }, { 640, 480 } };
+    std::optional<RecordingConfig> config;
+    RecordingCallbacks recording;
+    int stops = 0, pauses = 0, mutes = 0;
+    fake.Install();
+    auto host = GetCameraHost();
+    host.startRecording = [&](std::uint64_t, const RecordingConfig& c, RecordingCallbacks cb) {
+        config = c;
+        recording = std::move(cb);
+        return std::uint64_t(3);
+    };
+    host.pauseRecording = [&](std::uint64_t, bool) { ++pauses; };
+    host.muteRecording = [&](std::uint64_t, bool) { ++mutes; };
+    host.stopRecording = [&](std::uint64_t) { ++stops; };
+    SetCameraHost(std::move(host));
+    {
+        Camera camera("0", { .videoCapture = VideoCaptureOptions{} });
+        CHECK((camera.VideoSize() == ui::IntSize{ 1920, 1080 }));
+        std::vector<VideoRecordEvent> events;
+        auto listen = [&](const VideoRecordEvent& e) { events.push_back(e); };
+        // Not open: finalized (after start returns) as the source is inactive.
+        Recording early = camera.StartRecording({ .file = "/tmp/a.mp4" }, false, listen);
+        CHECK(events.empty());
+        d.RunPending();
+        CHECK(events.size() == 1 && events[0].type == VideoRecordEvent::Type::Finalize && events[0].error == VideoRecordEvent::Error::SourceInactive);
+        fake.callbacks.onOpened();
+        events.clear();
+        Recording r = camera.StartRecording({ .file = "/tmp/a.mp4", .durationLimitMs = 2000 }, true, listen, 90, true);
+        CHECK(config && (config->size == ui::IntSize{ 1920, 1080 }) && config->videoBitrate == 9'000'000 && config->audio && config->muted);
+        CHECK(config->orientationHint == 0 && config->sampleRate == 44'100 && config->channels == 1 && config->audioBitrate == 71'662);
+        // A second one while it runs: refused.
+        Recording second = camera.StartRecording({ .file = "/tmp/b.mp4" }, false, listen);
+        d.RunPending();
+        CHECK(events.size() == 1 && events[0].error == VideoRecordEvent::Error::RecorderError);
+        events.clear();
+        recording.onStarted();
+        recording.onStatus({ .recordedDurationNanos = 500'000'000, .numBytesRecorded = 1000, .audioState = RecordingStats::AudioState::Active });
+        CHECK(events.size() == 2 && events[0].type == VideoRecordEvent::Type::Start && events[1].type == VideoRecordEvent::Type::Status);
+        CHECK(events[1].stats.audioState == RecordingStats::AudioState::Muted && events[1].stats.numBytesRecorded == 1000);
+        r.Mute(false);
+        r.Pause();
+        r.Pause();
+        r.Resume();
+        CHECK(mutes == 1 && pauses == 2 && events[2].type == VideoRecordEvent::Type::Pause && events[3].type == VideoRecordEvent::Type::Resume);
+        // The duration limit stops it; the host finishes; Finalize carries the limit and the file.
+        recording.onStatus({ .recordedDurationNanos = 2'000'000'000, .numBytesRecorded = 5000 });
+        CHECK(stops == 1 && events.back().stats.audioState == RecordingStats::AudioState::Active);
+        recording.onFinished(VideoRecordEvent::Error::None, {}, true);
+        CHECK(events.back().type == VideoRecordEvent::Type::Finalize && events.back().error == VideoRecordEvent::Error::DurationLimitReached);
+        CHECK(events.back().outputUri == "/tmp/a.mp4" && !r.Active());
+        r.Stop();
+        CHECK(stops == 1);
+        // Destroying a recording stops it.
+        {
+            Recording scoped = camera.StartRecording({ .file = "/tmp/c.mp4" }, false, listen);
+            CHECK(scoped.Active());
+        }
+        CHECK(stops == 2);
+        recording.onFinished(VideoRecordEvent::Error::NoValidData, "No valid data was recorded.", false);
+        CHECK(events.back().error == VideoRecordEvent::Error::NoValidData && events.back().outputUri.empty());
+        // The camera closing ends a recording as its source going.
+        Recording last = camera.StartRecording({ .file = "/tmp/d.mp4" }, false, listen);
+        fake.callbacks.onError(CameraState::Error::CameraFatal, "gone");
+        CHECK(events.back().type == VideoRecordEvent::Type::Finalize && events.back().error == VideoRecordEvent::Error::SourceInactive);
+    }
+    d.RunPending();
+}

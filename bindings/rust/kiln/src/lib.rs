@@ -86,6 +86,7 @@ __kiln_callback!(sys::kiln_fn_int, (v: i32) -> ());
 __kiln_callback!(sys::kiln_fn_str, (s: *const ::std::ffi::c_char) -> ());
 __kiln_callback!(sys::kiln_fn_camera_done, (error: *const ::std::ffi::c_char) -> ());
 __kiln_callback!(sys::kiln_fn_picture, (error: i32, text: *const ::std::ffi::c_char) -> ());
+__kiln_callback!(sys::kiln_fn_record_event, (event: *const sys::kiln_record_event) -> ());
 __kiln_callback!(sys::kiln_fn_rating, (kind: i32, rated: bool, liked: bool, max_stars: i32, value: f32) -> ());
 __kiln_callback!(sys::kiln_fn_media_request, (media_id: *const ::std::ffi::c_char, uri: *const ::std::ffi::c_char, query: *const ::std::ffi::c_char) -> *const ::std::ffi::c_char);
 __kiln_callback!(sys::kiln_fn_float, (v: f32) -> ());
@@ -989,6 +990,31 @@ impl Camera {
     #[track_caller]
     pub fn preview(&self, modifier: Modifier, tap_to_focus: bool, pinch_to_zoom: bool) {
         unsafe { sys::kiln_camera_preview_of(here(), modifier.0, self.0, tap_to_focus, pinch_to_zoom) }
+    }
+}
+/// A camera with video capture (see `kiln_remember_video_camera`).
+#[track_caller]
+pub fn remember_video_camera(camera_id: &str, image_capture: bool) -> Camera {
+    let id = CStrBuf::new(camera_id);
+    Camera(unsafe { sys::kiln_remember_video_camera(here(), id.ptr(), image_capture, true) })
+}
+/// A recording; stopped when dropped (see `kiln_camera_start_recording`).
+pub struct Recording(*mut sys::kiln_recording);
+impl Recording {
+    pub fn pause(&self) { unsafe { sys::kiln_recording_pause(self.0) } }
+    pub fn resume(&self) { unsafe { sys::kiln_recording_resume(self.0) } }
+    pub fn mute(&self, muted: bool) { unsafe { sys::kiln_recording_mute(self.0, muted) } }
+    pub fn stop(&self) { unsafe { sys::kiln_recording_stop(self.0) } }
+}
+impl Drop for Recording {
+    fn drop(&mut self) { unsafe { sys::kiln_recording_free(self.0) } }
+}
+impl Camera {
+    /// Starts recording into `file`; `listener` gets each event.
+    pub fn start_recording(&self, file: &str, with_audio: bool, display_rotation: i32,
+                           listener: impl FnMut(*const sys::kiln_record_event) + 'static) -> Recording {
+        let f = CStrBuf::new(file);
+        Recording(unsafe { sys::kiln_camera_start_recording(self.0, f.ptr(), with_audio, 0, 0, display_rotation, listener.into_callback()) })
     }
 }
 /// The default async image options, to change before passing to [`async_image`].

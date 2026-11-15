@@ -662,9 +662,41 @@ namespace kpp {
         void preview(Modifier m = {}, bool tapToFocus = true, bool pinchToZoom = true, Key key = {}) {
             kiln_camera_preview_of(key, m, m_C, tapToFocus, pinchToZoom);
         }
+        // A recording, stopped when this goes; see kiln_camera_start_recording.
+        class Recording {
+        public:
+            Recording(Recording&& o) noexcept : m_R(std::exchange(o.m_R, nullptr)) {}
+            Recording& operator=(Recording&& o) noexcept {
+                if (this != &o) {
+                    kiln_recording_free(m_R);
+                    m_R = std::exchange(o.m_R, nullptr);
+                }
+                return *this;
+            }
+            ~Recording() { kiln_recording_free(m_R); }
+            void pause() { kiln_recording_pause(m_R); }
+            void resume() { kiln_recording_resume(m_R); }
+            void mute(bool m) { kiln_recording_mute(m_R, m); }
+            void stop() { kiln_recording_stop(m_R); }
+
+        private:
+            friend class Camera;
+            explicit Recording(kiln_recording* r) : m_R(r) {}
+            kiln_recording* m_R;
+        };
+        Recording startRecording(const std::string& file, bool withAudio, Callback<kiln_fn_record_event> listener, int32_t displayRotation = 0,
+                                 int64_t fileSizeLimitBytes = 0, int64_t durationLimitMs = 0) {
+            return Recording(kiln_camera_start_recording(m_C, file.c_str(), withAudio, fileSizeLimitBytes, durationLimitMs, displayRotation,
+                                                         listener.release()));
+        }
+        // With video capture: Camera::video(id, ...).
+        static Camera video(const char* cameraId, bool imageCapture = true, Key key = {}) {
+            return Camera(kiln_remember_video_camera(key, cameraId, imageCapture, true));
+        }
         kiln_camera* get() const { return m_C; }
 
     private:
+        explicit Camera(kiln_camera* c) : m_C(c) {}
         kiln_camera* m_C;
     };
 

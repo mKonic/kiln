@@ -210,6 +210,82 @@ namespace kiln::media {
     // (else the largest).
     ui::IntSize ChooseAnalysisSize(const std::vector<ui::IntSize>& sizes, ui::IntSize target);
 
+    // --- VideoCapture (Recorder) -----------------------------------------------------------------
+
+    // Quality: SD 720x480 (or 640x480), HD 1280x720, FHD 1920x1080, QHD 2560x1440, UHD 3840x2160.
+    enum class Quality { Lowest, Highest, Sd, Hd, Fhd, Qhd, Uhd };
+    // FallbackStrategy's rules.
+    enum class FallbackRule { None, HigherOrLower, Higher, LowerOrHigher, Lower };
+    // QualitySelector: the preferred qualities in order, then the fallback rule around a quality
+    // for a camera supporting none of them. Default: Recorder.DEFAULT_QUALITY_SELECTOR.
+    struct QualitySelector {
+        std::vector<Quality> qualities{ Quality::Fhd, Quality::Hd, Quality::Sd };
+        FallbackRule fallbackRule = FallbackRule::HigherOrLower;
+        Quality fallbackQuality = Quality::Fhd;
+        // getPrioritizedQualities: of the supported qualities (largest first), in preference order.
+        std::vector<Quality> PrioritizedQualities(const std::vector<Quality>& supported) const;
+    };
+    // The qualities a camera can record (its stream sizes), largest first.
+    std::vector<Quality> SupportedQualities(const CameraInfo& camera);
+    // A quality's size on this camera (the first of its sizes the camera streams).
+    ui::IntSize QualitySize(const CameraInfo& camera, Quality quality);
+    // VideoEncoderConfigDefaultResolver: 4 Mbps at 720p30 (8-bit AVC), scaled by area and frame rate.
+    int DefaultVideoBitrate(ui::IntSize size, int frameRate = 30);
+    // AudioEncoderConfigDefaultResolver: 156 kbps for stereo 48 kHz AAC, scaled.
+    int DefaultAudioBitrate(int channels, int sampleRate);
+
+    struct VideoCaptureOptions {
+        QualitySelector qualitySelector;
+        int targetVideoEncodingBitRate = 0;   // 0: the default for the size
+    };
+    // FileOutputOptions: the file, and limits that end the recording (0: none).
+    struct FileOutputOptions {
+        std::string file;
+        std::int64_t fileSizeLimitBytes = 0;
+        std::int64_t durationLimitMs = 0;
+    };
+    // RecordingStats with AudioStats.
+    struct RecordingStats {
+        std::int64_t recordedDurationNanos = 0, numBytesRecorded = 0;
+        // AudioStats.AUDIO_STATE_*.
+        enum class AudioState { Active = 0, Disabled = 1, SourceSilenced = 2, EncoderError = 3, SourceError = 4, Muted = 5 };
+        AudioState audioState = AudioState::Disabled;
+        double audioAmplitude = 0;   // 0..1
+        bool operator==(const RecordingStats&) const = default;
+    };
+    // VideoRecordEvent: Start, Status (while it records), Pause, Resume, Finalize (once, with
+    // VideoRecordEvent.Finalize's error codes and the file written).
+    struct VideoRecordEvent {
+        enum class Type { Start, Status, Pause, Resume, Finalize };
+        enum class Error { None = 0, Unknown = 1, FileSizeLimitReached = 2, InsufficientStorage = 3, SourceInactive = 4,
+                           InvalidOutputOptions = 5, EncodingFailed = 6, RecorderError = 7, NoValidData = 8, DurationLimitReached = 9 };
+        Type type = Type::Start;
+        RecordingStats stats;
+        Error error = Error::None;
+        std::string message;
+        std::string outputUri;            // Finalize: the file (none when nothing was kept)
+    };
+    class Camera;
+    // A recording in progress (Recording): pause, resume, mute, stop. Destroying it stops it.
+    class Recording {
+    public:
+        Recording() = default;
+        Recording(Recording&&) noexcept = default;
+        Recording& operator=(Recording&& o) noexcept;
+        ~Recording();
+        void Pause();
+        void Resume();
+        void Mute(bool muted);
+        void Stop();
+        bool Active() const;
+        struct State;
+
+    private:
+        friend class Camera;
+        explicit Recording(std::shared_ptr<State> s) : m_State(std::move(s)) {}
+        std::shared_ptr<State> m_State;
+    };
+
     // --- the platform (camera2) -----------------------------------------------------------------
 
     // CaptureRequest keys kiln sets (camera2 values: CONTROL_AF_MODE 1 auto, 4 continuous
@@ -237,6 +313,25 @@ namespace kiln::media {
     inline constexpr int kAeStateInactive = 0, kAeStateSearching = 1, kAeStateConverged = 2, kAeStateLocked = 3,
                          kAeStateFlashRequired = 4, kAeStatePrecapture = 5;
     inline constexpr int kAwbStateInactive = 0, kAwbStateSearching = 1, kAwbStateConverged = 2, kAwbStateLocked = 3;
+
+    // What the host records (Recorder's resolved encoder settings): H.264 into an MP4 at this size,
+    // with AAC audio from the microphone when audio is on.
+    struct RecordingConfig {
+        std::string file;
+        ui::IntSize size;
+        int videoBitrate = 0, frameRate = 30;
+        bool audio = false, muted = false;
+        int sampleRate = 44100, channels = 1, audioBitrate = 0;
+        int orientationHint = 0;              // MediaMuxer.setOrientationHint
+        bool operator==(const RecordingConfig&) const = default;
+    };
+    struct RecordingCallbacks {
+        // On the main thread: the first frame is recorded; the stats after each sample written;
+        // finished (stopped, or failed with an error) once.
+        kiln::Function<void()> onStarted;
+        kiln::Function<void(const RecordingStats& stats)> onStatus;
+        kiln::Function<void(VideoRecordEvent::Error error, std::string message, bool kept)> onFinished;
+    };
 
     // The session's outputs: the preview surface (none: no preview yet), a JPEG stream for still
     // capture and a YUV_420_888 stream for analysis (an empty size: none).
@@ -270,6 +365,12 @@ namespace kiln::media {
                             kiln::Function<void(std::vector<std::uint8_t> jpeg, std::string error)> done)> capture;
         // Closes it; its surfaces are free when this returns.
         kiln::Function<void(std::uint64_t camera)> close;
+        // Recording: the host adds the encoder's surface to the session and records into the
+        // file; returns a handle, 0 if it cannot start (onFinished is not called then).
+        kiln::Function<std::uint64_t(std::uint64_t camera, const RecordingConfig& config, RecordingCallbacks callbacks)> startRecording;
+        kiln::Function<void(std::uint64_t recording, bool paused)> pauseRecording;
+        kiln::Function<void(std::uint64_t recording, bool muted)> muteRecording;
+        kiln::Function<void(std::uint64_t recording)> stopRecording;
     };
     void SetCameraHost(CameraHost host);
     const CameraHost& GetCameraHost();
@@ -281,6 +382,8 @@ namespace kiln::media {
         std::optional<ImageCaptureOptions> imageCapture;
         // ImageAnalysis bound too; its analyzer is set with SetAnalyzer.
         std::optional<ImageAnalysisOptions> imageAnalysis;
+        // VideoCapture with a Recorder: StartRecording records.
+        std::optional<VideoCaptureOptions> videoCapture;
     };
 
     // A camera with its use cases (ProcessCameraProvider.bindToLifecycle's Camera): it opens when
@@ -322,6 +425,14 @@ namespace kiln::media {
         // The display rotation (Surface.ROTATION_* in degrees) frames' rotation is relative to
         // (setTargetRotation; CameraPreview sets it).
         void SetTargetRotation(int displayRotation);
+
+        // Recorder.prepareRecording(...).start: one recording at a time (another while one runs
+        // finalizes at once with RecorderError). withAudio needs android.permission.RECORD_AUDIO.
+        // The listener gets every VideoRecordEvent on the main thread.
+        Recording StartRecording(FileOutputOptions output, bool withAudio, kiln::Function<void(const VideoRecordEvent&)> listener,
+                                 int displayRotation = 0, bool initialMuted = false);
+        // The quality the recorder chose (its size), or an empty size without VideoCapture.
+        ui::IntSize VideoSize() const;
 
         // The preview's surface (CameraPreview sets it); an empty surface stops the preview.
         void SetPreviewSurface(ui::PlatformSurface surface, ui::IntSize size);

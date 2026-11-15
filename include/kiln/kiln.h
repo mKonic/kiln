@@ -1277,6 +1277,29 @@ typedef struct kiln_fn_camera_done { void (*call)(void* user, const char* error)
 /* A picture: error (ImageCaptureException's code, -1 none), and the file saved or the message. */
 typedef struct kiln_fn_picture { void (*call)(void* user, int32_t error, const char* uri_or_message); void* user; void (*drop)(void* user); } kiln_fn_picture;
 KILN_API kiln_camera* kiln_remember_camera(kiln_key key, const char* camera_id, bool image_capture, int32_t capture_mode, int32_t flash_mode);
+/* A camera with video capture too (a Recorder with its default quality selector) when
+ * video_capture; image capture as kiln_remember_camera. */
+KILN_API kiln_camera* kiln_remember_video_camera(kiln_key key, const char* camera_id, bool image_capture, bool video_capture);
+/* A recording (Recorder): events as VideoRecordEvent (type 0 start, 1 status, 2 pause, 3 resume,
+ * 4 finalize, with its error code; uri: the file on finalize). */
+typedef struct kiln_recording kiln_recording;
+typedef struct kiln_record_event {
+    int32_t type, error;
+    int64_t recorded_duration_nanos, num_bytes_recorded;
+    int32_t audio_state;                /* AudioStats.AUDIO_STATE_* */
+    const char* message;
+    const char* uri;
+} kiln_record_event;
+typedef struct kiln_fn_record_event { void (*call)(void* user, const kiln_record_event* event); void* user; void (*drop)(void* user); } kiln_fn_record_event;
+/* Starts recording into file (with_audio needs RECORD_AUDIO); limits 0: none. The recording is
+ * the caller's: kiln_recording_stop and kiln_recording_free (which stops it). */
+KILN_API kiln_recording* kiln_camera_start_recording(kiln_camera* camera, const char* file, bool with_audio, int64_t file_size_limit_bytes,
+                                                     int64_t duration_limit_ms, int32_t display_rotation, kiln_fn_record_event listener);
+KILN_API void kiln_recording_pause(kiln_recording* recording);
+KILN_API void kiln_recording_resume(kiln_recording* recording);
+KILN_API void kiln_recording_mute(kiln_recording* recording, bool muted);
+KILN_API void kiln_recording_stop(kiln_recording* recording);
+KILN_API void kiln_recording_free(kiln_recording* recording);
 KILN_API void kiln_camera_get_state(kiln_camera* camera, kiln_camera_state* out);
 KILN_API void kiln_camera_set_zoom_ratio(kiln_camera* camera, float ratio, kiln_fn_camera_done done);
 KILN_API void kiln_camera_set_linear_zoom(kiln_camera* camera, float linear_zoom, kiln_fn_camera_done done);

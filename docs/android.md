@@ -931,6 +931,18 @@ camera.TakePicture({ .file = kiln::ui::CacheDir() + "/photo.jpg" }, [&](kiln::me
   that arrive while it runs are dropped, as CameraX's keep-only-latest strategy does.
   `AnalysisFormat::Rgba8888` converts frames the way CameraX does. To hand results to the UI,
   take `rt::Dispatcher::Main()` on the main thread, then call its `PostFromAnyThread`.
+* **Video.** Add `.videoCapture = kiln::media::VideoCaptureOptions{}` to the options to bind
+  CameraX's `Recorder`:
+  - The quality selector picks FHD, then HD, then SD, falling back as CameraX does, and the
+    bitrates follow CameraX's defaults.
+  - `StartRecording` records H.264 video into an MP4 file, upright for the display rotation.
+    With audio, it also records AAC from the microphone, which needs
+    `android.permission.RECORD_AUDIO`.
+  - It returns a `Recording` you can pause, resume, mute or stop. Destroying it stops it.
+  - The listener gets CameraX's events: start, status (duration, bytes, audio state), pause,
+    resume, and a final event with the file or one of CameraX's error codes.
+  - A file size or duration limit ends the recording. A recording that captured nothing deletes
+    its empty file.
 
 ### Your own rendering
 

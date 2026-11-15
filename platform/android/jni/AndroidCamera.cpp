@@ -8,6 +8,7 @@
 #include "kiln/media/Camera.h"
 #include "kiln/runtime/Task.h"
 
+#include <aaudio/AAudio.h>
 #include <android/log.h>
 #include <android/native_window.h>
 #include <camera/NdkCameraDevice.h>
@@ -15,6 +16,15 @@
 #include <camera/NdkCameraMetadata.h>
 #include <media/NdkImage.h>
 #include <media/NdkImageReader.h>
+#include <media/NdkMediaCodec.h>
+#include <media/NdkMediaMuxer.h>
+
+#include <atomic>
+#include <cmath>
+#include <ctime>
+#include <fcntl.h>
+#include <thread>
+#include <unistd.h>
 
 #include <algorithm>
 #include <cstring>
@@ -50,6 +60,13 @@ namespace kiln::android {
             ANativeWindow* analysisWindow = nullptr;
             ACaptureSessionOutput* analysisOutput = nullptr;
             ACameraOutputTarget* analysisTarget = nullptr;
+            // A recording's encoder surface, while it records.
+            ANativeWindow* recordWindow = nullptr;
+            ACaptureSessionOutput* recordOutput = nullptr;
+            ACameraOutputTarget* recordTarget = nullptr;
+            media::CameraOutputs lastOutputs;
+            bool realtimeTimestamps = false;         // SENSOR_INFO_TIMESTAMP_SOURCE: CLOCK_BOOTTIME
+            std::atomic<bool> lost{ false };          // disconnected or failed: no more sessions
             media::CameraRequest settings;
             media::CameraHost::Callbacks callbacks;
             std::deque<Done> captures;               // waiting for their JPEG, in order
@@ -72,16 +89,19 @@ namespace kiln::android {
                 if (repeating) ACaptureRequest_free(std::exchange(repeating, nullptr));
                 if (previewTarget) ACameraOutputTarget_free(std::exchange(previewTarget, nullptr));
                 if (analysisTarget) ACameraOutputTarget_free(std::exchange(analysisTarget, nullptr));
+                if (recordTarget) ACameraOutputTarget_free(std::exchange(recordTarget, nullptr));
                 if (jpegTarget) ACameraOutputTarget_free(std::exchange(jpegTarget, nullptr));
                 if (outputs) {
                     if (previewOutput) ACaptureSessionOutputContainer_remove(outputs, previewOutput);
                     if (jpegOutput) ACaptureSessionOutputContainer_remove(outputs, jpegOutput);
                     if (analysisOutput) ACaptureSessionOutputContainer_remove(outputs, analysisOutput);
+                    if (recordOutput) ACaptureSessionOutputContainer_remove(outputs, recordOutput);
                     ACaptureSessionOutputContainer_free(std::exchange(outputs, nullptr));
                 }
                 if (previewOutput) ACaptureSessionOutput_free(std::exchange(previewOutput, nullptr));
                 if (jpegOutput) ACaptureSessionOutput_free(std::exchange(jpegOutput, nullptr));
                 if (analysisOutput) ACaptureSessionOutput_free(std::exchange(analysisOutput, nullptr));
+                if (recordOutput) ACaptureSessionOutput_free(std::exchange(recordOutput, nullptr));
                 if (preview) ANativeWindow_release(std::exchange(preview, nullptr));
             }
             // On the main thread (Close): the session, the device, then the readers. A callback
@@ -129,6 +149,7 @@ namespace kiln::android {
             }
         }
         void ReportError(const std::shared_ptr<Device>& d, media::CameraState::Error e, std::string message) {
+            if (e != media::CameraState::Error::OtherRecoverable && e != media::CameraState::Error::StreamConfig) d->lost = true;
             __android_log_print(ANDROID_LOG_ERROR, "kiln", "camera: %s", message.c_str());
             if (d->main && d->callbacks.onError) d->main->PostFromAnyThread([f = d->callbacks.onError, e, message]() mutable { f(e, message); });
         }
@@ -339,6 +360,13 @@ namespace kiln::android {
                              : media::CameraState::Error::CameraFatal;
                 if (auto d = Find(c)) ReportError(d, e, "the camera failed (" + std::to_string(error) + ")");
             };
+            ACameraMetadata* meta = nullptr;
+            if (ACameraManager_getCameraCharacteristics(Manager(), id.c_str(), &meta) == ACAMERA_OK) {
+                ACameraMetadata_const_entry e{};
+                if (ACameraMetadata_getConstEntry(meta, ACAMERA_SENSOR_INFO_TIMESTAMP_SOURCE, &e) == ACAMERA_OK && e.count)
+                    d->realtimeTimestamps = e.data.u8[0] == ACAMERA_SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME;
+                ACameraMetadata_free(meta);
+            }
             const camera_status_t s = ACameraManager_openCamera(Manager(), id.c_str(), &d->deviceCallbacks, &d->device);
             if (s != ACAMERA_OK) {
                 ReportError(d, StateError(s), StatusText(s));
@@ -351,9 +379,10 @@ namespace kiln::android {
 
         bool Configure(std::uint64_t handle, const media::CameraOutputs& outputs, const media::CameraRequest& request) {
             auto d = Find(handle);
-            if (!d || !d->device) return false;
+            if (!d || !d->device || d->lost) return false;
             d->CloseSession();
             d->settings = request;
+            d->lastOutputs = outputs;
             void* ctx = Context(handle);
             if (outputs.jpegSize.width > 0 && !d->reader) {
                 if (AImageReader_new(outputs.jpegSize.width, outputs.jpegSize.height, AIMAGE_FORMAT_JPEG, 2, &d->reader) != AMEDIA_OK) return false;
@@ -368,7 +397,7 @@ namespace kiln::android {
                 AImageReader_setImageListener(d->analysis, &listener);
                 AImageReader_getWindow(d->analysis, &d->analysisWindow);
             }
-            if (!outputs.preview.nativeWindow && !d->readerWindow && !d->analysisWindow) return true;   // nothing to stream to yet
+            if (!outputs.preview.nativeWindow && !d->readerWindow && !d->analysisWindow && !d->recordWindow) return true;   // nothing to stream to yet
             if (ACaptureSessionOutputContainer_create(&d->outputs) != ACAMERA_OK) return false;
             if (outputs.preview.nativeWindow) {
                 d->preview = static_cast<ANativeWindow*>(outputs.preview.nativeWindow);
@@ -390,6 +419,12 @@ namespace kiln::android {
                     || ACameraOutputTarget_create(d->analysisWindow, &d->analysisTarget) != ACAMERA_OK)
                     return false;
             }
+            if (d->recordWindow) {
+                if (ACaptureSessionOutput_create(d->recordWindow, &d->recordOutput) != ACAMERA_OK
+                    || ACaptureSessionOutputContainer_add(d->outputs, d->recordOutput) != ACAMERA_OK
+                    || ACameraOutputTarget_create(d->recordWindow, &d->recordTarget) != ACAMERA_OK)
+                    return false;
+            }
             d->sessionCallbacks.context = ctx;
             d->sessionCallbacks.onClosed = [](void*, ACameraCaptureSession*) {};
             d->sessionCallbacks.onReady = [](void*, ACameraCaptureSession*) {};
@@ -404,10 +439,11 @@ namespace kiln::android {
             d->resultCallbacks.onCaptureCompleted = &OnCompleted;
             d->stillCallbacks = d->resultCallbacks;
             d->stillCallbacks.onCaptureFailed = &OnStillFailed;
-            if (d->previewTarget || d->analysisTarget) {
+            if (d->previewTarget || d->analysisTarget || d->recordTarget) {
                 if (ACameraDevice_createCaptureRequest(d->device, TEMPLATE_PREVIEW, &d->repeating) != ACAMERA_OK) return false;
                 if (d->previewTarget) ACaptureRequest_addTarget(d->repeating, d->previewTarget);
                 if (d->analysisTarget) ACaptureRequest_addTarget(d->repeating, d->analysisTarget);
+                if (d->recordTarget) ACaptureRequest_addTarget(d->repeating, d->recordTarget);
                 Apply(d->repeating, request);
                 s = ACameraCaptureSession_setRepeatingRequest(d->session, &d->resultCallbacks, 1, &d->repeating, nullptr);
                 if (s != ACAMERA_OK) ReportError(d, media::CameraState::Error::OtherRecoverable, StatusText(s));
@@ -472,6 +508,383 @@ namespace kiln::android {
             }
         }
 
+        // --- recording (Recorder: an H.264 encoder fed by the camera, AAC from the microphone,
+        // an MP4 muxer) --------------------------------------------------------------------------
+
+        struct Recorder : std::enable_shared_from_this<Recorder> {
+            std::uint64_t id = 0, camera = 0;
+            media::RecordingConfig config;
+            media::RecordingCallbacks callbacks;
+            rt::Dispatcher* main = nullptr;
+            clockid_t clock = CLOCK_MONOTONIC;       // the camera's timestamps' clock
+            AMediaCodec* video = nullptr;
+            AMediaCodec* audio = nullptr;
+            ANativeWindow* input = nullptr;
+            AAudioStream* mic = nullptr;
+            AMediaMuxer* muxer = nullptr;
+            int fd = -1;
+            std::thread videoThread, audioThread;
+            std::atomic<bool> stopping{ false }, muted{ false };
+            // Pause: samples between pausing and resuming are dropped and the time skipped.
+            std::mutex timeMutex;
+            bool paused = false;
+            std::int64_t pauseStartUs = 0, pausedTotalUs = 0;
+            std::vector<std::pair<std::int64_t, std::int64_t>> pauses;   // [start, end) in source time
+            // The muxer starts once every track has its format; samples wait until then.
+            std::mutex muxMutex;
+            int videoTrack = -1, audioTrack = -1;
+            bool started = false, audioEnabled = false;
+            struct Pending { int track; std::vector<std::uint8_t> data; AMediaCodecBufferInfo info; };
+            std::vector<Pending> pending;
+            std::int64_t firstUs = -1, lastUs = 0, bytes = 0;
+            bool videoWritten = false, reportedStart = false;
+            std::atomic<int> amplitude{ 0 };          // 0..32767
+            media::RecordingStats::AudioState audioState = media::RecordingStats::AudioState::Disabled;
+            media::VideoRecordEvent::Error error = media::VideoRecordEvent::Error::None;
+            std::string errorMessage;
+
+            std::int64_t NowUs() const {
+                timespec t{};
+                clock_gettime(clock, &t);
+                return std::int64_t(t.tv_sec) * 1'000'000 + t.tv_nsec / 1000;
+            }
+            // A sample's time in the file: before any pause it ends at, less the paused time; in
+            // a pause: dropped.
+            std::optional<std::int64_t> MapTime(std::int64_t us) {
+                std::lock_guard lock(timeMutex);
+                std::int64_t skipped = 0;
+                for (auto [a, b] : pauses) {
+                    if (us >= a && us < b) return std::nullopt;
+                    if (us >= b) skipped += b - a;
+                }
+                if (paused && us >= pauseStartUs) return std::nullopt;
+                return us - skipped;
+            }
+
+            void Write(int track, const std::uint8_t* data, const AMediaCodecBufferInfo& info) {
+                std::lock_guard lock(muxMutex);
+                if (!started) {
+                    pending.push_back({ track, std::vector<std::uint8_t>(data + info.offset, data + info.offset + info.size), info });
+                    pending.back().info.offset = 0;
+                    return;
+                }
+                WriteLocked(track, data, info);
+            }
+            void WriteLocked(int track, const std::uint8_t* data, const AMediaCodecBufferInfo& info) {
+                if (track == videoTrack) videoWritten = true;
+                if (firstUs < 0) firstUs = info.presentationTimeUs;
+                AMediaCodecBufferInfo i = info;
+                i.presentationTimeUs = std::max<std::int64_t>(0, info.presentationTimeUs - firstUs);
+                if (AMediaMuxer_writeSampleData(muxer, std::size_t(track), data, &i) != AMEDIA_OK) return;
+                bytes += info.size;
+                lastUs = std::max(lastUs, i.presentationTimeUs);
+                if (track != videoTrack) return;
+                media::RecordingStats st;
+                st.recordedDurationNanos = lastUs * 1000;
+                st.numBytesRecorded = bytes;
+                st.audioState = audioState;
+                st.audioAmplitude = double(amplitude.load()) / 32767.0;
+                const bool first = !reportedStart;
+                reportedStart = true;
+                main->PostFromAnyThread([cb = callbacks.onStarted, status = callbacks.onStatus, st, first]() mutable {
+                    if (first && cb) cb();
+                    if (status) status(st);
+                });
+            }
+            void StartMuxerIfReady() {
+                // Under muxMutex.
+                if (started || videoTrack < 0 || (audioEnabled && audioTrack < 0)) return;
+                if (AMediaMuxer_start(muxer) != AMEDIA_OK) {
+                    error = media::VideoRecordEvent::Error::RecorderError;
+                    errorMessage = "the muxer cannot start";
+                    return;
+                }
+                started = true;
+                // Samples in time order across the tracks.
+                std::stable_sort(pending.begin(), pending.end(), [](const Pending& a, const Pending& b) {
+                    return a.info.presentationTimeUs < b.info.presentationTimeUs;
+                });
+                // The file starts with a video key frame.
+                bool keyFrameSeen = false;
+                for (auto& p : pending) {
+                    if (p.track == videoTrack && (p.info.flags & 1 /* KEY_FRAME */)) keyFrameSeen = true;
+                    if (!keyFrameSeen) continue;
+                    WriteLocked(p.track, p.data.data(), p.info);
+                }
+                pending.clear();
+            }
+            void AddTrack(AMediaCodec* codec, bool isVideo) {
+                AMediaFormat* format = AMediaCodec_getOutputFormat(codec);
+                std::lock_guard lock(muxMutex);
+                const ssize_t track = AMediaMuxer_addTrack(muxer, format);
+                AMediaFormat_delete(format);
+                if (isVideo) videoTrack = int(track);
+                else audioTrack = int(track);
+                StartMuxerIfReady();
+            }
+            // Drains an encoder's output into the muxer; true at the end of the stream.
+            bool Drain(AMediaCodec* codec, bool isVideo, std::int64_t timeoutUs) {
+                AMediaCodecBufferInfo info{};
+                const ssize_t index = AMediaCodec_dequeueOutputBuffer(codec, &info, timeoutUs);
+                if (index == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
+                    AddTrack(codec, isVideo);
+                    return false;
+                }
+                if (index < 0) return false;
+                std::size_t size = 0;
+                std::uint8_t* data = AMediaCodec_getOutputBuffer(codec, std::size_t(index), &size);
+                const bool end = info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM;
+                if (data && info.size > 0 && !(info.flags & AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG)) {
+                    if (auto t = MapTime(info.presentationTimeUs)) {
+                        info.presentationTimeUs = *t;
+                        Write(isVideo ? videoTrack : audioTrack, data, info);
+                    }
+                }
+                AMediaCodec_releaseOutputBuffer(codec, std::size_t(index), false);
+                return end;
+            }
+
+            void VideoLoop() {
+                while (!Drain(video, true, 10'000)) {}
+            }
+            void AudioLoop() {
+                const int frames = config.sampleRate / 50;   // 20 ms
+                std::vector<std::int16_t> buffer(std::size_t(frames * config.channels));
+                std::int64_t framesRead = 0;
+                bool ended = false;
+                while (!ended) {
+                    const bool last = stopping.load();
+                    aaudio_result_t n = mic ? AAudioStream_read(mic, buffer.data(), frames, 100'000'000) : 0;
+                    if (n < 0) {
+                        audioState = media::RecordingStats::AudioState::SourceError;
+                        n = 0;
+                    }
+                    if (n > 0) {
+                        // The time of the first frame read: the stream's timestamp mapped to it.
+                        std::int64_t position = 0, timeNs = 0;
+                        std::int64_t us;
+                        if (AAudioStream_getTimestamp(mic, clock, &position, &timeNs) == AAUDIO_OK)
+                            us = timeNs / 1000 + (framesRead - position) * 1'000'000 / config.sampleRate;
+                        else
+                            us = NowUs() - std::int64_t(n) * 1'000'000 / config.sampleRate;
+                        framesRead += n;
+                        int peak = 0;
+                        for (aaudio_result_t i = 0; i < n * config.channels; ++i) peak = std::max(peak, std::abs(int(buffer[std::size_t(i)])));
+                        amplitude = std::min(peak, 32767);
+                        if (muted.load()) std::fill(buffer.begin(), buffer.begin() + n * config.channels, 0);
+                        Feed(reinterpret_cast<const std::uint8_t*>(buffer.data()), std::size_t(n) * config.channels * 2, us, false);
+                    }
+                    if (last) {
+                        Feed(nullptr, 0, NowUs(), true);
+                        while (!Drain(audio, false, 10'000)) {}
+                        ended = true;
+                    } else {
+                        while (DrainOnce()) {}
+                    }
+                }
+            }
+            bool DrainOnce() {
+                AMediaCodecBufferInfo info{};
+                const ssize_t index = AMediaCodec_dequeueOutputBuffer(audio, &info, 0);
+                if (index == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
+                    AddTrack(audio, false);
+                    return true;
+                }
+                if (index < 0) return false;
+                std::size_t size = 0;
+                std::uint8_t* data = AMediaCodec_getOutputBuffer(audio, std::size_t(index), &size);
+                if (data && info.size > 0 && !(info.flags & AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG))
+                    if (auto t = MapTime(info.presentationTimeUs)) {
+                        info.presentationTimeUs = *t;
+                        Write(audioTrack, data, info);
+                    }
+                AMediaCodec_releaseOutputBuffer(audio, std::size_t(index), false);
+                return true;
+            }
+            void Feed(const std::uint8_t* pcm, std::size_t length, std::int64_t us, bool end) {
+                std::size_t done = 0;
+                do {
+                    const ssize_t index = AMediaCodec_dequeueInputBuffer(audio, 10'000);
+                    if (index < 0) {
+                        if (stopping.load() && !end) return;
+                        DrainOnce();
+                        continue;
+                    }
+                    std::size_t capacity = 0;
+                    std::uint8_t* in = AMediaCodec_getInputBuffer(audio, std::size_t(index), &capacity);
+                    const std::size_t n = std::min(capacity, length - done);
+                    if (n && in) std::memcpy(in, pcm + done, n);
+                    const std::int64_t t = us + std::int64_t(done / (2 * config.channels)) * 1'000'000 / config.sampleRate;
+                    done += n;
+                    AMediaCodec_queueInputBuffer(audio, std::size_t(index), 0, n, std::uint64_t(t),
+                                                 end && done >= length ? AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM : 0);
+                } while (done < length);
+            }
+
+            ~Recorder() {
+                if (video) AMediaCodec_delete(video);
+                if (audio) AMediaCodec_delete(audio);
+                if (input) ANativeWindow_release(input);
+                if (mic) AAudioStream_close(mic);
+                if (muxer) AMediaMuxer_delete(muxer);
+                if (fd >= 0) close(fd);
+            }
+        };
+
+        std::map<std::uint64_t, std::shared_ptr<Recorder>> g_Recorders;   // main thread
+        std::uint64_t g_NextRecorder = 1;
+
+        AMediaCodec* MakeEncoder(const char* mime, AMediaFormat* format, ANativeWindow** surface) {
+            AMediaCodec* c = AMediaCodec_createEncoderByType(mime);
+            if (!c) return nullptr;
+            if (AMediaCodec_configure(c, format, nullptr, nullptr, AMEDIACODEC_CONFIGURE_FLAG_ENCODE) != AMEDIA_OK
+                || (surface && AMediaCodec_createInputSurface(c, surface) != AMEDIA_OK) || AMediaCodec_start(c) != AMEDIA_OK) {
+                AMediaCodec_delete(c);
+                return nullptr;
+            }
+            return c;
+        }
+
+        std::uint64_t StartRecording(std::uint64_t camera, const media::RecordingConfig& config, media::RecordingCallbacks callbacks) {
+            auto d = Find(camera);
+            if (!d || !d->device) return 0;
+            auto r = std::make_shared<Recorder>();
+            r->id = g_NextRecorder++;
+            r->camera = camera;
+            r->config = config;
+            r->callbacks = std::move(callbacks);
+            r->main = d->main;
+            r->clock = d->realtimeTimestamps ? CLOCK_BOOTTIME : CLOCK_MONOTONIC;
+            r->muted = config.muted;
+            // The video encoder (VideoEncoderConfig): a surface input, a key frame a second.
+            AMediaFormat* vf = AMediaFormat_new();
+            AMediaFormat_setString(vf, AMEDIAFORMAT_KEY_MIME, "video/avc");
+            AMediaFormat_setInt32(vf, AMEDIAFORMAT_KEY_WIDTH, config.size.width);
+            AMediaFormat_setInt32(vf, AMEDIAFORMAT_KEY_HEIGHT, config.size.height);
+            AMediaFormat_setInt32(vf, AMEDIAFORMAT_KEY_BIT_RATE, config.videoBitrate);
+            AMediaFormat_setInt32(vf, AMEDIAFORMAT_KEY_FRAME_RATE, config.frameRate);
+            AMediaFormat_setInt32(vf, AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, 1);
+            AMediaFormat_setInt32(vf, AMEDIAFORMAT_KEY_COLOR_FORMAT, 0x7F000789);   // COLOR_FormatSurface
+            r->video = MakeEncoder("video/avc", vf, &r->input);
+            AMediaFormat_delete(vf);
+            if (!r->video) {
+                __android_log_print(ANDROID_LOG_ERROR, "kiln", "camera: no H.264 encoder for %dx%d", config.size.width, config.size.height);
+                return 0;
+            }
+            r->fd = open(config.file.c_str(), O_CREAT | O_TRUNC | O_RDWR | O_CLOEXEC, 0644);
+            if (r->fd < 0 || !(r->muxer = AMediaMuxer_new(r->fd, AMEDIAMUXER_OUTPUT_FORMAT_MPEG_4))) {
+                __android_log_print(ANDROID_LOG_ERROR, "kiln", "camera: cannot write %s", config.file.c_str());
+                return 0;
+            }
+            AMediaMuxer_setOrientationHint(r->muxer, config.orientationHint);
+            if (config.audio) {
+                // The microphone (AudioSource: MIC, 16-bit PCM) and AAC-LC.
+                AAudioStreamBuilder* b = nullptr;
+                if (AAudio_createStreamBuilder(&b) == AAUDIO_OK) {
+                    AAudioStreamBuilder_setDirection(b, AAUDIO_DIRECTION_INPUT);
+                    AAudioStreamBuilder_setFormat(b, AAUDIO_FORMAT_PCM_I16);
+                    AAudioStreamBuilder_setSampleRate(b, config.sampleRate);
+                    AAudioStreamBuilder_setChannelCount(b, config.channels);
+                    AAudioStreamBuilder_setInputPreset(b, AAUDIO_INPUT_PRESET_CAMCORDER);
+                    if (AAudioStreamBuilder_openStream(b, &r->mic) != AAUDIO_OK) r->mic = nullptr;
+                    AAudioStreamBuilder_delete(b);
+                }
+                AMediaFormat* af = AMediaFormat_new();
+                AMediaFormat_setString(af, AMEDIAFORMAT_KEY_MIME, "audio/mp4a-latm");
+                AMediaFormat_setInt32(af, AMEDIAFORMAT_KEY_SAMPLE_RATE, config.sampleRate);
+                AMediaFormat_setInt32(af, AMEDIAFORMAT_KEY_CHANNEL_COUNT, config.channels);
+                AMediaFormat_setInt32(af, AMEDIAFORMAT_KEY_BIT_RATE, config.audioBitrate);
+                AMediaFormat_setInt32(af, AMEDIAFORMAT_KEY_AAC_PROFILE, 2);   // AAC LC
+                if (r->mic && AAudioStream_requestStart(r->mic) == AAUDIO_OK) r->audio = MakeEncoder("audio/mp4a-latm", af, nullptr);
+                AMediaFormat_delete(af);
+                r->audioEnabled = r->audio != nullptr;
+                // AudioStats: the source failed, the recording goes on without it.
+                r->audioState = r->audioEnabled ? (config.muted ? media::RecordingStats::AudioState::Muted : media::RecordingStats::AudioState::Active)
+                                                : media::RecordingStats::AudioState::SourceError;
+                if (!r->audioEnabled) __android_log_print(ANDROID_LOG_WARN, "kiln", "camera: recording without audio (no microphone)");
+            }
+            // The camera renders into the encoder: the session with its surface too.
+            d->recordWindow = r->input;
+            Configure(camera, d->lastOutputs, d->settings);
+            r->videoThread = std::thread([r] { r->VideoLoop(); });
+            if (r->audioEnabled) r->audioThread = std::thread([r] { r->AudioLoop(); });
+            g_Recorders[r->id] = r;
+            return r->id;
+        }
+
+        void PauseRecording(std::uint64_t id, bool paused) {
+            auto it = g_Recorders.find(id);
+            if (it == g_Recorders.end()) return;
+            Recorder& r = *it->second;
+            {
+                std::lock_guard lock(r.timeMutex);
+                if (paused == r.paused) return;
+                r.paused = paused;
+                if (paused) r.pauseStartUs = r.NowUs();
+                else r.pauses.push_back({ r.pauseStartUs, r.NowUs() });
+            }
+            if (!paused) {
+                // A key frame to resume on.
+                AMediaFormat* p = AMediaFormat_new();
+                AMediaFormat_setInt32(p, AMEDIACODEC_KEY_REQUEST_SYNC_FRAME, 0);
+                AMediaCodec_setParameters(r.video, p);
+                AMediaFormat_delete(p);
+            }
+        }
+        void MuteRecording(std::uint64_t id, bool muted) {
+            auto it = g_Recorders.find(id);
+            if (it == g_Recorders.end()) return;
+            it->second->muted = muted;
+            if (it->second->audioEnabled)
+                it->second->audioState = muted ? media::RecordingStats::AudioState::Muted : media::RecordingStats::AudioState::Active;
+        }
+
+        // Ends the recording: the camera stops feeding the encoder, the streams end, the file is
+        // finished on a thread of its own, then onFinished runs on the main thread.
+        void StopRecording(std::uint64_t id, media::VideoRecordEvent::Error reason = media::VideoRecordEvent::Error::None) {
+            auto it = g_Recorders.find(id);
+            if (it == g_Recorders.end()) return;
+            std::shared_ptr<Recorder> r = std::move(it->second);
+            g_Recorders.erase(it);
+            if (auto d = Find(r->camera); d && d->recordWindow == r->input) {
+                d->recordWindow = nullptr;
+                if (d->device) Configure(r->camera, d->lastOutputs, d->settings);
+            }
+            if (reason != media::VideoRecordEvent::Error::None) {
+                r->error = reason;
+                r->errorMessage = "the camera closed";
+            }
+            r->stopping = true;
+            AMediaCodec_signalEndOfInputStream(r->video);
+            std::thread([r] {
+                if (r->videoThread.joinable()) r->videoThread.join();
+                if (r->audioThread.joinable()) r->audioThread.join();
+                if (r->mic) AAudioStream_requestStop(r->mic);
+                bool kept;
+                {
+                    std::lock_guard lock(r->muxMutex);
+                    kept = r->started && r->videoWritten;
+                    if (r->started) AMediaMuxer_stop(r->muxer);
+                }
+                AMediaMuxer_delete(std::exchange(r->muxer, nullptr));
+                close(std::exchange(r->fd, -1));
+                auto error = r->error;
+                std::string message = r->errorMessage;
+                if (!kept) {
+                    // ERROR_NO_VALID_DATA: nothing was recorded; the empty file goes.
+                    unlink(r->config.file.c_str());
+                    if (error == media::VideoRecordEvent::Error::None) {
+                        error = media::VideoRecordEvent::Error::NoValidData;
+                        message = "No valid data was recorded.";
+                    }
+                }
+                r->main->PostFromAnyThread([r, error, message, kept]() mutable {
+                    if (r->callbacks.onFinished) r->callbacks.onFinished(error, message, kept);
+                    r.reset();   // the codecs go here, on the main thread
+                });
+            }).detach();
+        }
+
         void Close(std::uint64_t handle) {
             std::shared_ptr<Device> d;
             {
@@ -481,6 +894,12 @@ namespace kiln::android {
                 d = std::move(it->second);
                 g_Devices.erase(it);
             }
+            // Its recordings end with it (their files are finished).
+            std::vector<std::uint64_t> recordings;
+            for (auto& [id, r] : g_Recorders)
+                if (r->camera == handle) recordings.push_back(id);
+            d->recordWindow = nullptr;   // the device is gone from the map: nothing is reconfigured
+            for (auto id : recordings) StopRecording(id, media::VideoRecordEvent::Error::SourceInactive);
             // Closing the session and device here (synchronously) frees the windows; callbacks
             // still in flight find no device, or a closed one.
             d->Shutdown();
@@ -496,6 +915,10 @@ namespace kiln::android {
         h.trigger = Trigger;
         h.capture = Capture;
         h.close = Close;
+        h.startRecording = StartRecording;
+        h.pauseRecording = PauseRecording;
+        h.muteRecording = MuteRecording;
+        h.stopRecording = [](std::uint64_t id) { StopRecording(id); };
         media::SetCameraHost(std::move(h));
     }
 

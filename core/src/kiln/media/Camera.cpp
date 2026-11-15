@@ -121,6 +121,84 @@ namespace kiln::media {
         return covering.width ? covering : largest;
     }
 
+    // --- VideoCapture -------------------------------------------------------------------------------
+
+    namespace {
+        // Quality.QUALITIES_ORDER_BY_SIZE.
+        constexpr Quality kBySize[] = { Quality::Uhd, Quality::Qhd, Quality::Fhd, Quality::Hd, Quality::Sd };
+        std::vector<ui::IntSize> SizesOf(Quality q) {
+            switch (q) {
+                case Quality::Sd: return { { 720, 480 }, { 640, 480 } };
+                case Quality::Hd: return { { 1280, 720 } };
+                case Quality::Fhd: return { { 1920, 1080 } };
+                case Quality::Qhd: return { { 2560, 1440 } };
+                case Quality::Uhd: return { { 3840, 2160 } };
+                default: return {};
+            }
+        }
+    }
+
+    std::vector<Quality> SupportedQualities(const CameraInfo& camera) {
+        std::vector<Quality> out;
+        for (Quality q : kBySize)
+            if (QualitySize(camera, q).width > 0) out.push_back(q);
+        return out;
+    }
+
+    ui::IntSize QualitySize(const CameraInfo& camera, Quality q) {
+        for (const ui::IntSize& s : SizesOf(q))
+            if (std::find(camera.previewSizes.begin(), camera.previewSizes.end(), s) != camera.previewSizes.end()) return s;
+        return {};
+    }
+
+    std::vector<Quality> QualitySelector::PrioritizedQualities(const std::vector<Quality>& supported) const {
+        std::vector<Quality> out;
+        auto add = [&](Quality q) {
+            if (std::find(out.begin(), out.end(), q) == out.end()) out.push_back(q);
+        };
+        if (supported.empty()) return out;
+        for (Quality q : qualities) {
+            if (q == Quality::Highest) {
+                for (Quality s : supported) add(s);
+                break;
+            }
+            if (q == Quality::Lowest) {
+                for (auto it = supported.rbegin(); it != supported.rend(); ++it) add(*it);
+                break;
+            }
+            if (std::find(supported.begin(), supported.end(), q) != supported.end()) add(q);
+        }
+        // addByFallbackStrategy: the supported qualities larger and smaller than the fallback one.
+        if (fallbackRule == FallbackRule::None || out.size() == supported.size()) return out;
+        const Quality fallback = fallbackQuality == Quality::Highest ? kBySize[0]
+                               : fallbackQuality == Quality::Lowest ? kBySize[std::size(kBySize) - 1] : fallbackQuality;
+        int index = 0;
+        while (index < int(std::size(kBySize)) && kBySize[index] != fallback) ++index;
+        std::vector<Quality> larger, smaller;
+        for (int i = index - 1; i >= 0; --i)
+            if (std::find(supported.begin(), supported.end(), kBySize[i]) != supported.end()) larger.push_back(kBySize[i]);
+        for (int i = index + 1; i < int(std::size(kBySize)); ++i)
+            if (std::find(supported.begin(), supported.end(), kBySize[i]) != supported.end()) smaller.push_back(kBySize[i]);
+        auto addAll = [&](const std::vector<Quality>& v) { for (Quality q : v) add(q); };
+        switch (fallbackRule) {
+            case FallbackRule::HigherOrLower: addAll(larger); addAll(smaller); break;
+            case FallbackRule::Higher: addAll(larger); break;
+            case FallbackRule::LowerOrHigher: addAll(smaller); addAll(larger); break;
+            case FallbackRule::Lower: addAll(smaller); break;
+            case FallbackRule::None: break;
+        }
+        return out;
+    }
+
+    int DefaultVideoBitrate(ui::IntSize size, int frameRate) {
+        // VideoConfigUtil.scaleBitrate from the 720p30 8-bit base.
+        const double scaled = 4'000'000.0 * (double(size.width) / 1280.0) * (double(size.height) / 720.0) * (double(frameRate) / 30.0);
+        return int(scaled);
+    }
+    int DefaultAudioBitrate(int channels, int sampleRate) {
+        return int(156'000.0 * (double(channels) / 2.0) * (double(sampleRate) / 48'000.0));
+    }
+
     // --- ZoomMath ---------------------------------------------------------------------------------
 
     namespace {
@@ -236,6 +314,36 @@ namespace kiln::media {
         }
     }
 
+    struct Recording::State {
+        std::uint64_t handle = 0;                 // the host's; 0 once finished
+        kiln::Function<void(const VideoRecordEvent&)> listener;
+        FileOutputOptions output;
+        RecordingStats stats;
+        bool audio = false, paused = false, muted = false, finished = false;
+        VideoRecordEvent::Error stopReason = VideoRecordEvent::Error::None;   // a limit reached
+
+        void Emit(VideoRecordEvent::Type type, VideoRecordEvent::Error error = VideoRecordEvent::Error::None, std::string message = {},
+                  std::string uri = {}) {
+            if (finished) return;
+            VideoRecordEvent e;
+            e.type = type;
+            e.stats = stats;
+            e.error = error;
+            e.message = std::move(message);
+            e.outputUri = std::move(uri);
+            if (type == VideoRecordEvent::Type::Finalize) {
+                finished = true;
+                handle = 0;
+            }
+            if (listener) listener(e);
+        }
+        void Finish(VideoRecordEvent::Error error, std::string message, bool kept) {
+            if (finished) return;
+            if (error == VideoRecordEvent::Error::None) error = stopReason;
+            Emit(VideoRecordEvent::Type::Finalize, error, std::move(message), kept ? output.file : std::string());
+        }
+    };
+
     struct Camera::Impl : std::enable_shared_from_this<Impl> {
         CameraInfo info;
         CameraOptions options;
@@ -301,6 +409,9 @@ namespace kiln::media {
         };
         std::shared_ptr<Analysis> analysis = std::make_shared<Analysis>();
         int targetRotation = 0;
+        // VideoCapture: the recorder's size, and the recording in progress.
+        ui::IntSize videoSize;
+        std::weak_ptr<Recording::State> recording;
 
         CameraState Base() const { return state.Value(); }
         void SetState(const std::function<void(CameraState&)>& f) {
@@ -413,6 +524,8 @@ namespace kiln::media {
             capturing = false;
             if (inflight && *inflight) std::exchange(*inflight, {})({ .error = ImageCaptureResult::Error::CameraClosed, .message = "Camera is closed." });
             inflight.reset();
+            // A recording ends with its source (the host stops it with the camera).
+            if (auto r = recording.lock()) r->Finish(VideoRecordEvent::Error::SourceInactive, "The camera closed.", true);
             for (auto& p : pending)
                 if (p.done) p.done({ .error = ImageCaptureResult::Error::CameraClosed, .message = "Camera is closed." });
         }
@@ -458,6 +571,40 @@ namespace kiln::media {
         }
     };
 
+    Recording& Recording::operator=(Recording&& o) noexcept {
+        if (this != &o) {
+            Stop();
+            m_State = std::move(o.m_State);
+        }
+        return *this;
+    }
+    Recording::~Recording() { Stop(); }
+    bool Recording::Active() const { return m_State && !m_State->finished; }
+    void Recording::Pause() {
+        if (!Active() || m_State->paused) return;
+        m_State->paused = true;
+        if (m_State->handle && Host().pauseRecording) Host().pauseRecording(m_State->handle, true);
+        m_State->Emit(VideoRecordEvent::Type::Pause);
+    }
+    void Recording::Resume() {
+        if (!Active() || !m_State->paused) return;
+        m_State->paused = false;
+        if (m_State->handle && Host().pauseRecording) Host().pauseRecording(m_State->handle, false);
+        m_State->Emit(VideoRecordEvent::Type::Resume);
+    }
+    void Recording::Mute(bool muted) {
+        if (!Active() || !m_State->audio || m_State->muted == muted) return;
+        m_State->muted = muted;
+        m_State->stats.audioState = muted ? RecordingStats::AudioState::Muted : RecordingStats::AudioState::Active;
+        if (m_State->handle && Host().muteRecording) Host().muteRecording(m_State->handle, muted);
+    }
+    void Recording::Stop() {
+        if (!Active()) return;
+        // The host finishes it (Finalize) once the file is complete.
+        if (m_State->handle && Host().stopRecording) Host().stopRecording(m_State->handle);
+        else m_State->Finish(VideoRecordEvent::Error::SourceInactive, "The recording has no source.", false);
+    }
+
     Camera::Camera(std::string cameraId, CameraOptions options) : m_Impl(std::make_shared<Impl>()) {
         Impl& m = *m_Impl;
         m.options = options;
@@ -490,6 +637,10 @@ namespace kiln::media {
         if (!m.handle) m.OnError(CameraState::Error::CameraFatal, "the camera cannot be opened");
         const ImageCaptureOptions* ic = options.imageCapture ? &*options.imageCapture : nullptr;
         if (ic) m.outputs.jpegSize = ChooseCaptureSize(m.info.jpegSizes, ic->targetAspectRatio > 0 ? ic->targetAspectRatio : 4.0f / 3.0f);
+        if (options.videoCapture) {
+            const auto prioritized = options.videoCapture->qualitySelector.PrioritizedQualities(SupportedQualities(m.info));
+            if (!prioritized.empty()) m.videoSize = QualitySize(m.info, prioritized.front());
+        }
         if (options.imageAnalysis) {
             m.outputs.analysisSize = ChooseAnalysisSize(m.info.yuvSizes, options.imageAnalysis->targetResolution);
             m.analysis->format = options.imageAnalysis->format;
@@ -851,6 +1002,70 @@ namespace kiln::media {
     void Camera::SetTargetRotation(int displayRotation) {
         m_Impl->targetRotation = displayRotation;
         m_Impl->analysis->rotation = PreviewRotation(m_Impl->info, displayRotation);
+    }
+
+    ui::IntSize Camera::VideoSize() const { return m_Impl->videoSize; }
+
+    Recording Camera::StartRecording(FileOutputOptions output, bool withAudio, kiln::Function<void(const VideoRecordEvent&)> listener,
+                                     int displayRotation, bool initialMuted) {
+        Impl& m = *m_Impl;
+        auto state = std::make_shared<Recording::State>();
+        state->listener = std::move(listener);
+        state->output = output;
+        state->audio = withAudio;
+        state->muted = withAudio && initialMuted;
+        state->stats.audioState = !withAudio ? RecordingStats::AudioState::Disabled
+                                : state->muted ? RecordingStats::AudioState::Muted : RecordingStats::AudioState::Active;
+        // Failures before it starts are reported as CameraX does, after start returns.
+        auto fail = [&](VideoRecordEvent::Error e, std::string message) {
+            rt::Dispatcher::Main().Post([state, e, message] { state->Finish(e, message, false); });
+            return Recording(state);
+        };
+        if (output.file.empty()) return fail(VideoRecordEvent::Error::InvalidOutputOptions, "The output file is empty.");
+        if (!m.options.videoCapture || m.videoSize.width <= 0 || !m.open || !Host().startRecording)
+            return fail(VideoRecordEvent::Error::SourceInactive, "The camera is not active.");
+        if (auto active = m.recording.lock(); active && !active->finished)
+            return fail(VideoRecordEvent::Error::RecorderError, "A recording is already in progress.");
+
+        RecordingConfig config;
+        config.file = output.file;
+        config.size = m.videoSize;
+        config.frameRate = 30;
+        config.videoBitrate = m.options.videoCapture->targetVideoEncodingBitRate > 0 ? m.options.videoCapture->targetVideoEncodingBitRate
+                                                                                    : DefaultVideoBitrate(m.videoSize, config.frameRate);
+        config.audio = withAudio;
+        config.muted = state->muted;
+        config.sampleRate = 44100;   // AudioConfigUtil.AUDIO_SAMPLE_RATE_DEFAULT, mono
+        config.channels = 1;
+        config.audioBitrate = DefaultAudioBitrate(config.channels, config.sampleRate);
+        config.orientationHint = PreviewRotation(m.info, displayRotation);
+
+        // The host owns the state until it has finished (Finalize reaches the listener even after
+        // the Recording handle is gone).
+        std::shared_ptr<Recording::State> owner = state;
+        state->handle = Host().startRecording(m.handle, config, {
+            .onStarted = [owner] { owner->Emit(VideoRecordEvent::Type::Start); },
+            .onStatus = [owner](const RecordingStats& stats) {
+                auto s = owner;
+                if (s->finished) return;
+                const auto audioState = s->stats.audioState;
+                s->stats = stats;
+                if (s->stats.audioState == RecordingStats::AudioState::Active || s->stats.audioState == RecordingStats::AudioState::Disabled)
+                    s->stats.audioState = audioState;   // muted / disabled as the recording knows it
+                s->Emit(VideoRecordEvent::Type::Status);
+                // The output's limits.
+                const bool size = s->output.fileSizeLimitBytes > 0 && stats.numBytesRecorded >= s->output.fileSizeLimitBytes;
+                const bool duration = s->output.durationLimitMs > 0 && stats.recordedDurationNanos >= s->output.durationLimitMs * 1'000'000;
+                if ((size || duration) && s->stopReason == VideoRecordEvent::Error::None) {
+                    s->stopReason = size ? VideoRecordEvent::Error::FileSizeLimitReached : VideoRecordEvent::Error::DurationLimitReached;
+                    if (s->handle && Host().stopRecording) Host().stopRecording(s->handle);
+                }
+            },
+            .onFinished = [owner](VideoRecordEvent::Error e, std::string message, bool kept) { owner->Finish(e, std::move(message), kept); },
+        });
+        if (!state->handle) return fail(VideoRecordEvent::Error::RecorderError, "The recorder cannot start.");
+        m.recording = state;
+        return Recording(state);
     }
 
     void Camera::SetPreviewSurface(ui::PlatformSurface surface, ui::IntSize size) {

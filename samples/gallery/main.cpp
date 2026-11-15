@@ -367,8 +367,14 @@ namespace {
     void CameraDemo(const std::string& id) {
         using namespace kiln::foundation;
         auto& c = *kiln::rt::Composition::Current();
-        auto& camera = c.RememberNew<kiln::media::Camera>(kiln::rt::Keys{ id }, {}, id, kiln::media::CameraOptions{
-            .imageCapture = kiln::media::ImageCaptureOptions{}, .imageAnalysis = kiln::media::ImageAnalysisOptions{} });
+        // Photo mode: still capture and analysis; video mode: still capture and a recorder.
+        auto& videoMode = RememberState(false);
+        const bool video = videoMode.Get();
+        kiln::media::CameraOptions options{ .imageCapture = kiln::media::ImageCaptureOptions{} };
+        if (video) options.videoCapture = kiln::media::VideoCaptureOptions{};
+        else options.imageAnalysis = kiln::media::ImageAnalysisOptions{};
+        auto& camera = c.RememberNew<kiln::media::Camera>(kiln::rt::Keys{ id, video }, {}, id, options);
+        auto& recording = c.Remember<std::shared_ptr<kiln::media::Recording>>([] { return std::make_shared<kiln::media::Recording>(); });
         const kiln::media::CameraState& s = kiln::rt::CollectAsState(camera.StateFlow()).Get();
         auto& status = RememberState(std::string());
         // ImageAnalysis: each frame's mean brightness, on the camera's thread, shown twice a second.
@@ -394,7 +400,26 @@ namespace {
         });
         CameraPreview(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), camera,
                       { .onTapToFocus = [&status](bool focused) { status.Set(focused ? "Focused" : "Not focused"); } });
-        FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&camera, &s, &status, &c] {
+        // Recording, with sound when RECORD_AUDIO is granted (asked for at the first one).
+        const int displayRotation = c.Read(kiln::ui::LocalConfiguration).displayRotation;
+        auto askMic = RememberLauncherForActivityResult<std::string, bool>(
+            std::make_shared<contracts::RequestPermission>(), [&camera, &status, &recording, displayRotation](bool audio) {
+                *recording = camera.StartRecording({ .file = kiln::ui::CacheDir() + "/video.mp4" }, audio, [&status, audio](const kiln::media::VideoRecordEvent& e) {
+                    using T = kiln::media::VideoRecordEvent::Type;
+                    using A = kiln::media::RecordingStats::AudioState;
+                    char line[128];
+                    if (e.type == T::Status)
+                        std::snprintf(line, sizeof line, "Recording %.1f s, %lld KB, %s", double(e.stats.recordedDurationNanos) / 1e9,
+                                      (long long)(e.stats.numBytesRecorded / 1024),
+                                      e.stats.audioState == A::Active ? "with sound" : e.stats.audioState == A::Disabled ? "no sound" : "no microphone");
+                    else if (e.type == T::Finalize)
+                        std::snprintf(line, sizeof line, "%s", e.error == kiln::media::VideoRecordEvent::Error::None ? ("Saved " + e.outputUri).c_str()
+                                                                                                                : ("Recording failed: " + e.message).c_str());
+                    else std::snprintf(line, sizeof line, "%s", e.type == T::Start ? (audio ? "Recording with sound" : "Recording") : e.type == T::Pause ? "Paused" : "Resumed");
+                    status.Set(line);
+                }, displayRotation);
+            });
+        FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&camera, &s, &status, &c, &videoMode, video, &recording, askMic] {
             auto button = [](const char* label, kiln::Function<void()> onClick) {
                 Box(Clickable(Background(Modifier{}, kPrimaryContainer, CornerShape::Pill()), std::move(onClick)), Alignment::Center(), false,
                     [label] { BasicText(label, Padding(Modifier{}, 20_dp, 10_dp), { 14, kOnSurface }); });
@@ -403,6 +428,17 @@ namespace {
             button("2x", [&camera, max = s.zoom.maxZoomRatio] { camera.SetZoomRatio(std::min(2.0f, max)); });
             if (camera.Info().hasFlashUnit) button(s.torch == kiln::media::TorchState::On ? "Torch off" : "Torch", [&camera, on = s.torch != kiln::media::TorchState::On] { camera.EnableTorch(on); });
             const int rotation = c.Read(kiln::ui::LocalConfiguration).displayRotation;
+            button(video ? "Photo mode" : "Video mode", [&videoMode, video, &recording] {
+                *recording = {};
+                videoMode.Set(!video);
+            });
+            if (video) {
+                const bool recordingNow = recording->Active();
+                button(recordingNow ? "Stop" : "Record", [&recording, recordingNow, askMic] {
+                    if (recordingNow) recording->Stop();
+                    else askMic.Launch("android.permission.RECORD_AUDIO");   // with sound if granted
+                });
+            }
             button("Photo", [&camera, &status, rotation] {
                 status.Set("Taking a picture...");
                 camera.TakePicture({ .file = kiln::ui::CacheDir() + "/photo.jpg" }, [&status](kiln::media::ImageCaptureResult r) {

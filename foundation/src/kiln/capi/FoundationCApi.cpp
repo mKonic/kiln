@@ -2095,6 +2095,54 @@ KILN_API kiln_camera* kiln_remember_camera(kiln_key key, const char* id, bool im
         return out;
     } CATCH(nullptr)
 }
+KILN_API kiln_camera* kiln_remember_video_camera(kiln_key key, const char* id, bool imageCapture, bool videoCapture) {
+    TRY {
+        kiln_camera* out = nullptr;
+        const std::string cameraId = ToString(id);
+        InGroup(key, [&] {
+            auto& c = *rt::Composition::Current();
+            kiln::media::CameraOptions options;
+            if (imageCapture) options.imageCapture = kiln::media::ImageCaptureOptions{};
+            if (videoCapture) options.videoCapture = kiln::media::VideoCaptureOptions{};
+            auto& cam = c.RememberNew<kiln::media::Camera>(rt::Keys{ cameraId, imageCapture, videoCapture }, {}, cameraId, options);
+            auto& handle = c.Remember<kiln_camera>([&] { return kiln_camera{ &cam }; });
+            handle.camera = &cam;
+            out = &handle;
+        });
+        return out;
+    } CATCH(nullptr)
+}
+struct kiln_recording {
+    kiln::media::Recording recording;
+};
+KILN_API kiln_recording* kiln_camera_start_recording(kiln_camera* c, const char* file, bool audio, int64_t sizeLimit, int64_t durationLimit,
+                                                     int32_t rotation, kiln_fn_record_event listener) {
+    TRY {
+        if (!c) return nullptr;
+        auto o = Own(listener);
+        auto r = std::make_unique<kiln_recording>();
+        r->recording = c->camera->StartRecording({ .file = ToString(file), .fileSizeLimitBytes = sizeLimit, .durationLimitMs = durationLimit }, audio,
+                                                 [o](const kiln::media::VideoRecordEvent& e) {
+            if (!o) return;
+            kiln_record_event x{};
+            x.type = int32_t(e.type);
+            x.error = int32_t(e.error);
+            x.recorded_duration_nanos = e.stats.recordedDurationNanos;
+            x.num_bytes_recorded = e.stats.numBytesRecorded;
+            x.audio_state = int32_t(e.stats.audioState);
+            x.message = e.message.c_str();
+            x.uri = e.outputUri.c_str();
+            CallbackScope s;
+            o->f.call(o->f.user, &x);
+        }, rotation);
+        return r.release();
+    } CATCH(nullptr)
+}
+KILN_API void kiln_recording_pause(kiln_recording* r) { TRY { if (r) r->recording.Pause(); } CATCH_VOID }
+KILN_API void kiln_recording_resume(kiln_recording* r) { TRY { if (r) r->recording.Resume(); } CATCH_VOID }
+KILN_API void kiln_recording_mute(kiln_recording* r, bool m) { TRY { if (r) r->recording.Mute(m); } CATCH_VOID }
+KILN_API void kiln_recording_stop(kiln_recording* r) { TRY { if (r) r->recording.Stop(); } CATCH_VOID }
+KILN_API void kiln_recording_free(kiln_recording* r) { TRY { delete r; } CATCH_VOID }
 KILN_API void kiln_camera_get_state(kiln_camera* cam, kiln_camera_state* out) {
     TRY {
         if (!cam || !out) return;
