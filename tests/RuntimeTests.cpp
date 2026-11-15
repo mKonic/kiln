@@ -145,6 +145,34 @@ TEST(EffectsRunAfterApplyAndDisposeInOrder) {
     CHECK(log == expect);
 }
 
+// A DisposableEffect restarted with a key that also replaces a value remembered before it: its
+// old disposal still sees the old value (Compose forgets the effect before anything goes).
+TEST(RestartedEffectDisposesBeforeTheValuesReplacedWithIt) {
+    std::vector<std::string> log;   // outlives the composition (its last disposal logs)
+    bool alive1 = false, alive2 = false;
+    Node root("root");
+    Composition c(root);
+    State<int> key(1);
+    struct Resource {
+        bool* alive;
+        int id;
+        Resource(bool* a, int i) : alive(a), id(i) { *alive = true; }
+        ~Resource() { *alive = false; }
+    };
+    c.SetContent([&] {
+        const int k = key.Get();
+        Resource& r = c.RememberNew<Resource>(Keys(k), {}, k == 1 ? &alive1 : &alive2, k);
+        c.DisposableEffect(Keys(&r), [&log, &r] {
+            log.push_back("start" + std::to_string(r.id));
+            return [&log, &r] { log.push_back("stop" + std::to_string(r.id) + (*r.alive ? " alive" : " dead")); };
+        });
+    });
+    c.Recompose();
+    key.Set(2);
+    c.Recompose();
+    CHECK((log == std::vector<std::string>{ "start1", "stop1 alive", "start2" }) && !alive1 && alive2);
+}
+
 TEST(LocalsRecomposeOnlyReaders) {
     Node root("root");
     Composition c(root);

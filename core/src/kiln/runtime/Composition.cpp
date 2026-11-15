@@ -519,6 +519,12 @@ namespace kiln::rt {
         g.keys = std::move(keys);
         g.effect->started = true;
         auto state = g.effect;
+        // Restarted: the old one is disposed with the forgotten (before what was remembered next
+        // to it and replaced in this pass goes), as Compose forgets it.
+        if (state->disposer) {
+            m_Disposers.push_back(std::move(state->disposer));
+            state->disposer = nullptr;
+        }
         m_Effects.push_back([state, effect = std::move(effect)] {
             if (state->disposer) { auto d = std::move(state->disposer); state->disposer = nullptr; d(); }
             state->disposer = effect();
