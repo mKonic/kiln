@@ -11,9 +11,10 @@ public class KilnAlarmReceiver extends BroadcastReceiver {
         if (!KilnAlarms.ACTION_FIRE.equals(intent.getAction())) return;
         byte[] alarm = intent.getByteArrayExtra(KilnAlarms.EXTRA_ALARM);
         if (alarm == null || intent.getData() == null) return;
-        KilnProcess.ensureLoaded(context);
-        // One-shot: forgotten before its handler runs (which may schedule it again).
+        // One-shot: forgotten before its handler runs (which may schedule it again), and before
+        // a new process sets kept alarms again after a force stop.
         KilnAlarms.forget(context, intent.getData().getLastPathSegment());
+        KilnProcess.ensureLoaded(context);
         KilnAlarms.fire(alarm);
     }
 }

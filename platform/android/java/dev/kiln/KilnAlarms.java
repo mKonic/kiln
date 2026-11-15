@@ -33,7 +33,26 @@ final class KilnAlarms {
     private KilnAlarms() {}
 
     static void attach(Context context) {
-        if (sContext == null) sContext = context.getApplicationContext();
+        if (sContext != null) return;
+        sContext = context.getApplicationContext();
+        restoreForceStopped(sContext);
+    }
+
+    /**
+     * A force stop cancels the app's alarms and pending intents (WorkManager's
+     * ForceStopRunnable): in a new process, a kept alarm whose pending intent is gone is set again.
+     */
+    private static void restoreForceStopped(Context c) {
+        for (Map.Entry<String, ?> e : c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getAll().entrySet()) {
+            if (operation(c, e.getKey(), null, PendingIntent.FLAG_NO_CREATE) != null) continue;
+            String[] f = ((String) e.getValue()).split("\\|", 5);
+            if (f.length != 5) continue;
+            try {
+                set(c, Base64.decode(f[3], Base64.NO_WRAP), e.getKey(), Long.parseLong(f[1]), Integer.parseInt(f[0]), Long.parseLong(f[2]), f[4]);
+            } catch (RuntimeException ignored) {
+                // AlarmManager bugs on some devices (ForceStopRunnable's b/189975360).
+            }
+        }
     }
 
     private static AlarmManager manager(Context c) { return c.getSystemService(AlarmManager.class); }
