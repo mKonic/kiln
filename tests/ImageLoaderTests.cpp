@@ -78,8 +78,10 @@ namespace {
     struct FakeHttp final : net::HttpEngine {
         std::map<std::string, std::pair<int, std::string>> pages;
         std::atomic<int> calls{ 0 };
+        std::string cacheControl;   // the last request's
         net::HttpResponse Execute(const net::HttpRequest& request, net::HttpCall&) override {
             ++calls;
+            cacheControl = request.headers.Get("Cache-Control").value_or("");
             auto it = pages.find(request.url);
             if (it == pages.end()) throw net::HttpError(net::HttpError::Kind::UnknownHost, "no such host");
             net::HttpResponse r;
@@ -276,6 +278,17 @@ TEST(ImageLoaderLoadsFromEachSourceAndCaches) {
     // Offline (network not allowed) and not in the disk cache.
     ImageResult offline = Load(loader, { .data = "https://example.com/offline.img", .networkCachePolicy = CachePolicy::Disabled() });
     CHECK(!offline && http->calls == 3);
+    // NetworkFetcher.newRequest's Cache-Control: the disk cache not read asks for a fresh copy
+    // (and not to store it when it is not written either); disconnected: not sent at all.
+    CHECK(http->cacheControl.empty());
+    Load(loader, { .data = "https://example.com/a.img", .memoryCachePolicy = CachePolicy::Disabled(), .diskCachePolicy = CachePolicy::WriteOnly() });
+    CHECK(http->cacheControl == "no-cache" && http->calls == 4);
+    Load(loader, { .data = "https://example.com/a.img", .memoryCachePolicy = CachePolicy::Disabled(), .diskCachePolicy = CachePolicy::Disabled() });
+    CHECK(http->cacheControl == "no-cache, no-store" && http->calls == 5);
+    net::Connectivity().SetValue({ .connected = false });
+    ImageResult disconnected = Load(loader, { .data = "https://example.com/elsewhere.img" });
+    CHECK(!disconnected && http->calls == 5);
+    net::Connectivity().SetValue({});
     // Memory cache off: decoded every time, not kept.
     loader.Memory().Clear();
     ImageResult noMemory = Load(loader, { .data = "https://example.com/a.img", .memoryCachePolicy = CachePolicy::Disabled() });

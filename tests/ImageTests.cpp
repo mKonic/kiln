@@ -1,5 +1,7 @@
 #include "Check.h"
 
+#include "kiln/graphics/Exif.h"
+
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Image.h"
 #include "kiln/foundation/Layouts.h"
@@ -76,4 +78,37 @@ TEST(PixelMapReadsStraightColours) {
     CHECK(m(0, 0) == kiln::ui::Color(0xFFFF0000u));
     CHECK(m(1, 0).argb >> 24 == 128 && (m(1, 0).argb & 0xFF) >= 254);
     CHECK(b.ToPixelMap(1, 0, 1, 1)(0, 0) == m(1, 0));
+}
+
+// ExifInterface's orientation (JPEG APP1, WebP EXIF) and Coil's reverseTransformations.
+TEST(ExifOrientationIsReadAndReversed) {
+    // A big-endian TIFF with IFD0 holding orientation 6 (rotate 90).
+    std::vector<std::uint8_t> tiff = { 'M', 'M', 0, 42, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0 };
+    std::vector<std::uint8_t> app1 = { 'E', 'x', 'i', 'f', 0, 0 };
+    app1.insert(app1.end(), tiff.begin(), tiff.end());
+    std::vector<std::uint8_t> jpeg = { 0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 0, 0, 0xFF, 0xE1, std::uint8_t((app1.size() + 2) >> 8), std::uint8_t(app1.size() + 2) };
+    jpeg.insert(jpeg.end(), app1.begin(), app1.end());
+    jpeg.insert(jpeg.end(), { 0xFF, 0xDA, 0, 2 });
+    CHECK((gfx::ReadExifOrientation(jpeg) == gfx::ExifOrientation{ false, 90 }));
+    // A little-endian one with orientation 5 (transpose) in a WebP EXIF chunk, no Exif header.
+    std::vector<std::uint8_t> le = { 'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0 };
+    std::vector<std::uint8_t> webp = { 'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P', 'V', 'P', '8', 'X', 2, 0, 0, 0, 0, 0,
+                                       'E', 'X', 'I', 'F', std::uint8_t(le.size()), 0, 0, 0 };
+    webp.insert(webp.end(), le.begin(), le.end());
+    CHECK((gfx::ReadExifOrientation(webp) == gfx::ExifOrientation{ true, 270 }));
+    CHECK((gfx::ReadExifOrientation(std::vector<std::uint8_t>{ 0x89, 'P', 'N', 'G' }) == gfx::ExifOrientation{}));
+    CHECK((gfx::OrientationFromTag(4) == gfx::ExifOrientation{ true, 180 }) && (gfx::OrientationFromTag(7) == gfx::ExifOrientation{ true, 90 }));
+    // A 2x1 image: A B. Turned 90 clockwise: A over B (1x2). Flipped: B A.
+    std::vector<std::uint8_t> px = { 1, 0, 0, 255, 2, 0, 0, 255 };
+    int w = 2, h = 1;
+    auto turned = gfx::ApplyExifOrientation(px, w, h, { false, 90 });
+    CHECK(w == 1 && h == 2 && turned[0] == 1 && turned[4] == 2);
+    w = 2;
+    h = 1;
+    auto flipped = gfx::ApplyExifOrientation(px, w, h, { true, 0 });
+    CHECK(w == 2 && flipped[0] == 2 && flipped[4] == 1);
+    w = 2;
+    h = 1;
+    auto ccw = gfx::ApplyExifOrientation(px, w, h, { false, 270 });
+    CHECK(w == 1 && h == 2 && ccw[0] == 2 && ccw[4] == 1);
 }

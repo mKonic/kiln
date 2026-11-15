@@ -1,5 +1,6 @@
 // Dev-host image decoding: PNG through libpng, JPEG through libjpeg(-turbo).
 
+#include "kiln/graphics/Exif.h"
 #include "kiln/graphics/Image.h"
 
 #include <png.h>
@@ -56,7 +57,12 @@ namespace kiln::hostdev {
     void InstallImageDecoder() {
         gfx::SetImageDecoder([](std::span<const std::uint8_t> b) -> std::optional<gfx::DecodedImage> {
             if (b.size() >= 8 && png_sig_cmp(b.data(), 0, 8) == 0) return DecodePng(b);
-            if (b.size() >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) return DecodeJpeg(b);
+            if (b.size() >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) {
+                // As AImageDecoder (Skia's encoded origin): upright by the EXIF orientation.
+                auto img = DecodeJpeg(b);
+                if (img) img->rgba = gfx::ApplyExifOrientation(img->rgba, img->width, img->height, gfx::ReadExifOrientation(b));
+                return img;
+            }
             return std::nullopt;
         });
     }

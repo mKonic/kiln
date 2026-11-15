@@ -300,10 +300,16 @@ namespace kiln::image {
                 });
                 if (cached) co_return Fetched{ std::move(*cached), DataSource::Disk, key };
             }
-            if (!r.networkCachePolicy.read) throw std::runtime_error("not in the disk cache, and the network is not allowed");
+            // NetworkFetcher.newRequest: the network read only when allowed and online
+            // (ConnectivityChecker); without it the request cannot be satisfied (HTTP 504).
+            const bool networkRead = r.networkCachePolicy.read && net::Connectivity().Value().connected;
+            if (!networkRead) throw std::runtime_error("HTTP 504 Unsatisfiable Request (only-if-cached)");
             net::HttpRequest request;
             request.url = r.data;
             request.headers = r.headers;
+            // The disk cache not read: the server is asked for a fresh response, and not to keep it
+            // when it is not written either.
+            if (!r.diskCachePolicy.read) request.headers.Set("Cache-Control", r.diskCachePolicy.write ? "no-cache" : "no-cache, no-store");
             const bool write = r.diskCachePolicy.write;
             if (write) request.responseFile = co_await rt::WithContext(io, [&disk, key] { return disk.EditFile(key); });
             net::HttpResponse response = co_await net::Fetch(request);
