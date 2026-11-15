@@ -152,3 +152,16 @@ void Avatar(const std::string& url) {
 bitmap rather than content: a task that returns an `ImageResult`. The `ImageRequest` sets
 the size, `Scale::Fit` or `Fill`, headers and cache policies, and `AsyncImage` takes one
 too.
+
+* **Crossfade.** `.crossfadeMillis = 200` fades the image in from the placeholder, as Coil's
+  `crossfade(true)` does. Images from the memory cache show at once, without fading.
+* **Transformations.** `ImageRequest::transformations` changes the decoded image before it is
+  cached, with `image::CircleCropTransformation` or `image::RoundedCornersTransformation`, or
+  your own. A transformed image is cached separately, keyed by the transformation and the size.
+* **Your own layout per state.** `SubcomposeAsyncImage` composes a slot for each state
+  (loading, success, error), sized by its constraints. `SubcomposeAsyncImageContent` draws the
+  image itself.
+* **A painter.** `RememberAsyncImagePainter` gives a painter to use anywhere a `Painter` goes.
+  It loads at the size it is first drawn at.
+* **Without content.** `ImageLoader::Enqueue` loads in the background, for example to preload
+  images. `Peek` returns what the memory cache already has for a request.

@@ -1066,6 +1066,9 @@ typedef struct kiln_async_image_options {
     const kiln_image_bitmap* placeholder;   /* instead of the colour */
     const kiln_image_bitmap* error;
     kiln_fn_int on_state;
+    int32_t crossfade_millis;          /* a load not from memory fades in from the placeholder; 0: none */
+    bool circle_crop;                  /* CircleCropTransformation */
+    float corner_radius;               /* RoundedCornersTransformation, px; 0: none */
 } kiln_async_image_options;
 KILN_API void kiln_async_image_options_init(kiln_async_image_options* options);
 KILN_API void kiln_async_image(kiln_key key, const char* model, const char* content_description,

@@ -41,6 +41,41 @@ namespace kiln::image {
     // Where the image came from (Coil's DataSource).
     enum class DataSource { MemoryCache, Memory, Disk, Network };
 
+    // Transformation: a change to the decoded image (after sampling, before the memory cache),
+    // named by its cache key. `width` / `height` are the request's size (0: undefined).
+    class Transformation {
+    public:
+        virtual ~Transformation() = default;
+        virtual std::string CacheKey() const = 0;
+        virtual gfx::ImageBitmap Transform(const gfx::ImageBitmap& input, int width, int height) const = 0;
+    };
+    // CircleCropTransformation: the largest centred circle, transparent around it.
+    class CircleCropTransformation final : public Transformation {
+    public:
+        std::string CacheKey() const override { return "coil3.transform.CircleCropTransformation"; }
+        gfx::ImageBitmap Transform(const gfx::ImageBitmap& input, int width, int height) const override;
+    };
+    // RoundedCornersTransformation: cropped (filling) to the request's size, its corners rounded
+    // by these radii in px.
+    class RoundedCornersTransformation final : public Transformation {
+    public:
+        explicit RoundedCornersTransformation(float radius) : RoundedCornersTransformation(radius, radius, radius, radius) {}
+        RoundedCornersTransformation(float topLeft, float topRight, float bottomLeft, float bottomRight);
+        std::string CacheKey() const override;
+        gfx::ImageBitmap Transform(const gfx::ImageBitmap& input, int width, int height) const override;
+
+    private:
+        float m_TopLeft, m_TopRight, m_BottomLeft, m_BottomRight;
+    };
+    // A request's transformations, equal when their cache keys are.
+    struct Transformations {
+        std::vector<std::shared_ptr<const Transformation>> list;
+        bool empty() const { return list.empty(); }
+        // ImageRequest.Builder.transformations' memory cache key extra: "0:key, 1:key".
+        std::string CacheKey() const;
+        bool operator==(const Transformations& o) const { return CacheKey() == o.CacheKey(); }
+    };
+
     struct ImageRequest {
         // https:// and http:// URLs, content:// and file:// URIs, absolute paths, app assets
         // (asset:///path or file:///android_asset/path) and data: URIs (base64).
@@ -57,6 +92,9 @@ namespace kiln::image {
         CachePolicy memoryCachePolicy, diskCachePolicy, networkCachePolicy;
         // The keys in the caches; empty: from data.
         std::string memoryCacheKey, diskCacheKey;
+        // Applied in order to the decoded image; part of the memory cache key (with the size,
+        // unless memoryCacheKey is given).
+        Transformations transformations;
         bool operator==(const ImageRequest&) const = default;
     };
 
@@ -139,6 +177,12 @@ namespace kiln::image {
         // Loads the request. Runs on the caller's dispatcher between background steps; the
         // result arrives there. A failure is a result with an error, not an exception.
         rt::Task<ImageResult> Execute(ImageRequest request);
+        // The memory cache's image for the request, if it has one that satisfies it (what
+        // Execute would return at once); nothing is loaded. Main thread.
+        std::optional<ImageResult> Peek(const ImageRequest& request);
+        // ImageRequest.enqueue: loads it in the background (on the main dispatcher) and hands the
+        // result over; dispose the job to cancel it (no result then). Preloading: without done.
+        rt::Job Enqueue(ImageRequest request, kiln::Function<void(ImageResult)> done = {});
 
         MemoryCache& Memory() { return m_Memory; }
         // Created on first use.

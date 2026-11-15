@@ -347,6 +347,130 @@ namespace kiln::image {
         }
     }
 
+    // --- transformations ---------------------------------------------------------------------------
+
+    std::string Transformations::CacheKey() const {
+        std::string out;
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            if (i) out += ", ";
+            out += std::to_string(i) + ":" + (list[i] ? list[i]->CacheKey() : std::string());
+        }
+        return out;
+    }
+
+    namespace {
+        // newScaledShaderPaint: the input filling (centre-cropped to) the output, sampled
+        // bilinearly; `coverage` gives each output pixel's share inside the shape.
+        template<typename Coverage>
+        gfx::ImageBitmap Shade(const gfx::ImageBitmap& in, int ow, int oh, Coverage coverage) {
+            if (!in || ow <= 0 || oh <= 0) return {};
+            const int iw = in.Width(), ih = in.Height();
+            const double m = std::max(double(ow) / iw, double(oh) / ih);   // computeSizeMultiplier(FILL)
+            const double dx = (ow - m * iw) / 2, dy = (oh - m * ih) / 2;
+            const std::uint8_t* src = in.Pixels();
+            std::vector<std::uint8_t> out(std::size_t(ow) * oh * 4);
+            for (int y = 0; y < oh; ++y)
+                for (int x = 0; x < ow; ++x) {
+                    const float cov = coverage(x + 0.5f, y + 0.5f);
+                    if (cov <= 0) continue;
+                    // The shader's pixel at the centre of this one (CLAMP at the edges).
+                    const double sx = std::clamp((x + 0.5 - dx) / m - 0.5, 0.0, double(iw - 1));
+                    const double sy = std::clamp((y + 0.5 - dy) / m - 0.5, 0.0, double(ih - 1));
+                    const int x0 = int(sx), y0 = int(sy), x1 = std::min(x0 + 1, iw - 1), y1 = std::min(y0 + 1, ih - 1);
+                    const double fx = sx - x0, fy = sy - y0;
+                    std::uint8_t* d = &out[(std::size_t(y) * ow + x) * 4];
+                    for (int c = 0; c < 4; ++c) {
+                        auto at = [&](int px, int py) { return double(src[(std::size_t(py) * iw + px) * 4 + c]); };
+                        const double v = (at(x0, y0) * (1 - fx) + at(x1, y0) * fx) * (1 - fy) + (at(x0, y1) * (1 - fx) + at(x1, y1) * fx) * fy;
+                        d[c] = std::uint8_t(std::clamp(std::lround(v * cov), 0L, 255L));   // premultiplied: all channels
+                    }
+                }
+            return gfx::ImageBitmap::FromPixels(ow, oh, out, true);
+        }
+        // Anti-aliased coverage of a pixel centre at distance `d` past an edge (negative: inside).
+        float EdgeCoverage(float d) { return std::clamp(0.5f - d, 0.0f, 1.0f); }
+    }
+
+    gfx::ImageBitmap CircleCropTransformation::Transform(const gfx::ImageBitmap& input, int, int) const {
+        const int size = std::min(input.Width(), input.Height());
+        const float r = size / 2.0f;
+        return Shade(input, size, size, [r](float x, float y) { return EdgeCoverage(std::hypot(x - r, y - r) - r); });
+    }
+
+    RoundedCornersTransformation::RoundedCornersTransformation(float tl, float tr, float bl, float br)
+        : m_TopLeft(tl), m_TopRight(tr), m_BottomLeft(bl), m_BottomRight(br) {
+        if (tl < 0 || tr < 0 || bl < 0 || br < 0) throw std::invalid_argument("All radii must be >= 0.");
+    }
+    std::string RoundedCornersTransformation::CacheKey() const {
+        auto f = [](float v) {
+            char b[32];
+            std::snprintf(b, sizeof b, "%.1f", double(v));   // Kotlin's Float.toString for whole values
+            return std::string(b);
+        };
+        return "coil3.transform.RoundedCornersTransformation-" + f(m_TopLeft) + "," + f(m_TopRight) + "," + f(m_BottomLeft) + "," + f(m_BottomRight);
+    }
+    gfx::ImageBitmap RoundedCornersTransformation::Transform(const gfx::ImageBitmap& input, int width, int height) const {
+        // calculateOutputSize: the request's size when both sides are defined, the input's when
+        // neither, else the input scaled to fill the defined side.
+        int ow = input.Width(), oh = input.Height();
+        if (width > 0 && height > 0) {
+            ow = width;
+            oh = height;
+        } else if (width > 0 || height > 0) {
+            const double m = width > 0 ? double(width) / input.Width() : double(height) / input.Height();
+            ow = int(std::lround(m * input.Width()));
+            oh = int(std::lround(m * input.Height()));
+        }
+        const float tl = m_TopLeft, tr = m_TopRight, bl = m_BottomLeft, br = m_BottomRight;
+        const float w = float(ow), h = float(oh);
+        return Shade(input, ow, oh, [=](float x, float y) {
+            // The corner the point is in, if inside that corner's square.
+            float r = 0, cx = 0, cy = 0;
+            if (x < tl && y < tl) { r = tl; cx = tl; cy = tl; }
+            else if (x > w - tr && y < tr) { r = tr; cx = w - tr; cy = tr; }
+            else if (x < bl && y > h - bl) { r = bl; cx = bl; cy = h - bl; }
+            else if (x > w - br && y > h - br) { r = br; cx = w - br; cy = h - br; }
+            if (r <= 0) return 1.0f;
+            return EdgeCoverage(std::hypot(x - cx, y - cy) - r);
+        });
+    }
+
+    namespace {
+        // MemoryCacheService.newCacheKey: the transformations' extra, and the size with them
+        // unless the key was given (then a cached value matches its size exactly).
+        std::string MemoryKeyFor(const ImageRequest& r) {
+            std::string key = r.memoryCacheKey.empty() ? r.data : r.memoryCacheKey;
+            if (!r.transformations.empty()) {
+                key += "#coil#transformations=" + r.transformations.CacheKey();
+                if (r.memoryCacheKey.empty()) key += "#coil#size=" + std::to_string(r.width) + "x" + std::to_string(r.height);
+            }
+            return key;
+        }
+    }
+
+    std::optional<ImageResult> ImageLoader::Peek(const ImageRequest& r) {
+        if (r.data.empty() || !r.memoryCachePolicy.read) return std::nullopt;
+        const std::string key = MemoryKeyFor(r);
+        // isCacheValueValidForSize: a size in the key has already matched.
+        const bool sizeInKey = !r.transformations.empty() && r.memoryCacheKey.empty();
+        const MemoryCache::Value* v = m_Memory.Get(key);
+        if (!v || !(sizeInKey || CachedSizeSatisfies(*v, r))) return std::nullopt;
+        ImageResult result;
+        result.image = v->image;
+        result.dataSource = DataSource::MemoryCache;
+        result.sampled = v->sampled;
+        result.memoryCacheKey = key;
+        result.diskCacheKey = v->diskCacheKey;
+        return result;
+    }
+
+    rt::Job ImageLoader::Enqueue(ImageRequest request, kiln::Function<void(ImageResult)> done) {
+        return rt::Launch(rt::Dispatcher::Main(), [](ImageLoader* self, ImageRequest r, kiln::Function<void(ImageResult)> d) -> rt::Task<> {
+            ImageResult result = co_await self->Execute(std::move(r));
+            if (d) d(std::move(result));
+        }(this, std::move(request), std::move(done)));
+    }
+
     rt::Task<ImageResult> ImageLoader::Execute(ImageRequest r) {
         ImageResult result;
         if (r.data.empty()) {
@@ -354,17 +478,9 @@ namespace kiln::image {
             co_return result;
         }
         const bool memory = r.memoryCachePolicy.read || r.memoryCachePolicy.write;
-        const std::string key = r.memoryCacheKey.empty() ? r.data : r.memoryCacheKey;
-        if (memory && r.memoryCachePolicy.read) {
-            if (const MemoryCache::Value* v = m_Memory.Get(key); v && CachedSizeSatisfies(*v, r)) {
-                result.image = v->image;
-                result.dataSource = DataSource::MemoryCache;
-                result.sampled = v->sampled;
-                result.memoryCacheKey = key;
-                result.diskCacheKey = v->diskCacheKey;
-                co_return result;
-            }
-        }
+        const std::string key = MemoryKeyFor(r);
+        if (memory && r.memoryCachePolicy.read)
+            if (auto hit = Peek(r)) co_return std::move(*hit);
         try {
             Fetched fetched = co_await FetchData(this, r);
             auto bytes = std::make_shared<std::vector<std::uint8_t>>(std::move(fetched.bytes));
@@ -373,6 +489,9 @@ namespace kiln::image {
                 bool sampled = false;
                 d.image = gfx::ImageBitmap::Decode(*bytes, [&](int w, int h) { return DecodeSize(w, h, r, &sampled); });
                 d.sampled = sampled;
+                // EngineInterceptor.transform, in order.
+                for (const auto& t : r.transformations.list)
+                    if (t && d.image) d.image = t->Transform(d.image, r.width, r.height);
                 return d;
             });
             if (!decoded.image) throw std::runtime_error("cannot decode the image");

@@ -368,3 +368,155 @@ TEST(AsyncImageLoadsAtTheSizeItIsGiven) {
     }
     RemoveTree(dir);
 }
+
+// Coil's transformations: CircleCrop and RoundedCorners (sizes, the shape's edges), their
+// cache keys, and the memory cache keyed by them and the size.
+TEST(ImageTransformationsAsCoil) {
+    std::vector<std::uint8_t> red(std::size_t(40) * 20 * 4);
+    for (std::size_t i = 0; i < red.size(); i += 4) { red[i] = 255; red[i + 3] = 255; }
+    const gfx::ImageBitmap in = gfx::ImageBitmap::FromPixels(40, 20, red);
+    const gfx::ImageBitmap circle = CircleCropTransformation{}.Transform(in, 0, 0);
+    auto alpha = [](const gfx::ImageBitmap& b, int x, int y) { return b.Pixels()[(std::size_t(y) * b.Width() + x) * 4 + 3]; };
+    CHECK(circle.Width() == 20 && circle.Height() == 20 && alpha(circle, 0, 0) == 0 && alpha(circle, 10, 10) == 255 && alpha(circle, 19, 19) == 0);
+    // The request's size when both sides are given; corners cut, edges kept.
+    RoundedCornersTransformation rounded(8);
+    const gfx::ImageBitmap r = rounded.Transform(in, 30, 30);
+    CHECK(r.Width() == 30 && r.Height() == 30 && alpha(r, 0, 0) == 0 && alpha(r, 15, 0) == 255 && alpha(r, 0, 15) == 255 && alpha(r, 29, 29) == 0);
+    // One side: the input scaled to fill it; none: the input's size.
+    CHECK(rounded.Transform(in, 20, 0).Height() == 10 && rounded.Transform(in, 0, 0).Width() == 40);
+    CHECK(RoundedCornersTransformation(1, 2, 3, 4).CacheKey() == "coil3.transform.RoundedCornersTransformation-1.0,2.0,3.0,4.0");
+    bool threw = false;
+    try { RoundedCornersTransformation bad(-1); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+    Transformations both{ { std::make_shared<CircleCropTransformation>(), std::make_shared<RoundedCornersTransformation>(2) } };
+    CHECK(both.CacheKey() == "0:coil3.transform.CircleCropTransformation, 1:coil3.transform.RoundedCornersTransformation-2.0,2.0,2.0,2.0");
+
+    // Through the loader: applied after decoding; cached under the transformations and size.
+    FakeDecoders decoders;
+    ImageLoader loader({ .memoryCacheBytes = 1 << 20, .diskCacheDirectory = TempDir() + "/t" });
+    const std::string data = "data:image/x-kimg;base64," + Base64(FakeImage(40, 20));
+    const Transformations circleOnly{ { std::make_shared<CircleCropTransformation>() } };
+    ImageResult a = Load(loader, { .data = data, .width = 40, .height = 40, .transformations = circleOnly });
+    CHECK(a && a.image.Width() == 20 && a.memoryCacheKey == data + "#coil#transformations=0:coil3.transform.CircleCropTransformation#coil#size=40x40");
+    CHECK(Load(loader, { .data = data, .width = 40, .height = 40, .transformations = circleOnly }).dataSource == DataSource::MemoryCache);
+    // Another size, or none: not the same entry.
+    CHECK(Load(loader, { .data = data, .width = 30, .height = 30, .transformations = circleOnly }).dataSource != DataSource::MemoryCache);
+    ImageResult plain = Load(loader, { .data = data });
+    CHECK(plain.dataSource != DataSource::MemoryCache && plain.image.Width() == 40);
+}
+
+// CrossfadePainter: the start fades out as the end fades in over the duration (from the first
+// draw, on the frame clock), each at its content-scaled size; then only the end.
+TEST(CrossfadePainterAsCoil) {
+    struct Recorder final : foundation::Painter {
+        std::optional<ui::Size> size;
+        std::vector<std::pair<float, ui::Size>> draws;
+        explicit Recorder(std::optional<ui::Size> s) : size(s) {}
+        std::optional<ui::Size> IntrinsicSize() const override { return size; }
+        void Draw(ui::DrawScope&, ui::Size s, float alpha, const gfx::ColorFilter*) override { draws.push_back({ alpha, s }); }
+    };
+    auto& d = rt::Dispatcher::Main();
+    auto start = std::make_shared<Recorder>(std::nullopt);
+    auto end = std::make_shared<Recorder>(ui::Size{ 50, 25 });
+    foundation::CrossfadePainter fade(start, end, foundation::ContentScale::Fit(), 200);
+    CHECK(!fade.IntrinsicSize());   // only one side known, not preferring exact
+    ui::DrawScope scope({}, ui::LayoutDirection::Ltr, {});
+    d.RunFrame(1'000'000'000);
+    fade.Draw(scope, { 100, 100 }, 1, nullptr);
+    CHECK(start->draws.size() == 1 && start->draws[0].first == 1 && end->draws.empty());   // end at alpha 0 is skipped
+    CHECK((start->draws[0].second == ui::Size{ 100, 100 }));
+    d.RunFrame(1'100'000'000);
+    fade.Draw(scope, { 100, 100 }, 1, nullptr);
+    CHECK(std::abs(start->draws.back().first - 0.5f) < 1e-3f && std::abs(end->draws.back().first - 0.5f) < 1e-3f);
+    CHECK((end->draws.back().second == ui::Size{ 100, 50 }));   // fitted
+    d.RunFrame(1'300'000'000);
+    fade.Draw(scope, { 100, 100 }, 0.8f, nullptr);
+    const std::size_t startDraws = start->draws.size();
+    fade.Draw(scope, { 100, 100 }, 0.8f, nullptr);
+    CHECK(start->draws.size() == startDraws && !fade.Start() && std::abs(end->draws.back().first - 0.8f) < 1e-6f);
+    // Both sizes known: the larger of each side.
+    foundation::CrossfadePainter both(std::make_shared<Recorder>(ui::Size{ 10, 80 }), end);
+    CHECK(both.IntrinsicSize() == std::optional(ui::Size{ 50, 80 }));
+    d.RunPending();
+}
+
+// AsyncImagePainter's synchronous memory cache hit, the crossfade on loads not from memory,
+// SubcomposeAsyncImage's slots, and ImageLoader.enqueue.
+TEST(AsyncImagePainterSubcomposeAndEnqueueAsCoil) {
+    FakeDecoders decoders;
+    ImageLoader loader({ .memoryCacheBytes = 1 << 20, .diskCacheDirectory = TempDir() + "/s" });
+    const std::string data = "data:image/x-kimg;base64," + Base64(FakeImage(100, 100));
+    auto placeholder = std::make_shared<foundation::ColorPainter>(ui::Color(0xFF808080));
+    // Enqueue: loaded in the background, the result handed over; a preload fills the cache.
+    std::optional<ImageResult> enqueued;
+    rt::Job job = loader.Enqueue({ .data = data, .width = 50, .height = 50 }, [&](ImageResult r) { enqueued = std::move(r); });
+    for (int i = 0; i < 400 && !enqueued; ++i) {
+        rt::Dispatcher::Main().RunPending();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    CHECK(enqueued && enqueued->image.Width() == 50 && loader.Peek({ .data = data, .width = 50, .height = 50 }));
+    CHECK(!loader.Peek({ .data = data, .width = 80, .height = 80, .precision = Precision::Exact }));
+
+    std::vector<std::string> slots;
+    std::vector<foundation::AsyncImageState::Kind> states;
+    std::shared_ptr<foundation::Painter> lastPainter;
+    rt::State<std::string> model(data);
+    rt::State<int> mode(0);
+    {
+        ui::Owner owner;
+        owner.SetDensity({ 1, 1 });
+        rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
+        composition.SetContent([&] {
+            foundation::Box(ui::Modifier{}, ui::Alignment::TopStart(), false, [&] {
+                const foundation::AsyncImageOptions options{
+                    .placeholder = placeholder,
+                    .onState = [&](const foundation::AsyncImageState& s) { states.push_back(s.kind); lastPainter = s.painter; },
+                    .crossfadeMillis = 200,
+                    .imageLoader = &loader,
+                };
+                if (mode.Get() == 0) {
+                    foundation::AsyncImage(model.Get(), "Cover", foundation::SizeMod(ui::Modifier{}, ui::Dp(50), ui::Dp(50)), options);
+                } else {
+                    foundation::SubcomposeAsyncImage(model.Get(), "Cover", foundation::SizeMod(ui::Modifier{}, ui::Dp(50), ui::Dp(50)), options, {
+                        .loading = [&](const foundation::SubcomposeAsyncImageScope&) { slots.push_back("loading"); },
+                        .error = [&](const foundation::SubcomposeAsyncImageScope&) { slots.push_back("error"); },
+                    });
+                }
+            });
+        });
+        auto settle = [&] {
+            for (int i = 0; i < 400; ++i) {
+                rt::Composition::RecomposeAll();
+                owner.MeasureAndLayout({ 400, 400 });
+                rt::Dispatcher::Main().RunPending();
+                rt::Observation::ApplyChanges();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                if (!states.empty() && states.back() != foundation::AsyncImageState::Kind::Loading) break;
+            }
+            rt::Composition::RecomposeAll();
+            owner.MeasureAndLayout({ 400, 400 });
+        };
+        settle();
+        // In the memory cache at 50 x 50: Success straight away, no Loading, no crossfade.
+        CHECK(states.size() == 1 && states[0] == foundation::AsyncImageState::Kind::Success && !dynamic_cast<foundation::CrossfadePainter*>(lastPainter.get()));
+        // Not cached: Loading, then Success crossfading from the placeholder.
+        states.clear();
+        model.Set("data:image/x-kimg;base64," + Base64(FakeImage(60, 60, 9, 9, 9)));
+        settle();
+        CHECK(states.size() == 2 && states[1] == foundation::AsyncImageState::Kind::Success);
+        auto* fade = dynamic_cast<foundation::CrossfadePainter*>(lastPainter.get());
+        CHECK(fade && fade->Start() == placeholder);
+        // Subcomposed: the loading slot, then the image (no success slot); an error slot.
+        states.clear();
+        mode.Set(1);
+        model.Set("data:image/x-kimg;base64," + Base64(FakeImage(70, 70, 1, 1, 1)));
+        settle();
+        CHECK(!slots.empty() && slots.front() == "loading" && states.back() == foundation::AsyncImageState::Kind::Success);
+        slots.clear();
+        states.clear();
+        model.Set("data:image/x-kimg;base64,AAAA");
+        settle();
+        CHECK(!slots.empty() && slots.back() == "error");
+    }
+    rt::Dispatcher::Main().RunPending();
+}

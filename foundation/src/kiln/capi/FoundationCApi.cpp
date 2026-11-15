@@ -1628,10 +1628,14 @@ KILN_API void kiln_async_image(kiln_key key, const char* model, const char* desc
             kiln::capi::CallbackScope scope;
             onState->f.call(onState->f.user, st.kind == fd::AsyncImageState::Kind::Loading ? 0 : st.kind == fd::AsyncImageState::Kind::Success ? 1 : 2);
         };
-        const std::string data = ToString(model);
+        options.crossfadeMillis = o.crossfade_millis;
+        kiln::image::ImageRequest request;
+        request.data = ToString(model);
+        if (o.circle_crop) request.transformations.list.push_back(std::make_shared<kiln::image::CircleCropTransformation>());
+        if (o.corner_radius > 0) request.transformations.list.push_back(std::make_shared<kiln::image::RoundedCornersTransformation>(o.corner_radius));
         const auto desc = ToOptString(description);
         const ui::Modifier mod = ToModifier(m);
-        InGroup(key, [&] { fd::AsyncImage(data, desc, mod, options); });
+        InGroup(key, [&] { fd::AsyncImage(request, desc, mod, options); });
     } CATCH_VOID
 }
 
