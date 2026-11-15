@@ -636,6 +636,7 @@ namespace kpp {
         kiln_video_surface(key, m, player.get(), keepAspectRatio);
     }
     inline void camera_preview(const char* cameraId, Modifier m = {}, Key key = {}) { kiln_camera_preview(key, m, cameraId); }
+    inline bool check_self_permission(const char* permission) { return kiln_check_self_permission(permission); }
     // A camera with its use cases, remembered at the call; see kiln_remember_camera.
     class Camera {
     public:

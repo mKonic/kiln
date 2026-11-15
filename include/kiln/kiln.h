@@ -1276,6 +1276,8 @@ typedef struct kiln_camera_state {
 typedef struct kiln_fn_camera_done { void (*call)(void* user, const char* error); void* user; void (*drop)(void* user); } kiln_fn_camera_done;
 /* A picture: error (ImageCaptureException's code, -1 none), and the file saved or the message. */
 typedef struct kiln_fn_picture { void (*call)(void* user, int32_t error, const char* uri_or_message); void* user; void (*drop)(void* user); } kiln_fn_picture;
+/* ContextCompat.checkSelfPermission: whether the app holds the permission now. */
+KILN_API bool kiln_check_self_permission(const char* permission);
 KILN_API kiln_camera* kiln_remember_camera(kiln_key key, const char* camera_id, bool image_capture, int32_t capture_mode, int32_t flash_mode);
 /* A camera with video capture too (a Recorder with its default quality selector) when
  * video_capture; image capture as kiln_remember_camera. */

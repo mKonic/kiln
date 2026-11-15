@@ -941,6 +941,11 @@ pub fn camera_preview(camera_id: &str, modifier: Modifier) {
     let c = CStrBuf::new(camera_id);
     unsafe { sys::kiln_camera_preview(here(), modifier.0, c.ptr()) }
 }
+/// ContextCompat.checkSelfPermission.
+pub fn check_self_permission(permission: &str) -> bool {
+    let p = CStrBuf::new(permission);
+    unsafe { sys::kiln_check_self_permission(p.ptr()) }
+}
 /// A camera with its use cases (see `kiln_remember_camera`).
 #[derive(Clone, Copy)]
 pub struct Camera(*mut sys::kiln_camera);

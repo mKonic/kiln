@@ -626,6 +626,9 @@ A permission must also be declared in the manifest: `PERMISSIONS` in the app's
 `CMakeLists.txt`, or the Gradle project's manifest. When the user has turned a permission
 down before, `ui::ShouldShowRequestPermissionRationale(permission)` (`kiln/ui/ActivityIntent.h`)
 is true: explain why the app needs it before asking again.
+`ui::CheckSelfPermission(permission)` (`kiln/ui/ActivityResult.h`, ContextCompat's) tells
+whether the app holds a permission now, without asking. For example, an app can use it to record
+with sound only when it is allowed to.
 
 ### Sharing and opening links
 

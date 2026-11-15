@@ -63,3 +63,11 @@ TEST(ActivityResultLaunchersStartParseAndAnswerAtOnce) {
     }
     CHECK(permissions.size() == 1 && !permissions["android.permission.RECORD_AUDIO"]);
 }
+
+// ContextCompat.checkSelfPermission: the host's answer; every permission without a host.
+TEST(CheckSelfPermissionAsksTheHost) {
+    CHECK(ui::CheckSelfPermission("android.permission.CAMERA"));
+    ui::SetPermissionCheck([](const std::string& p) { return p == "android.permission.CAMERA"; });
+    CHECK(ui::CheckSelfPermission("android.permission.CAMERA") && !ui::CheckSelfPermission("android.permission.RECORD_AUDIO"));
+    ui::SetPermissionCheck({});
+}

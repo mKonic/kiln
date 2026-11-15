@@ -2064,6 +2064,9 @@ KILN_API void kiln_camera_preview(kiln_key key, const kiln_modifier* m, const ch
     } CATCH_VOID
 }
 
+KILN_API bool kiln_check_self_permission(const char* permission) {
+    TRY { return kiln::ui::CheckSelfPermission(ToString(permission)); } CATCH(false)
+}
 struct kiln_camera {
     kiln::media::Camera* camera;
 };

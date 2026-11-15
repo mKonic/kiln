@@ -30,6 +30,11 @@ final class KilnDevice {
 
     static void attach(Context context) { sContext = context.getApplicationContext(); }
 
+    /** ContextCompat.checkSelfPermission. */
+    static boolean checkSelfPermission(String permission) {
+        return sContext != null && sContext.checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+
     // --- vibration ---------------------------------------------------------------------------
 
     private static Vibrator vibrator() {

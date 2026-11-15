@@ -49,6 +49,11 @@ namespace kiln::ui {
         kiln::Function<bool(const std::string& permission)> checkSelfPermission;
     };
 
+    // ContextCompat.checkSelfPermission: whether the app holds the permission now (the host
+    // installs the check; without one, as on the desktop, every permission is held).
+    bool CheckSelfPermission(const std::string& permission);
+    void SetPermissionCheck(kiln::Function<bool(const std::string& permission)> check);
+
     class ActivityResultRegistry {
     public:
         void SetHost(ActivityResultHost host) { m_Host = std::move(host); }

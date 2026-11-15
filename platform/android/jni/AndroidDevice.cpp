@@ -155,6 +155,16 @@ namespace kiln::android {
         };
         env->RegisterNatives(g_Device, natives, 2);
 
+        static jmethodID check = Static(env, "checkSelfPermission", "(Ljava/lang/String;)Z");
+        ui::SetPermissionCheck([](const std::string& permission) {
+            JNIEnv* env = Env();
+            jstring p = env->NewStringUTF(permission.c_str());
+            const bool granted = env->CallStaticBooleanMethod(g_Device, check, p);
+            Clear(env);
+            env->DeleteLocalRef(p);
+            return granted;
+        });
+
         // Vibration.
         static jmethodID vibrate = Static(env, "vibrate", "(I[J[III[I[F[I)Z");
         static jmethodID cancelVibration = Static(env, "cancelVibration", "()V");
