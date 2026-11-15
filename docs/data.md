@@ -71,7 +71,9 @@ std::optional<std::string> Token() { return kiln::security::SecureStore::Open("s
   the key never leaves the device's secure hardware.
 * The whole store, keys and values, is one file in `NoBackupFilesDir`. Keystore keys are not
   part of a backup, so the file is not either. After a restore, or if the key is gone, the
-  store starts empty: sign the user in again.
+  store starts empty: sign the user in again. The file that could not be read is kept
+  beside it with `.unreadable` added to its name, so a key store that failed only for a while
+  does not cost the data.
 * On the desktop there is no key store: values are kept in memory for the process only.
 
 From C, `kiln_secure_store_open` and `kiln_secure_store_get` / `_set` / `_remove` / `_clear`;

@@ -11,7 +11,7 @@
 // The whole store (keys and values) is one encrypted file in NoBackupFilesDir: Keystore keys do
 // not move with a backup, so a restored copy could never be read. If the file cannot be
 // decrypted (the key is gone: the app's data was cleared or the lock screen reset), the store
-// starts empty. Without a platform key store (the desktop) values live in memory for the
+// starts empty and the file is kept beside it as <file>.unreadable. Without a platform key store (the desktop) values live in memory for the
 // process and are never written in plain text.
 
 #include <kiln/Function.h>

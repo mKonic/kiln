@@ -104,7 +104,11 @@ namespace kiln::security {
         auto plain = Host().decrypt(Alias(), sealed, m_Name);
         auto values = plain ? Decode(*plain) : std::nullopt;
         if (!values) {
-            log::Error("kiln", "SecureStore {}: cannot be decrypted (its key is gone or the file changed); starting empty", m_Name);
+            // Kept aside rather than overwritten by the next save: a key store that failed for a
+            // while leaves the data recoverable.
+            std::error_code ec;
+            std::filesystem::rename(m_Path, m_Path + ".unreadable", ec);
+            log::Error("kiln", "SecureStore {}: cannot be decrypted (its key is gone or the file changed); starting empty, the old file kept as {}.unreadable", m_Name, m_Path);
             return;
         }
         m_Values = std::move(*values);

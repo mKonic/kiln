@@ -82,6 +82,8 @@ TEST(SecureStoreKeepsValuesEncryptedOnDisk) {
         bytes[2] = char(bytes[2] ^ 1);
         std::ofstream(file, std::ios::binary | std::ios::trunc) << bytes;
         CHECK(SecureStore::Open("session")->Keys().empty());
+        // The unreadable file is kept aside, not overwritten by the next save.
+        CHECK(Read(file + ".unreadable") == bytes && !std::filesystem::exists(file));
     }
     keystore.keyGone = true;
     auto s = SecureStore::Open("gone");
