@@ -23,7 +23,11 @@ namespace kiln::constraintlayout::core {
     void BasicMeasure::measureChildren(ConstraintWidgetContainer* layout) {
         const bool optimize = layout->optimizeFor(Optimizer::OPTIMIZATION_GRAPH);
         Measurer* measurer = layout->getMeasurer();
-        for (ConstraintWidget* child : layout->mChildren) {
+        // By index over the count at the start, as upstream: measuring a virtual layout (a
+        // grid) can add children.
+        const std::size_t childCount = layout->mChildren.size();
+        for (std::size_t i = 0; i < childCount; i++) {
+            ConstraintWidget* child = layout->mChildren[i];
             if (child->is(CW::KIND_GUIDELINE)) continue;
             if (child->is(CW::KIND_BARRIER)) continue;
             if (child->isInVirtualLayout()) continue;

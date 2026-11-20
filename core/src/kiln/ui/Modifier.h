@@ -79,6 +79,11 @@ namespace kiln::ui {
         virtual ~DrawModifier() = default;
         // Must call scope.DrawContent() to draw what it wraps (or skip it on purpose).
         virtual void Draw(ContentDrawScope& scope) = 0;
+        // A placement layer (PlacementScope::PlaceWithLayer) equal to this one: replacing this
+        // with it changes nothing, so the node keeps its recording.
+        virtual bool SamePlacementLayer(const DrawModifier&) const { return false; }
+        // Identifies a placement layer's type, so SamePlacementLayer can compare like with like.
+        virtual const void* PlacementLayerKind() const { return nullptr; }
         // A layer's transform of what it wraps, for hit testing and coordinates (graphicsLayer).
         // `size` is the size it draws in. False when it does not transform.
         virtual bool LayerTransform(Size, gfx::Matrix&) const { return false; }

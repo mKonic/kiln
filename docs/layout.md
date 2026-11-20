@@ -154,6 +154,108 @@ Grid([](GridConfigurationScope& g) {
 });
 ```
 
+## ConstraintLayout
+
+`ConstraintLayout` places children by constraints between them and to the parent. It suits
+screens where a flat layout reads better than nested rows and columns. It is a port of
+constraintlayout-compose and its solver. Add `kiln_constraintlayout` to the app's `LIBS`:
+
+```cmake
+kiln_add_app(contacts
+    SOURCES src/main.cpp
+    LIBS kiln_material3 kiln_constraintlayout
+    PACKAGE com.example.contacts
+    LABEL "Contacts"
+)
+```
+
+Inside the content, `CreateRef` gives each child a reference and `ConstrainAs` ties the child
+to it. The block links the child's anchors (`start`, `end`, `top`, `bottom`, `baseline`, and
+`absoluteLeft` / `absoluteRight`, which ignore the layout direction) to other anchors:
+
+```cpp
+ConstraintLayout(FillMax(Modifier{}, Axis::Horizontal), [](ConstraintLayoutScope& s) {
+    auto avatar = s.CreateRef();
+    auto name = s.CreateRef();
+    Box(s.ConstrainAs(SizeMod(Modifier{}, 48_dp, 48_dp), avatar, [](ConstrainScope& c) {
+        c.start.LinkTo(c.parent.start, 16_dp);
+        c.CenterVerticallyTo(c.parent);
+    }));
+    Text("Ada Lovelace", s.ConstrainAs(Modifier{}, name, [avatar](ConstrainScope& c) {
+        c.start.LinkTo(avatar.end, 12_dp);
+        c.end.LinkTo(c.parent.end, 16_dp);
+        c.CenterVerticallyTo(avatar);
+        c.width = Dimension::FillToConstraints();
+    }));
+});
+```
+
+A child's size is a `Dimension`:
+
+| Dimension | Size |
+|---|---|
+| `WrapContent()` | Its own size, the default |
+| `Value(dp)` | Exactly that |
+| `FillToConstraints()` | The space between its constraints |
+| `PreferredWrapContent()` | Its own size, unless the constraints are tighter |
+| `Percent(f)` | That fraction of the parent |
+| `Ratio("16:9")` | A width to height ratio |
+| `MatchParent()` | The parent's size |
+
+`AtLeast(dp)` and `AtMost(dp)` bound any of them. A `ConstrainScope` also takes
+`horizontalBias` / `verticalBias` and `visibility` (`Visibility::Gone()` takes the child out
+of the layout). It also takes layer properties: `alpha`, `scaleX`, `rotationZ`,
+`translationX` and the rest.
+
+The scope makes helpers that children can link to:
+
+- guidelines at an offset or fraction (`CreateGuidelineFromStart(0.3f)`);
+- barriers on the far side of several children (`CreateEndBarrier({ &a, &b })`);
+- chains that spread or pack children along one axis (`CreateHorizontalChain`);
+- flows that wrap children into rows (`CreateFlow`);
+- grids, rows and columns (`CreateGrid`, `CreateRow`, `CreateColumn`).
+
+`WithHorizontalChainParams(ref, ...)` gives a child its margins and weight in a chain.
+
+A recomposition of the content runs the constraint blocks again. A block kept with `Remember`
+(the `ConstrainBlock` overload of `ConstrainAs`) is not run again, which is what Compose's
+compiler does for lambdas with stable captures.
+
+### Constraint sets
+
+A `ConstraintSet` keeps the constraints apart from the content. It finds children by their
+`LayoutId`, so different sets can lay out the same children, for example per window size. It can
+be written with the same scope:
+
+```cpp
+auto set = MakeConstraintSet([](ConstraintSetScope& s) {
+    auto title = s.CreateRefFor("title");
+    auto body = s.CreateRefFor("body");
+    s.Constrain(title, [](ConstrainScope& c) { c.top.LinkTo(c.parent.top, 16_dp); });
+    s.Constrain(body, [title](ConstrainScope& c) {
+        c.top.LinkTo(title.bottom, 8_dp);
+        c.width = Dimension::FillToConstraints();
+        c.LinkTo(c.parent.start, c.parent.end, 16_dp, 16_dp);
+    });
+});
+ConstraintLayout(set, FillMax(Modifier{}, Axis::Both), [] {
+    Text("Notes", LayoutId(Modifier{}, "title"));
+    Text("Constraint sets can be swapped at run time.", LayoutId(Modifier{}, "body"));
+});
+```
+
+It can also be written in JSON5, as Compose's `ConstraintSet(json)` is:
+
+```cpp
+auto set = MakeConstraintSet(R"({
+    title: { top: ['parent', 'top', 16], start: ['parent', 'start', 16] },
+    body: { top: ['title', 'bottom', 8], centerHorizontally: 'parent' }
+})");
+```
+
+`MakeConstraintSet(description, base)` extends `base`. `animateChanges` and MotionLayout are
+not part of kiln.
+
 ## Window insets
 
 kiln apps draw edge to edge, behind the status and navigation bars. Keep content clear of

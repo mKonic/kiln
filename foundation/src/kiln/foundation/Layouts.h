@@ -333,6 +333,9 @@ namespace kiln::foundation {
     // graphicsLayer { }: the block sets the properties; state it reads is observed, so an
     // animated value redraws the layer without recomposing the caller.
     Modifier GraphicsLayer(Modifier m, kiln::Function<void(GraphicsLayerParams&)> block);
+    // A graphics layer to place a child in (Placeable.placeWithLayer { }): pass it to
+    // PlacementScope::PlaceWithLayer. Layers with equal params count as the same layer.
+    std::shared_ptr<ui::DrawModifier> PlacementLayer(const GraphicsLayerParams& p);
     namespace detail {
         // Draws `content` as a graphicsLayer with `p` would (at the scope's size); for
         // layer::DrawLayer.

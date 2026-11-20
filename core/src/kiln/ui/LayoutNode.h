@@ -149,6 +149,8 @@ namespace kiln::ui {
         struct HitStep { PointerInputModifier* mod = nullptr; Mat3 toRoot{}; ui::Size size; const DrawModifier* clip = nullptr; };   // mod null: a clip
         // `parentInner`: the parent's children space; `inner` receives this node's.
         void HitSteps(const Mat3& parentInner, std::vector<HitStep>& out, Mat3& inner) const;
+        // The node's position in its parent's children space, then (when asked) its placement layer.
+        Mat3 Placed(const Mat3& parentInner, bool withPlacementLayer) const;
         // Coordinator `index`'s space (0: the outer bounds, the last: the children's) -> root.
         Mat3 CoordinatorToRoot(std::size_t index) const;
         // The space and size a pointer modifier of this node receives events in.
@@ -277,6 +279,9 @@ namespace kiln::ui {
         void DispatchRemeasured();
         void DispatchUnplaced();
         std::vector<std::unique_ptr<Coordinator>> m_Coordinators;   // outer .. inner
+        // The layer its parent placed it in (placeWithLayer): first in the outer coordinator's draws.
+        std::shared_ptr<DrawModifier> m_PlacementLayer;
+        void SetPlacementLayer(std::shared_ptr<DrawModifier> layer);
         std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
         ParentData m_ParentData;
 

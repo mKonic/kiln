@@ -934,6 +934,35 @@ namespace kiln::foundation {
         };
     }
 
+    namespace {
+        // A LayerNode outside any modifier chain, drawn as a placement layer.
+        struct PlacementLayerModifier final : DrawModifier {
+            explicit PlacementLayerModifier(const GraphicsLayerParams& p) : layer(Spec(p)) {}
+            static LayerSpec Spec(const GraphicsLayerParams& p) {
+                LayerSpec spec;
+                static_cast<GraphicsLayerParams&>(spec) = p;
+                return spec;
+            }
+            static constexpr char kKind = 0;
+            LayerNode layer;
+            void Draw(ContentDrawScope& s) override { layer.Draw(s); }
+            bool LayerTransform(Size size, gfx::Matrix& out) const override { return layer.LayerTransform(size, out); }
+            bool LayerProjective(Size size, float out[9]) const override { return layer.LayerProjective(size, out); }
+            bool LayerClipContains(Size size, Offset p, LayoutDirection dir, const Density& d) const override {
+                return layer.LayerClipContains(size, p, dir, d);
+            }
+            float LayerAlpha() const override { return layer.LayerAlpha(); }
+            const void* PlacementLayerKind() const override { return &kKind; }
+            bool SamePlacementLayer(const DrawModifier& other) const override {
+                return other.PlacementLayerKind() == &kKind &&
+                       static_cast<const GraphicsLayerParams&>(static_cast<const PlacementLayerModifier&>(other).layer.params) ==
+                           static_cast<const GraphicsLayerParams&>(layer.params);
+            }
+        };
+    }
+
+    std::shared_ptr<ui::DrawModifier> PlacementLayer(const GraphicsLayerParams& p) { return std::make_shared<PlacementLayerModifier>(p); }
+
     Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p) {
         LayerSpec spec;
         static_cast<GraphicsLayerParams&>(spec) = p;

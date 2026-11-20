@@ -31,6 +31,7 @@ using namespace kiln::material3;
 using namespace kiln::text;
 using namespace kiln::navigation;
 using namespace kiln::navigation3;
+using namespace kiln::constraintlayout;
 '''
 
 
@@ -63,6 +64,7 @@ def prelude_headers():
             if '/internal/' in rel or rel.endswith('.gen.h') or '/capi/' in rel or rel.startswith('kiln/platform') or rel == 'kiln/jvm/Jvm.h':   # Jvm.h: Android's jni.h
                 continue
             out.append(rel)
+    out.append('kiln/constraintlayout/ConstraintLayout.h')   # its core/ is the solver, not API
     return out
 
 

@@ -246,7 +246,11 @@ namespace kiln::constraintlayout::core {
     }
 
     bool DependencyGraph::basicMeasureWidgets(ConstraintWidgetContainer* container) {
-        for (ConstraintWidget* widget : container->mChildren) {
+        // By index over the count at the start: measuring a virtual layout (a grid) can add
+        // children (Java's iterator would throw).
+        const std::size_t childCount = container->mChildren.size();
+        for (std::size_t i = 0; i < childCount; i++) {
+            ConstraintWidget* widget = container->mChildren[i];
             DB horizontal = widget->mListDimensionBehaviors[CW::HORIZONTAL];
             DB vertical = widget->mListDimensionBehaviors[CW::VERTICAL];
 

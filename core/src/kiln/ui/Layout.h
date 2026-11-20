@@ -188,6 +188,10 @@ namespace kiln::ui {
         virtual void PlaceAt(IntOffset position, float zIndex) = 0;
         // Placed inside withMotionFrameOfReferencePlacement (a scroll offset, say).
         virtual void SetPlacedUnderMotionFrameOfReference(bool) {}
+        // placeWithLayer: a layer drawn around the placed layout (its outermost draw modifier,
+        // so it also transforms hit testing and coordinates); null removes it. Only a layout
+        // node's outer placeable takes one.
+        virtual void SetPlacementLayer(std::shared_ptr<DrawModifier>) {}
 
     private:
         IntSize m_Measured;
@@ -209,8 +213,11 @@ namespace kiln::ui {
     class PlacementScope {
     public:
         PlacementScope(LayoutDirection dir, int parentWidth) : m_Dir(dir), m_ParentWidth(parentWidth) {}
-        void Place(Placeable& p, int x, int y, float zIndex = 0) {
+        void Place(Placeable& p, int x, int y, float zIndex = 0) { PlaceWithLayer(p, x, y, nullptr, zIndex); }
+        // Placeable.placeWithLayer: places it inside `layer` (see SetPlacementLayer).
+        void PlaceWithLayer(Placeable& p, int x, int y, std::shared_ptr<DrawModifier> layer, float zIndex = 0) {
             p.SetPlacedUnderMotionFrameOfReference(m_MotionFrame);
+            p.SetPlacementLayer(std::move(layer));
             p.PlaceAt(IntOffset{ x, y } + p.ApparentToRealOffset(), zIndex);
         }
         // withMotionFrameOfReferencePlacement: placements in `block` are motion (scrolling)
@@ -226,6 +233,10 @@ namespace kiln::ui {
         void PlaceRelative(Placeable& p, int x, int y, float zIndex = 0) {
             if (m_Dir == LayoutDirection::Rtl) x = m_ParentWidth - p.Width() - x;
             Place(p, x, y, zIndex);
+        }
+        void PlaceRelativeWithLayer(Placeable& p, int x, int y, std::shared_ptr<DrawModifier> layer, float zIndex = 0) {
+            if (m_Dir == LayoutDirection::Rtl) x = m_ParentWidth - p.Width() - x;
+            PlaceWithLayer(p, x, y, std::move(layer), zIndex);
         }
         LayoutDirection Direction() const { return m_Dir; }
         int ParentWidth() const { return m_ParentWidth; }

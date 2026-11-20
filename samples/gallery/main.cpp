@@ -14,6 +14,7 @@
 #include <kiln/foundation/activity/ActivityResult.h>
 #include <kiln/foundation/Popup.h>
 #include <kiln/foundation/Flow.h>
+#include <kiln/constraintlayout/ConstraintLayout.h>
 #include <kiln/foundation/VideoSurface.h>
 #include <kiln/media/MediaSession.h>
 #include <kiln/ui/AppLocales.h>
@@ -753,6 +754,43 @@ namespace {
         });
     }
 
+    // ConstraintLayout: an avatar, a name and status beside it (their start on a barrier), and
+    // an action pinned to the end, centred on the text in a packed chain.
+    void ConstraintLayoutDemo() {
+        namespace cl = kiln::constraintlayout;
+        cl::ConstraintLayout(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 8_dp), [](cl::ConstraintLayoutScope& s) {
+            auto refs = s.CreateRefs(4);
+            auto &avatar = refs[0], &name = refs[1], &status = refs[2], &action = refs[3];
+            auto textStart = s.CreateEndBarrier({ &avatar }, 12_dp);
+            s.CreateVerticalChain({ &name, &status }, cl::ChainStyle::Packed());
+            Box(Background(s.ConstrainAs(Modifier{}, avatar,
+                                         [](cl::ConstrainScope& c) {
+                                             c.width = cl::Dimension::Value(48_dp);
+                                             c.height = cl::Dimension::Value(48_dp);
+                                             c.CenterVerticallyTo(c.parent);
+                                             c.start.LinkTo(c.parent.start);
+                                         }),
+                           kPrimary, CornerShape::Pill()));
+            BasicText("Ada Lovelace", s.ConstrainAs(Modifier{}, name, [textStart, action](cl::ConstrainScope& c) {
+                c.LinkTo(textStart, action.start, 0_dp, 8_dp, 0_dp, 0_dp, 0.0f);
+                c.width = cl::Dimension::FillToConstraints();
+            }), { 16, kOnSurface });
+            BasicText("Writing the first program", s.ConstrainAs(Modifier{}, status, [textStart, action](cl::ConstrainScope& c) {
+                c.LinkTo(textStart, action.start, 0_dp, 8_dp, 0_dp, 0_dp, 0.0f);
+                c.width = cl::Dimension::FillToConstraints();
+            }), { 14, kVariant });
+            Box(Background(s.ConstrainAs(Modifier{}, action,
+                                         [](cl::ConstrainScope& c) {
+                                             c.width = cl::Dimension::Value(40_dp);
+                                             c.height = cl::Dimension::Value(40_dp);
+                                             c.CenterVerticallyTo(c.parent);
+                                             c.end.LinkTo(c.parent.end);
+                                             c.rotationZ = 45.0f;
+                                         }),
+                           kVariant, CornerShape::Rounded(8_dp)));
+        });
+    }
+
     void Gallery() {
         auto& c = *kiln::rt::Composition::Current();
         auto& seconds = RememberState(0);
@@ -795,6 +833,10 @@ namespace {
         }
         if (section == "language") {
             LanguageDemo();
+            return;
+        }
+        if (section == "constraintlayout") {
+            ConstraintLayoutDemo();
             return;
         }
         if (section == "transform") {
@@ -1409,6 +1451,7 @@ namespace {
                         }), 48_dp, 48_dp), knob.SettledValue() ? kPrimary : kVariant, CornerShape::Pill()));
                 });
             }
+            ConstraintLayoutDemo();
             // A lazy horizontal grid: two rows, every fifth cell spanning both.
             {
                 auto& gridState = RememberLazyGridState();

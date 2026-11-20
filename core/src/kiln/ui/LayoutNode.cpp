@@ -355,6 +355,10 @@ namespace kiln::ui {
             return merged;
         }
 
+        void SetPlacementLayer(std::shared_ptr<DrawModifier> layer) override {
+            if (index == 0) node.SetPlacementLayer(std::move(layer));
+        }
+
         void PlaceAt(IntOffset p, float z) override {
             if (index == 0 && InLookahead() && (node.IsOutMostLookaheadRoot() || !node.m_Lookahead->placed)) {
                 // A lookahead root (or a node its parent did not place in lookahead) is placed in
@@ -585,7 +589,7 @@ namespace kiln::ui {
     thread_local bool g_ExcludeMotionFrame = false;
 
     void LayoutNode::HitSteps(const Mat3& parentInner, std::vector<HitStep>& out, Mat3& inner) const {
-        Mat3 m = Mul3(parentInner, Translate3(float(PosX()), float(PosY())));
+        Mat3 m = Placed(parentInner, true);
         // Nodes up to and including a layout modifier sit in that modifier's coordinator.
         std::size_t ci = 0;
         auto sizeOf = [&](std::size_t i) { const auto& c = *m_Coordinators[i]; return ui::Size{ float(c.Width()), float(c.Height()) }; };
@@ -611,6 +615,16 @@ namespace kiln::ui {
     float LayoutNode::CoordY(const Coordinator& c) { return g_ExcludeMotionFrame && c.motionFrame ? 0.0f : float(c.position.y); }
     int LayoutNode::PosX() const { return g_ExcludeMotionFrame && m_MotionFrame ? 0 : m_Position.x; }
     int LayoutNode::PosY() const { return g_ExcludeMotionFrame && m_MotionFrame ? 0 : m_Position.y; }
+
+    LayoutNode::Mat3 LayoutNode::Placed(const Mat3& parentInner, bool withPlacementLayer) const {
+        Mat3 m = Mul3(parentInner, Translate3(float(PosX()), float(PosY())));
+        if (withPlacementLayer && m_PlacementLayer && !m_Coordinators.empty()) {
+            const auto& c = *m_Coordinators.front();
+            Mat3 t;
+            if (LayerOf(m_PlacementLayer.get(), ui::Size{ float(c.Width()), float(c.Height()) }, t)) m = Mul3(m, t);
+        }
+        return m;
+    }
 
     bool LayoutNode::PointerSpace(const PointerInputModifier* mod, Mat3& toRoot, ui::Size& size) const {
         std::vector<const LayoutNode*> chain;
@@ -656,7 +670,7 @@ namespace kiln::ui {
     }
 
     LayoutNode::Mat3 LayoutNode::SpaceToRoot(const ModifierNode* at, ui::Size* sizeOut) const {
-        Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(PosX()), float(PosY())));
+        Mat3 m = Placed(ParentInner(m_Parent), at != nullptr);   // without `at`, the draws below include the layer
         if (at) {
             std::size_t ci = 0;
             for (const auto& node : m_Nodes) {
@@ -733,7 +747,7 @@ namespace kiln::ui {
 
     Rect LayoutNode::LayoutModifierRectInRoot(const LayoutModifier* modifier) const {
         // The walk of HitSteps, stopping after the modifier's coordinator (its layers included).
-        Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(PosX()), float(PosY())));
+        Mat3 m = Placed(ParentInner(m_Parent), true);
         std::size_t ci = 0;
         for (const auto& node : m_Nodes) {
             const auto& c = *m_Coordinators[ci];
@@ -867,8 +881,10 @@ namespace kiln::ui {
     }
 
     void LayoutNode::UpdateParentData() {
+        // NodeCoordinator.parentData folds tail to head: the outermost modifier has the last word.
         ParentData pd;
-        for (auto& n : m_Nodes) if (auto* p = n->AsParentData()) p->ModifyParentData(pd);
+        for (auto it = m_Nodes.rbegin(); it != m_Nodes.rend(); ++it)
+            if (auto* p = (*it)->AsParentData()) p->ModifyParentData(pd);
         m_ParentData = std::move(pd);
         if (m_Parent) m_Parent->RequestRemeasure();
     }
@@ -928,6 +944,7 @@ namespace kiln::ui {
         }
         chain.push_back(std::make_unique<Coordinator>(*this, chain.size(), nullptr));
         chain.back()->draws = std::move(pending);
+        if (m_PlacementLayer) chain.front()->draws.insert(chain.front()->draws.begin(), m_PlacementLayer.get());
         m_Coordinators = std::move(chain);
         m_Measured = false;
         m_MeasureDirty = true;
@@ -1556,7 +1573,7 @@ namespace kiln::ui {
 
     LayoutNode::Mat3 LayoutNode::CoordinatorToRoot(std::size_t k) const {
         // The walk of HitSteps: coordinator k's space is reached at its layout modifier.
-        Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(PosX()), float(PosY())));
+        Mat3 m = Placed(ParentInner(m_Parent), true);
         std::size_t ci = 0;
         for (const auto& node : m_Nodes) {
             const auto& c = *m_Coordinators[ci];
@@ -1711,6 +1728,19 @@ namespace kiln::ui {
         }
         scope.SetDirection(outer);
         static_cast<Density&>(scope) = outerDensity;
+    }
+
+    void LayoutNode::SetPlacementLayer(std::shared_ptr<DrawModifier> layer) {
+        if (layer == m_PlacementLayer) return;
+        if (layer && m_PlacementLayer && m_PlacementLayer->SamePlacementLayer(*layer)) return;
+        if (!m_Coordinators.empty()) {
+            auto& draws = m_Coordinators.front()->draws;
+            if (m_PlacementLayer) std::erase(draws, m_PlacementLayer.get());
+            if (layer) draws.insert(draws.begin(), layer.get());
+        }
+        m_PlacementLayer = std::move(layer);
+        InvalidateDraw();
+        if (m_Owner) m_Owner->InvalidateSemantics();   // a transparent layer hides it
     }
 
     void LayoutNode::DrawCoordinator(std::size_t index, ContentDrawScope& scope) {

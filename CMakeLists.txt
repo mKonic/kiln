@@ -204,7 +204,7 @@ if(ANDROID)
     endfunction()
     kiln_add_android_app(hello SOURCES samples/hello/main.cpp PACKAGE dev.kiln.hello LABEL "kiln hello")
     kiln_add_android_app(list SOURCES samples/list/main.cpp PACKAGE dev.kiln.list LABEL "kiln list")
-    kiln_add_android_app(gallery SOURCES samples/gallery/main.cpp LIBS kiln_material3
+    kiln_add_android_app(gallery SOURCES samples/gallery/main.cpp LIBS kiln_material3 kiln_constraintlayout
                          PACKAGE dev.kiln.gallery LABEL "kiln gallery" ASSETS ${CMAKE_SOURCE_DIR}/samples/gallery/assets
                          RES ${CMAKE_SOURCE_DIR}/samples/gallery/res PERMISSIONS android.permission.CAMERA android.permission.RECORD_AUDIO android.permission.FOREGROUND_SERVICE
                              android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK android.permission.WAKE_LOCK android.permission.SCHEDULE_EXACT_ALARM
@@ -231,7 +231,7 @@ else()
     add_executable(list samples/list/main.cpp)
     target_link_libraries(list PRIVATE kiln_hostdev)
     add_executable(gallery samples/gallery/main.cpp)
-    target_link_libraries(gallery PRIVATE kiln_hostdev kiln_material3)
+    target_link_libraries(gallery PRIVATE kiln_hostdev kiln_material3 kiln_constraintlayout)
     kiln_app_resources(gallery ${CMAKE_SOURCE_DIR}/samples/gallery/res TABLE)
     add_custom_command(TARGET gallery POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory
                        ${CMAKE_SOURCE_DIR}/samples/gallery/assets $<TARGET_FILE_DIR:gallery>/assets)
