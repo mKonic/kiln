@@ -12,14 +12,6 @@ namespace kiln::foundation {
     using namespace ui;
 
     namespace {
-        // Draws nothing and has no intrinsic size (a null painter in Coil).
-        class EmptyPainter final : public Painter {
-        public:
-            std::optional<Size> IntrinsicSize() const override { return std::nullopt; }
-            void Draw(DrawScope&, Size, float, const gfx::ColorFilter*) override {}
-            bool Equals(const Painter& other) const override { return dynamic_cast<const EmptyPainter*>(&other) != nullptr; }
-        };
-
         // ConstraintsSizeResolver as a layout modifier: records the constraints, measures as is.
         struct SizeResolverParams {
             std::shared_ptr<AsyncImagePainter> painter;
@@ -131,11 +123,6 @@ namespace kiln::foundation {
             }
             done.result = std::move(result);
             h->Set(std::move(done));
-        }
-
-        const std::shared_ptr<Painter>& Empty() {
-            static const std::shared_ptr<Painter> empty = std::make_shared<EmptyPainter>();
-            return empty;
         }
     }
 
