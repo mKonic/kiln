@@ -1,6 +1,10 @@
 #include "kiln/constraintlayout/core/state/ConstraintSetParser.h"
 
+#include "kiln/constraintlayout/core/motion/utils/TypedBundle.h"
+#include "kiln/constraintlayout/core/motion/utils/TypedValues.h"
+#include "kiln/constraintlayout/core/state/CoreMotionScene.h"
 #include "kiln/constraintlayout/core/state/GridReference.h"
+#include "kiln/constraintlayout/core/state/Transition.h"
 #include "kiln/constraintlayout/core/state/StateHelpers.h"
 #include "kiln/constraintlayout/core/widgets/Flow.h"
 
@@ -657,8 +661,10 @@ namespace kiln::constraintlayout::core::state {
             reference->setVerticalChainWeight(value());
         } else if (a == "hWeight") {
             reference->setHorizontalChainWeight(value());
-        } else if (a == "custom" || a == "motion") {
-            // MotionLayout's custom attributes and motion properties: not ported.
+        } else if (a == "custom") {
+            parseCustomProperties(element, reference, a);
+        } else if (a == "motion") {
+            parseMotionProperties(element.get(a), reference);
         } else {
             parseConstraint(state, layoutVariables, element, reference, a);
         }
@@ -819,6 +825,195 @@ namespace kiln::constraintlayout::core::state {
         for (const std::string& constraintName : element.names())
             if (constraintName == "type") return element.getString("type");
         return "";
+    }
+
+
+    // MotionLayout
+
+    void ConstraintSetParser::parseJSON(const std::string& content, Transition& transition, int state) {
+        try {
+            std::shared_ptr<CLObject> json = CLParser::parse(content);
+            for (const std::string& elementName : json->names()) {
+                CLElement* base_element = json->get(elementName);
+                if (!base_element->is(CLElement::KIND_OBJECT)) continue;
+                auto* element = static_cast<CLObject*>(base_element);
+                CLObject* customProperties = element->getObjectOrNull("custom");
+                if (customProperties == nullptr) continue;
+                for (const std::string& property : customProperties->names()) {
+                    CLElement* value = customProperties->get(property);
+                    if (value->is(CLElement::KIND_NUMBER)) {
+                        transition.addCustomFloat(state, elementName, property, value->getFloat());
+                    } else if (value->is(CLElement::KIND_STRING)) {
+                        const int64_t color = parseColorString(value->content());
+                        if (color != -1) transition.addCustomColor(state, elementName, property, int(color));
+                    }
+                }
+            }
+        } catch (const CLParsingException& e) {
+            std::fprintf(stderr, "Error parsing JSON %s\n", e.what());
+        }
+    }
+
+    void ConstraintSetParser::parseMotionSceneJSON(CoreMotionScene& scene, const std::string& content) {
+        try {
+            std::shared_ptr<CLObject> json = CLParser::parse(content);
+            for (const std::string& elementName : json->names()) {
+                CLElement* element = json->get(elementName);
+                if (!element->is(CLElement::KIND_OBJECT)) continue;
+                const auto& clObject = static_cast<const CLObject&>(*element);
+                if (elementName == "ConstraintSets") parseConstraintSets(scene, clObject);
+                else if (elementName == "Transitions") parseTransitions(scene, clObject);
+                else if (elementName == "Header") parseHeader(scene, clObject);
+            }
+        } catch (const CLParsingException& e) {
+            std::fprintf(stderr, "Error parsing JSON %s\n", e.what());
+        }
+    }
+
+    void ConstraintSetParser::parseConstraintSets(CoreMotionScene& scene, const CLObject& json) {
+        for (const std::string& csName : json.names()) {
+            CLObject* constraintSet = json.getObject(csName);
+            bool added = false;
+            const std::optional<std::string> ext = constraintSet->getStringOrNull("Extends");
+            if (ext && !ext->empty()) {
+                const std::optional<std::string> base = scene.getConstraintSet(*ext);
+                if (!base) continue;
+                std::shared_ptr<CLObject> baseJson = CLParser::parse(*base);
+                for (const std::string& widgetOverrideName : constraintSet->names()) {
+                    CLElement* value = constraintSet->get(widgetOverrideName);
+                    if (value->is(CLElement::KIND_OBJECT)) override(*baseJson, widgetOverrideName, static_cast<const CLObject&>(*value));
+                }
+                scene.setConstraintSetContent(csName, baseJson->toJSON());
+                added = true;
+            }
+            if (!added) scene.setConstraintSetContent(csName, constraintSet->toJSON());
+        }
+    }
+
+    void ConstraintSetParser::override(CLObject& baseJson, const std::string& name, const CLObject& overrideValue) {
+        if (!baseJson.has(name)) {
+            baseJson.put(name, overrideValue.clone());
+            return;
+        }
+        CLObject* base = baseJson.getObject(name);
+        for (const std::string& key : overrideValue.names()) {
+            if (key != "clear") {
+                base->put(key, overrideValue.get(key)->clone());
+                continue;
+            }
+            CLArray* toClear = overrideValue.getArray("clear");
+            for (int i = 0; i < toClear->size(); i++) {
+                const std::optional<std::string> clearedKey = toClear->getStringOrNull(i);
+                if (!clearedKey) continue;
+                if (*clearedKey == "dimensions") {
+                    base->remove("width");
+                    base->remove("height");
+                } else if (*clearedKey == "constraints") {
+                    for (const char* k : { "start", "end", "top", "bottom", "baseline", "center", "centerHorizontally", "centerVertically" }) base->remove(k);
+                } else if (*clearedKey == "transforms") {
+                    for (const char* k : { "visibility", "alpha", "pivotX", "pivotY", "rotationX", "rotationY", "rotationZ", "scaleX", "scaleY",
+                                           "translationX", "translationY" })
+                        base->remove(k);
+                } else {
+                    base->remove(*clearedKey);
+                }
+            }
+        }
+    }
+
+    void ConstraintSetParser::parseTransitions(CoreMotionScene& scene, const CLObject& json) {
+        for (const std::string& elementName : json.names()) scene.setTransitionContent(elementName, json.getObject(elementName)->toJSON());
+    }
+
+    void ConstraintSetParser::parseHeader(CoreMotionScene& scene, const CLObject& json) {
+        if (const std::optional<std::string> name = json.getStringOrNull("export")) scene.setDebugName(*name);
+    }
+
+    void ConstraintSetParser::parseDesignElementsJSON(const std::string& content, std::vector<DesignElement>& list) {
+        std::shared_ptr<CLObject> json = CLParser::parse(content);
+        std::vector<std::string> elements = json->names();
+        for (std::size_t i = 0; i < elements.size(); i++) {
+            const std::string elementName = elements[i];
+            CLElement* element = json->get(elementName);
+            if (elementName == "Design") {
+                if (!element->is(CLElement::KIND_OBJECT)) return;
+                auto* obj = static_cast<CLObject*>(element);
+                elements = obj->names();
+                for (std::size_t j = 0; j < elements.size(); j++) {
+                    const std::string designElementName = elements[j];
+                    auto* designElement = static_cast<CLObject*>(obj->get(designElementName));
+                    std::printf("element found %s", designElementName.c_str());
+                    const std::optional<std::string> type = designElement->getStringOrNull("type");
+                    if (!type) continue;
+                    JavaHashMap<std::string> parameters;
+                    const int size = designElement->size();
+                    for (int k = 0; k < size; k++) {
+                        // Upstream reads entry j here, not k.
+                        auto* key = static_cast<CLKey*>(designElement->get(int(j)));
+                        parameters.put(key->content(), key->getValue()->content());
+                    }
+                    list.emplace_back(elementName, *type, std::move(parameters));
+                }
+            }
+            break;
+        }
+    }
+
+    void ConstraintSetParser::parseCustomProperties(const CLObject& element, ConstraintReference* reference, const std::string& constraintName) {
+        CLObject* json = element.getObjectOrNull(constraintName);
+        if (json == nullptr) return;
+        for (const std::string& property : json->names()) {
+            CLElement* value = json->get(property);
+            if (value->is(CLElement::KIND_NUMBER)) {
+                reference->addCustomFloat(property, value->getFloat());
+            } else if (value->is(CLElement::KIND_STRING)) {
+                const int64_t it = parseColorString(value->content());
+                if (it != -1) reference->addCustomColor(property, int(it));
+            }
+        }
+    }
+
+    void ConstraintSetParser::parseMotionProperties(CLElement* element, ConstraintReference* reference) {
+        using MT = motion::TypedValues::MotionType;
+        if (element == nullptr || !element->is(CLElement::KIND_OBJECT)) return;
+        auto* obj = static_cast<CLObject*>(element);
+        auto bundle = std::make_shared<motion::TypedBundle>();
+        for (const std::string& constraintName : obj->names()) {
+            if (constraintName == "pathArc") {
+                const std::string val = obj->getString(constraintName);
+                static const char* const arcs[] = { "none", "startVertical", "startHorizontal", "flip", "below", "above" };
+                int ord = -1;
+                for (int i = 0; i < 6; i++)
+                    if (val == arcs[i]) ord = i;
+                if (ord == -1) {
+                    std::fprintf(stderr, "%d pathArc = '%s'\n", obj->getLine(), val.c_str());
+                    continue;
+                }
+                bundle->add(MT::TYPE_PATHMOTION_ARC, ord);
+            } else if (constraintName == "relativeTo") {
+                bundle->add(MT::TYPE_ANIMATE_RELATIVE_TO, obj->getString(constraintName));
+            } else if (constraintName == "easing") {
+                bundle->add(MT::TYPE_EASING, obj->getString(constraintName));
+            } else if (constraintName == "stagger") {
+                bundle->add(MT::TYPE_STAGGER, obj->getFloat(constraintName));
+            } else if (constraintName == "quantize") {
+                CLElement* quant = obj->get(constraintName);
+                if (quant->is(CLElement::KIND_ARRAY)) {
+                    auto* array = static_cast<CLArray*>(quant);
+                    const int len = array->size();
+                    if (len > 0) {
+                        bundle->add(MT::TYPE_QUANTIZE_MOTIONSTEPS, array->getInt(0));
+                        if (len > 1) {
+                            bundle->add(MT::TYPE_QUANTIZE_INTERPOLATOR_TYPE, array->getString(1));
+                            if (len > 2) bundle->add(MT::TYPE_QUANTIZE_MOTION_PHASE, array->getFloat(2));
+                        }
+                    }
+                } else {
+                    bundle->add(MT::TYPE_QUANTIZE_MOTIONSTEPS, obj->getInt(constraintName));
+                }
+            }
+        }
+        reference->mMotionProperties = bundle;
     }
 
 }

@@ -2,9 +2,9 @@
 
 // ConstraintSetParser (constraintlayout-core state): fills a State from a ConstraintSet in
 // JSON5, as written by hand or by the Compose DSL (ConstraintLayoutBaseScope). The layout
-// parts: variables, generators, helpers, guidelines, barriers, chains, flows, grids and widgets.
-// MotionScene, Transition and design-element parsing (MotionLayout) are not ported; a widget's
-// "custom" and "motion" attributes are accepted and ignored.
+// parts: variables, generators, helpers, guidelines, barriers, chains, flows, grids and widgets,
+// with a widget's custom attributes and motion properties; and MotionLayout's MotionScene
+// (ConstraintSets, Transitions, Header), a Transition's custom values and design elements.
 
 #include "kiln/constraintlayout/core/parser/CLParser.h"
 #include "kiln/constraintlayout/core/state/JavaHashMap.h"
@@ -18,6 +18,8 @@ namespace kiln::constraintlayout::core::state {
     class State;
     class ConstraintReference;
     class Dimension;
+    class Transition;
+    class CoreMotionScene;
 
     class ConstraintSetParser {
     public:
@@ -26,6 +28,20 @@ namespace kiln::constraintlayout::core::state {
             virtual ~GeneratedValue() = default;
             virtual float value() = 0;
             virtual bool isOverride() const { return false; }
+        };
+
+        class DesignElement {
+        public:
+            DesignElement(std::string id, std::string type, JavaHashMap<std::string> params)
+                : mId(std::move(id)), mType(std::move(type)), mParams(std::move(params)) {}
+            const std::string& getId() const { return mId; }
+            const std::string& getType() const { return mType; }
+            const JavaHashMap<std::string>& getParams() const { return mParams; }
+
+        private:
+            std::string mId;
+            std::string mType;
+            JavaHashMap<std::string> mParams;
         };
 
         class LayoutVariables {
@@ -46,6 +62,15 @@ namespace kiln::constraintlayout::core::state {
 
         // Logs and swallows a parse error, as upstream does.
         static void parseJSON(const std::string& content, State& state, LayoutVariables& layoutVariables);
+        static void parseJSON(const std::string& content, Transition& transition, int state);
+        static void parseMotionSceneJSON(CoreMotionScene& scene, const std::string& content);
+        static void parseConstraintSets(CoreMotionScene& scene, const CLObject& json);
+        static void override(CLObject& baseJson, const std::string& name, const CLObject& overrideValue);
+        static void parseTransitions(CoreMotionScene& scene, const CLObject& json);
+        static void parseHeader(CoreMotionScene& scene, const CLObject& json);
+        static void parseDesignElementsJSON(const std::string& content, std::vector<DesignElement>& list);
+        static void parseCustomProperties(const CLObject& element, ConstraintReference* reference, const std::string& constraintName);
+        static void parseMotionProperties(CLElement* element, ConstraintReference* reference);
         static void populateState(const CLObject& parsedJson, State& state, LayoutVariables& layoutVariables);
 
         static void parseHelpers(State& state, LayoutVariables& layoutVariables, const CLArray& element);

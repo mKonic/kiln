@@ -10,6 +10,7 @@
 // until the next apply() has taken them out of the container.
 
 #include "kiln/constraintlayout/core/state/Dimension.h"
+#include "kiln/constraintlayout/core/motion/utils/TypedBundle.h"
 #include "kiln/constraintlayout/core/state/JavaHashMap.h"
 #include "kiln/constraintlayout/core/widgets/ConstraintWidget.h"
 
@@ -78,6 +79,10 @@ namespace kiln::constraintlayout::core::state {
         void setTag(const std::string& tag) { mTag = tag; }
         const std::string& getTag() const { return mTag; }
         ConstraintReference* asConstraintReference() override { return this; }
+        void addCustomColor(const std::string& name, int color) { mCustomColors.put(name, color); }
+        void addCustomFloat(const std::string& name, float value) { mCustomFloats.put(name, value); }
+        // MotionLayout's per-widget motion attributes (pathArc, relativeTo, easing, ...).
+        std::shared_ptr<motion::TypedBundle> mMotionProperties;
 
         void setView(void* view);
         void* getView() const { return mView; }
@@ -232,6 +237,8 @@ namespace kiln::constraintlayout::core::state {
         float mScaleX = WidgetFrame::kNaN;
         float mScaleY = WidgetFrame::kNaN;
         int mVisibility = ConstraintWidget::VISIBLE;
+        JavaHashMap<int> mCustomColors;
+        JavaHashMap<float> mCustomFloats;
         RefTarget mLeftToLeft;
         RefTarget mLeftToRight;
         RefTarget mRightToLeft;

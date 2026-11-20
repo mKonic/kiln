@@ -1,5 +1,7 @@
 #include "kiln/constraintlayout/core/state/State.h"
 
+#include "kiln/constraintlayout/core/motion/utils/TypedValues.h"
+
 #include "kiln/constraintlayout/core/widgets/HelperWidget.h"
 
 namespace kiln::constraintlayout::core::state {
@@ -515,6 +517,9 @@ namespace kiln::constraintlayout::core::state {
         frame.alpha = mAlpha;
         frame.visibility = mVisibility;
         mConstraintWidget->setVisibility(mVisibility);
+        frame.setMotionAttributes(mMotionProperties);
+        mCustomColors.forEach([&](const std::string& key, int color) { frame.setCustomAttribute(key, motion::TypedValues::Custom::TYPE_COLOR, color); });
+        mCustomFloats.forEach([&](const std::string& key, float value) { frame.setCustomAttribute(key, motion::TypedValues::Custom::TYPE_FLOAT, value); });
     }
 
     // HelperReference

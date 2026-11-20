@@ -132,4 +132,23 @@ namespace kiln::constraintlayout::core {
         std::size_t mSize = 0;
     };
 
+    // HashSet<String>: a JavaHashMap without values, iterating in the same order.
+    class JavaHashSet {
+    public:
+        bool add(const std::string& key) {
+            if (mMap.contains(key)) return false;
+            mMap.put(key, true);
+            return true;
+        }
+        bool contains(const std::string& key) const { return mMap.contains(key); }
+        bool remove(const std::string& key) { return mMap.remove(key); }
+        void clear() { mMap.clear(); }
+        std::size_t size() const { return mMap.size(); }
+        bool empty() const { return mMap.empty(); }
+        std::vector<std::string> keys() const { return mMap.keys(); }
+
+    private:
+        JavaHashMap<bool> mMap;
+    };
+
 }
