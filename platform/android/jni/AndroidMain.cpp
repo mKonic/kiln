@@ -14,6 +14,7 @@
 #include "kiln/ui/ActivityIntent.h"
 #include "kiln/ui/AppDirectories.h"
 #include "kiln/ui/FileProvider.h"
+#include "kiln/ui/CredentialManager.h"
 #include "kiln/ui/FullyDrawn.h"
 #include "kiln/ui/ActivityCallbacks.h"
 
@@ -135,6 +136,7 @@ namespace {
     void ReleaseExternalSurfaces();
     void InstallOwnerHosts(JNIEnv* env, Win* w);
     jobjectArray JavaIntent(JNIEnv* env, const kiln::ui::Intent& i);
+    void InstallCredentialManager(JNIEnv* env);
     std::optional<kiln::ui::Intent> IntentFromJava(JNIEnv* env, jobjectArray a);
     // A String[] (null entries kept) as UTF-8.
     std::vector<std::optional<std::string>> StringsFromJava(JNIEnv* env, jobjectArray a) {
@@ -1455,6 +1457,7 @@ namespace {
             static jmethodID reportDrawn = env->GetMethodID(viewClass, "reportFullyDrawnFromNative", "()V");
             kiln::ui::SetReportFullyDrawnHost([] { if (g_Host && g_Host->view) MainEnv()->CallVoidMethod(g_Host->view, reportDrawn); });
         }
+        InstallCredentialManager(env);   // once: it returns when installed
         env->DeleteLocalRef(viewClass);
         {
             auto main = std::make_unique<Win>();
@@ -2643,7 +2646,8 @@ namespace {
         if (!ws) return; if (g_Host) A11y().CheckForSemanticsChanges(); }
 
     // A Bundle as {String[] keys, int[] kinds, Object[] values}: kind 0 String, 1 boolean and 2 int
-    // (their text), 3 String[], 4 byte[] (null allowed), 5 Uri (its text), 6 int[], 7 long (text).
+    // (their text), 3 String[], 4 byte[] (null allowed), 5 Uri (its text), 6 int[], 7 long (text),
+    // 8 Uri list, 9 Intent, 10 a null binder, 11 a Bundle (nested arrays).
     jobjectArray JavaBundle(JNIEnv* env, const kiln::ui::Bundle& b) {
         jclass oc = env->FindClass("java/lang/Object");
         jclass sc = env->FindClass("java/lang/String");
@@ -2682,6 +2686,10 @@ namespace {
             else if (const auto* bi = std::get_if<kiln::ui::BundleIntent>(&v)) {
                 if (bi->intent) { kinds.push_back(9); jv = JavaIntent(env, *bi->intent); }
                 else kinds.push_back(0);
+            }
+            else if (const auto* nb = std::get_if<kiln::ui::BundleNested>(&v)) {
+                kinds.push_back(11);
+                jv = JavaBundle(env, nb->bundle ? *nb->bundle : kiln::ui::Bundle{});
             }
             if (jv) {
                 env->SetObjectArrayElement(values, i, jv);
@@ -2756,6 +2764,10 @@ namespace {
                     if (auto nested = IntentFromJava(env, static_cast<jobjectArray>(v)))
                         out.Put(*ks[i], kiln::ui::BundleIntent{ std::make_shared<const kiln::ui::Intent>(std::move(*nested)) });
                     break;
+                case 10: out.Put(*ks[i], kiln::ui::BundleNullBinder{}); break;
+                case 11:
+                    if (v) out.Put(*ks[i], kiln::ui::BundleNested{ std::make_shared<const kiln::ui::Bundle>(BundleFromJava(env, static_cast<jobjectArray>(v))) });
+                    break;
                 default: break;
             }
             if (v) env->DeleteLocalRef(v);
@@ -2789,6 +2801,105 @@ namespace {
         env->SetObjectArrayElement(out, 1, options);
         for (jobject x : { (jobject)data, (jobject)options, (jobject)oc }) env->DeleteLocalRef(x);
         return out;
+    }
+
+    // ui::GetCredential / CreateCredential / ClearCredentialState through KilnCredentials (main
+    // thread): pending callbacks by id.
+    std::map<int, kiln::Function<void(kiln::ui::CredentialManagerHost::Outcome)>> g_CredentialCalls;
+    int g_NextCredentialCall = 1;
+    jclass g_CredentialsClass = nullptr;
+
+    void CredentialsResult(JNIEnv* env, jclass, jint id, jboolean ok, jstring type, jobjectArray data, jstring message) {
+        auto it = g_CredentialCalls.find(id);
+        if (it == g_CredentialCalls.end()) return;
+        auto done = std::move(it->second);
+        g_CredentialCalls.erase(it);
+        auto str = [&](jstring s) {
+            if (!s) return std::string();
+            const char* c = env->GetStringUTFChars(s, nullptr);
+            std::string r(c);
+            env->ReleaseStringUTFChars(s, c);
+            return r;
+        };
+        done({ bool(ok), str(type), BundleFromJava(env, data), str(message) });
+        if (g_Host && g_Host->app) g_Host->app->RequestFrame();
+    }
+
+    void InstallCredentialManager(JNIEnv* env) {
+        if (g_CredentialsClass) return;
+        jclass c = env->FindClass("dev/kiln/KilnCredentials");
+        if (!c) { env->ExceptionClear(); return; }
+        g_CredentialsClass = static_cast<jclass>(env->NewGlobalRef(c));
+        env->DeleteLocalRef(c);
+        static const JNINativeMethod natives[] = {
+            { "result", "(IZLjava/lang/String;[Ljava/lang/Object;Ljava/lang/String;)V", reinterpret_cast<void*>(&CredentialsResult) },
+        };
+        env->RegisterNatives(g_CredentialsClass, natives, 1);
+        static jmethodID get = env->GetStaticMethodID(g_CredentialsClass, "get", "(Landroid/view/View;I[Ljava/lang/Object;)Z");
+        static jmethodID create = env->GetStaticMethodID(g_CredentialsClass, "create",
+                                                         "(Landroid/view/View;ILjava/lang/String;[Ljava/lang/Object;[Ljava/lang/Object;ZLjava/lang/String;)Z");
+        static jmethodID clear = env->GetStaticMethodID(g_CredentialsClass, "clear", "(Landroid/view/View;I)Z");
+        static jmethodID cancel = env->GetStaticMethodID(g_CredentialsClass, "cancel", "(I)V");
+        if (!get || !create || !clear || !cancel) { env->ExceptionClear(); return; }
+        using Outcome = kiln::ui::CredentialManagerHost::Outcome;
+        // Registers the callback, then calls; false from Java answered already (unsupported).
+        auto call = [](kiln::Function<void(Outcome)> done, auto invoke) -> int {
+            const int id = g_NextCredentialCall++;
+            g_CredentialCalls[id] = std::move(done);
+            JNIEnv* e = MainEnv();
+            const bool started = invoke(e, id);
+            if (e->ExceptionCheck()) {
+                e->ExceptionDescribe();
+                e->ExceptionClear();
+                if (auto it = g_CredentialCalls.find(id); it != g_CredentialCalls.end()) {
+                    auto fn = std::move(it->second);
+                    g_CredentialCalls.erase(it);
+                    fn({ false, "android.credentials.GetCredentialException.TYPE_UNKNOWN", {}, "the platform call failed" });
+                }
+                return -1;
+            }
+            return started ? id : -1;
+        };
+        kiln::ui::SetCredentialManagerHost({
+            .get = [call](const kiln::ui::GetCredentialRequest& r, kiln::Function<void(Outcome)> done) {
+                return call(std::move(done), [&](JNIEnv* e, int id) {
+                    kiln::ui::CredentialRequestData d;
+                    d.options = r.credentialOptions;
+                    d.data = r.MetadataBundle();
+                    jobjectArray pair = JavaCredentialRequest(e, d);
+                    jclass oc = e->FindClass("java/lang/Object");
+                    jobjectArray req = e->NewObjectArray(3, oc, nullptr);
+                    jobject data = e->GetObjectArrayElement(pair, 0), options = e->GetObjectArrayElement(pair, 1);
+                    jstring origin = r.origin ? JavaString(e, kiln::foundation::ToUtf16(*r.origin)) : nullptr;
+                    e->SetObjectArrayElement(req, 0, data);
+                    e->SetObjectArrayElement(req, 1, options);
+                    e->SetObjectArrayElement(req, 2, origin);
+                    const bool ok = e->CallStaticBooleanMethod(g_CredentialsClass, get, CurView(), jint(id), req);
+                    for (jobject o : { (jobject)pair, (jobject)oc, (jobject)req, data, options, (jobject)origin }) if (o) e->DeleteLocalRef(o);
+                    return ok;
+                });
+            },
+            .create = [call](const kiln::ui::CreateCredentialRequest& r, kiln::Function<void(Outcome)> done) {
+                return call(std::move(done), [&](JNIEnv* e, int id) {
+                    jstring type = JavaString(e, kiln::foundation::ToUtf16(r.type));
+                    jobjectArray data = JavaBundle(e, r.FinalCredentialData()), query = JavaBundle(e, r.candidateQueryData);
+                    jstring origin = r.origin ? JavaString(e, kiln::foundation::ToUtf16(*r.origin)) : nullptr;
+                    const bool ok = e->CallStaticBooleanMethod(g_CredentialsClass, create, CurView(), jint(id), type, data, query,
+                                                               jboolean(r.isSystemProviderRequired), origin);
+                    for (jobject o : { (jobject)type, (jobject)data, (jobject)query, (jobject)origin }) if (o) e->DeleteLocalRef(o);
+                    return ok;
+                });
+            },
+            .clear = [call](kiln::Function<void(Outcome)> done) {
+                return call(std::move(done), [&](JNIEnv* e, int id) { return bool(e->CallStaticBooleanMethod(g_CredentialsClass, clear, CurView(), jint(id))); });
+            },
+            .cancel = [](int id) {
+                g_CredentialCalls.erase(id);
+                JNIEnv* e = MainEnv();
+                e->CallStaticVoidMethod(g_CredentialsClass, cancel, jint(id));
+                if (e->ExceptionCheck()) e->ExceptionClear();
+            },
+        });
     }
 
     // populateViewStructure as flat arrays: 11 ints per node (id, parent index, autofill type or

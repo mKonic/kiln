@@ -530,6 +530,55 @@ void Tilt() {
   prompt and returns when it closes; `CanAuthenticate()` is 0 when it can be used, 11 when
   nothing is enrolled. Allow `kDeviceCredential` to accept the device's PIN as well.
 
+## Sign-in with Credential Manager
+
+`kiln/ui/CredentialManager.h` signs users in with a saved password or passkey and saves new
+ones. It works like androidx.credentials' `CredentialManager`, on Android 14 (API 34) and later.
+The system shows its own sheet over the activity, and each call returns when the user picks
+something or dismisses the sheet:
+
+```cpp
+#include <kiln/ui/CredentialManager.h>
+
+using namespace kiln;
+
+rt::Task<> SignIn() {
+    try {
+        ui::Credential c = co_await ui::GetCredential({
+            .credentialOptions = { ui::GetPasswordOption(), ui::GetPublicKeyCredentialOption(R"({"challenge":"...","rpId":"example.com"})") },
+        });
+        if (c.type == ui::credentials::kTypePasswordCredential) {
+            const std::string* id = c.data.GetString(ui::credentials::kBundleKeyId);
+            const std::string* password = c.data.GetString(ui::credentials::kBundleKeyPassword);
+            (void)id, (void)password;   // sign in with them
+        } else {
+            // A passkey: send the authentication response JSON to the server.
+            (void)c.data.GetString(ui::credentials::kBundleKeyAuthenticationResponseJson);
+        }
+    } catch (const ui::GetCredentialException& e) {
+        if (e.Type() == ui::credentials::kGetTypeNoCredential) { /* show the sign-in form */ }
+    }
+}
+
+rt::Task<> SavePassword(std::string user, std::string password) {
+    co_await ui::CreateCredential(ui::CreatePasswordRequest(user, password));
+}
+```
+
+* `GetCredential` takes the options in order. The answer is a `Credential` with the type and
+  data bundle the provider returned.
+* `CreatePasswordRequest` saves a password. `CreatePublicKeyCredentialRequest(requestJson)`
+  registers a passkey: requestJson is the server's WebAuthn creation options, and the sheet
+  shows its `user.name`. The response's `kBundleKeyRegistrationResponseJson` goes back to the
+  server.
+* `ClearCredentialState()` on sign-out tells providers to forget the session.
+* Failures throw `GetCredentialException`, `CreateCredentialException` or
+  `ClearCredentialException`. `Type()` gives the platform's type: the user cancelled, no
+  credential, no create options, or unsupported below API 34. Cancelling the task closes the
+  sheet.
+* To offer saved credentials while the user types into a text field, use the
+  `credentialRequest` semantics instead (autofill, API 35).
+
 ## Speech
 
 `kiln/speech` reads text aloud with the device's speech engine (`TextToSpeech`) and turns what

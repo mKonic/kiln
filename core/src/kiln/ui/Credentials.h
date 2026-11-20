@@ -39,11 +39,17 @@ namespace kiln::ui {
         std::shared_ptr<const Intent> intent;
         bool operator==(const BundleIntent& o) const;
     };
+    // A Bundle inside a Bundle (putBundle).
+    struct Bundle;
+    struct BundleNested {
+        std::shared_ptr<const Bundle> bundle;
+        bool operator==(const BundleNested& o) const;
+    };
     // The Bundle values kiln passes to and from the platform (a null byte array is an empty
     // optional): strings, booleans, ints, string lists / arrays, byte arrays, URIs, int arrays
-    // longs, URI lists and intents.
+    // longs, URI lists, intents and bundles.
     using BundleValue = std::variant<std::string, bool, std::int32_t, std::vector<std::string>, std::optional<std::vector<std::uint8_t>>, BundleUri,
-                                     std::vector<std::int32_t>, std::int64_t, BundleUriList, BundleIntent, BundleNullBinder>;
+                                     std::vector<std::int32_t>, std::int64_t, BundleUriList, BundleIntent, BundleNullBinder, BundleNested>;
 
     struct Bundle {
         std::vector<std::pair<std::string, BundleValue>> entries;
@@ -60,8 +66,17 @@ namespace kiln::ui {
             const BundleValue* v = Get(key);
             return v ? std::get_if<std::string>(v) : nullptr;
         }
+        const Bundle* GetBundle(const std::string& key) const {
+            const BundleValue* v = Get(key);
+            const auto* n = v ? std::get_if<BundleNested>(v) : nullptr;
+            return n ? n->bundle.get() : nullptr;
+        }
         bool operator==(const Bundle&) const = default;
     };
+    inline bool BundleNested::operator==(const BundleNested& o) const {
+        if (!bundle || !o.bundle) return bundle == o.bundle;
+        return *bundle == *o.bundle;
+    }
 
     // android.credentials.CredentialOption.
     struct CredentialOption {

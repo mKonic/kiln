@@ -7,7 +7,8 @@ import android.os.Bundle;
  * Bundles as native passes them: {String[] keys, int[] kinds, Object[] values} with kind 0
  * String, 1 boolean and 2 int (as text), 3 String[] (a string list or array), 4 byte[] (may be
  * null), 5 Uri (as text), 6 int[], 7 long (as text), 8 ArrayList<Uri> (String[]), 9 Intent (as
- * KilnActivityResults passes intents), 10 a null binder (Bundle.putBinder(key, null)).
+ * KilnActivityResults passes intents), 10 a null binder (Bundle.putBinder(key, null)), 11 a Bundle
+ * (nested arrays).
  */
 final class KilnBundles {
     private KilnBundles() {}
@@ -32,6 +33,7 @@ final class KilnBundles {
                 case 8: b.putParcelableArrayList(keys[i], uris((String[]) v)); break;
                 case 9: b.putParcelable(keys[i], KilnActivityResults.toIntent((Object[]) v)); break;
                 case 10: b.putBinder(keys[i], null); break;
+                case 11: b.putBundle(keys[i], toBundle((Object[]) v)); break;
                 default: break;
             }
         }
@@ -58,6 +60,7 @@ final class KilnBundles {
                 case 8: intent.putParcelableArrayListExtra(keys[i], uris((String[]) v)); break;
                 case 9: intent.putExtra(keys[i], KilnActivityResults.toIntent((Object[]) v)); break;
                 case 10: { Bundle nb = new Bundle(); nb.putBinder(keys[i], null); intent.putExtras(nb); break; }
+                case 11: intent.putExtra(keys[i], toBundle((Object[]) v)); break;
                 default: break;
             }
         }
@@ -102,6 +105,7 @@ final class KilnBundles {
                 else if (v instanceof Uri) { kind = 5; out = v.toString(); }
                 else if (v instanceof int[]) { kind = 6; out = v; }
                 else if (v instanceof Long) { kind = 7; out = v.toString(); }
+                else if (v instanceof Bundle) { kind = 11; out = fromBundle((Bundle) v); }
                 else continue;
                 keys.add(k);
                 kinds.add(kind);
