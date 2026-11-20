@@ -50,3 +50,24 @@ TEST(ShortcutsGoThroughTheHost) {
     CHECK(ops.back() == ShortcutOp::ReportUsed);
     SetShortcutHost({});
 }
+
+TEST(ConversationShortcutsAreLongLivedWithALocus) {
+    std::vector<Shortcut> seen;
+    std::vector<std::string> removed;
+    SetShortcutHost([&](ShortcutOp op, const std::vector<Shortcut>& s, const std::vector<std::string>& r) -> std::vector<std::string> {
+        if (op == ShortcutOp::RemoveLongLived) removed = r;
+        seen = s;
+        return { "ok" };
+    });
+    // ShortcutInfoCompat.Builder.setIsConversation: long-lived, the id as the locus.
+    CHECK(PushDynamicShortcut({ .id = "chat-u1", .shortLabel = "Ada", .categories = { "com.example.SHARE_TARGET" },
+                                .persons = { { .name = "Ada", .key = "u1" } }, .isConversation = true }));
+    CHECK(seen.size() == 1 && seen[0].longLived && seen[0].locusId == "chat-u1" && seen[0].persons.size() == 1 &&
+          seen[0].categories == std::vector<std::string>{ "com.example.SHARE_TARGET" });
+    // An explicit locus stays; a plain shortcut is neither.
+    CHECK(PushDynamicShortcut({ .id = "chat-u2", .shortLabel = "Bob", .isConversation = true, .locusId = "screen-2" }) && seen[0].locusId == "screen-2");
+    CHECK(PushDynamicShortcut({ .id = "new", .shortLabel = "New" }) && !seen[0].longLived && seen[0].locusId.empty());
+    RemoveLongLivedShortcuts({ "chat-u1" });
+    CHECK(removed == std::vector<std::string>{ "chat-u1" });
+    SetShortcutHost({});
+}

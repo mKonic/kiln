@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * ui::Shortcuts on ShortcutManager. Shortcuts come as {id, shortLabel, longLabel, icon, rank,
- * data, intent spec or null}; results as String[] ("ok", or the ids for a listing).
+ * data, intent spec or null, categories, persons, long-lived, locus id}; results as String[] ("ok", or the ids for a listing).
  */
 final class KilnShortcuts {
     private static final String[] OK = { "ok" }, FAILED = {};
@@ -40,6 +40,7 @@ final class KilnShortcuts {
                 case 5:
                     if (!sm.isRequestPinShortcutSupported()) return FAILED;
                     return sm.requestPinShortcut(infos(context, shortcuts).get(0), null) ? OK : FAILED;
+                case 7: sm.removeLongLivedShortcuts(java.util.Arrays.asList(ids)); return OK;
                 case 6: {
                     List<ShortcutInfo> list = sm.getDynamicShortcuts();
                     String[] out = new String[list.size()];
@@ -76,6 +77,17 @@ final class KilnShortcuts {
                 if (!((String) s[5]).isEmpty()) intent.setData(Uri.parse((String) s[5]));
             }
             b.setIntent(intent);
+            // {String[] categories, Object[] persons, "true" long-lived, locus id} (ShortcutInfoCompat.toShortcutInfo).
+            String[] categories = (String[]) s[7];
+            if (categories.length > 0) b.setCategories(new java.util.HashSet<>(java.util.Arrays.asList(categories)));
+            Object[] persons = (Object[]) s[8];
+            if (persons.length > 0) {
+                android.app.Person[] ps = new android.app.Person[persons.length];
+                for (int i = 0; i < ps.length; ++i) ps[i] = KilnNotifications.person(context, (String[]) persons[i]);
+                b.setPersons(ps);
+            }
+            if (!((String) s[10]).isEmpty()) b.setLocusId(new android.content.LocusId((String) s[10]));
+            b.setLongLived("true".equals(s[9]));
             out.add(b.build());
         }
         return out;

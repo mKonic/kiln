@@ -9,6 +9,7 @@
 //   ui::Notify({ .id = 1, .channelId = "sync", .title = "Synced", .text = "12 notes", .data = "notes://list" });
 
 #include "kiln/ui/ActivityIntent.h"
+#include "kiln/ui/Person.h"
 
 #include <cstdint>
 #include <optional>
@@ -32,6 +33,42 @@ namespace kiln::ui {
         std::string icon;   // a drawable in the app's res/ by name (shown on some surfaces)
         bool operator==(const NotificationAction&) const = default;
     };
+
+    // MessagingStyle.Message: a line of a conversation; no person is the user's own message.
+    struct NotificationMessage {
+        std::string text;
+        std::int64_t timestampMillis = 0;
+        std::optional<Person> person;
+        bool operator==(const NotificationMessage&) const = default;
+    };
+
+    // MessagingStyle: a chat's latest messages. With a conversation shortcut (shortcutId) the
+    // notification shows in the conversations section and can be a bubble.
+    struct MessagingStyle {
+        Person user;                     // the device's user; needs a name
+        std::string conversationTitle;   // a group's name
+        bool groupConversation = false;
+        std::vector<NotificationMessage> messages;   // oldest first; the system shows the last 25
+        bool operator==(const MessagingStyle&) const = default;
+    };
+
+    // BubbleMetadata: the conversation floats as a bubble that opens an activity in a small
+    // window. With shortcutId the bubble opens that conversation shortcut's intent; without, the
+    // app's launcher activity at `data`, with `icon` (empty: the app's). The activity needs
+    // android:resizeableActivity="true" and android:allowEmbedded="true".
+    struct BubbleMetadata {
+        std::string shortcutId;
+        std::string data;
+        std::string icon;
+        int desiredHeightDp = 0;           // 0: the system's
+        bool autoExpand = false;           // opens expanded (when the app is in the foreground)
+        bool suppressNotification = false; // only the bubble, no notification in the shade
+        bool operator==(const BubbleMetadata&) const = default;
+    };
+
+    // Notification.CATEGORY_* the system uses to rank and filter.
+    inline constexpr const char* kNotificationCategoryMessage = "msg", *kNotificationCategoryCall = "call",
+                                 *kNotificationCategoryEmail = "email", *kNotificationCategorySocial = "social";
 
     struct Notification {
         int id = 0;
@@ -57,6 +94,14 @@ namespace kiln::ui {
         bool groupSummary = false;
         std::int64_t whenMillis = 0;     // shown with the notification; 0: when posted
         std::vector<NotificationAction> actions;   // up to 3 shown
+        // A chat: replaces bigText when set.
+        std::optional<MessagingStyle> messaging;
+        // The conversation shortcut it belongs to (a long-lived one; see Shortcut::isConversation).
+        std::string shortcutId;
+        std::string locusId;
+        std::string category;            // kNotificationCategory*
+        std::vector<Person> people;      // who it is about (addPerson), for ranking and Do Not Disturb
+        std::optional<BubbleMetadata> bubble;
         bool operator==(const Notification&) const = default;
     };
 

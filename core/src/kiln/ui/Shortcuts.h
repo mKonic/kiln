@@ -9,8 +9,15 @@
 //
 // Static shortcuts (res/xml/shortcuts.xml) need no code: name them in ACTIVITY_XML with
 // <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />.
+//
+// Sharing shortcuts (direct share) are dynamic shortcuts whose categories match a
+// <share-target> in that file; the share sheet offers them, and the activity receives the
+// ACTION_SEND intent with kExtraShortcutId. Conversation shortcuts (isConversation, with
+// persons) let a MessagingStyle notification with that shortcutId show as a conversation and
+// a bubble.
 
 #include "kiln/ui/ActivityIntent.h"
+#include "kiln/ui/Person.h"
 
 #include <string>
 #include <vector>
@@ -26,8 +33,24 @@ namespace kiln::ui {
         // A drawable or mipmap in the app's res/ by name; empty: the app's icon.
         std::string icon;
         int rank = 0;   // lower ranks first
+        // Categories: a <share-target>'s to be a sharing shortcut (ShortcutInfo.setCategories).
+        std::vector<std::string> categories;
+        // The people it is with (API 29 setPersons).
+        std::vector<Person> persons;
+        // Kept by the system after it is removed from the dynamic list, so notifications and
+        // the share sheet can still use it (setLongLived).
+        bool longLived = false;
+        // ShortcutInfoCompat.Builder.setIsConversation: long-lived, with the id as its locus
+        // id when it has none.
+        bool isConversation = false;
+        std::string locusId;   // ties it to the screen showing the conversation
         bool operator==(const Shortcut&) const = default;
     };
+
+    // ShortcutInfo.SHORTCUT_CATEGORY_CONVERSATION, and the extra a sharing shortcut's
+    // ACTION_SEND carries (Intent.EXTRA_SHORTCUT_ID).
+    inline constexpr const char* kShortcutCategoryConversation = "android.shortcut.conversation";
+    inline constexpr const char* kExtraShortcutId = "android.intent.extra.shortcut.ID";
 
     // ShortcutManager.setDynamicShortcuts: replaces the app's dynamic shortcuts.
     bool SetDynamicShortcuts(const std::vector<Shortcut>& shortcuts);
@@ -42,9 +65,12 @@ namespace kiln::ui {
     bool RequestPinShortcut(const Shortcut& shortcut);
     // The ids of the app's dynamic shortcuts.
     std::vector<std::string> DynamicShortcutIds();
+    // removeLongLivedShortcuts (API 30): removes them from the dynamic list and from what the
+    // system keeps for long-lived ones.
+    void RemoveLongLivedShortcuts(const std::vector<std::string>& ids);
 
     // The host: ShortcutManager by operation.
-    enum class ShortcutOp { Set, Push, Remove, RemoveAll, ReportUsed, RequestPin, List };
+    enum class ShortcutOp { Set, Push, Remove, RemoveAll, ReportUsed, RequestPin, List, RemoveLongLived };
     using ShortcutHost = kiln::Function<std::vector<std::string>(ShortcutOp op, const std::vector<Shortcut>& shortcuts, const std::vector<std::string>& ids)>;
     void SetShortcutHost(ShortcutHost host);
 

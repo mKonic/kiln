@@ -13,6 +13,8 @@ namespace kiln::ui {
     void DeleteNotificationChannel(const std::string& id) { if (Host().deleteChannel) Host().deleteChannel(id); }
     bool Notify(const Notification& n) {
         if (n.channelId.empty()) return false;   // Android 8+ drops a notification without a channel
+        // MessagingStyle(Person) refuses a user without a name.
+        if (n.messaging && n.messaging->user.name.empty()) return false;
         return Host().notify && Host().notify(n);
     }
     void CancelNotification(int id, const std::string& tag) { if (Host().cancel) Host().cancel(id, tag); }

@@ -283,7 +283,7 @@ namespace kiln::android {
             };
             static jmethodID createChannel = get("createChannel", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Z");
             static jmethodID deleteChannel = get("deleteChannel", "(Ljava/lang/String;)V");
-            static jmethodID notify = get("notify", "([Ljava/lang/String;[IJ[Ljava/lang/String;)Z");
+            static jmethodID notify = get("notify", "([Ljava/lang/String;[IJ[Ljava/lang/String;[Ljava/lang/Object;)Z");
             static jmethodID cancelOne = get("cancel", "(ILjava/lang/String;)V");
             static jmethodID cancelAll = get("cancelAll", "()V");
             static jmethodID enabledFn = get("enabled", "()Z");
@@ -325,9 +325,43 @@ namespace kiln::android {
                                            (n.groupSummary ? 16 : 0) };
                     jintArray ji = e->NewIntArray(4);
                     e->SetIntArrayRegion(ji, 0, 4, ints);
-                    const bool ok = e->CallStaticBooleanMethod(notes, notify, s, ji, jlong(n.whenMillis), acts);
+                    // {ids, people, messaging or null, bubble or null}: KilnNotifications.applyExtra.
+                    jclass oc = e->FindClass("java/lang/Object");
+                    auto person = [&](const ui::Person& p) {
+                        return strings(e, { p.name, p.key, p.uri, p.icon, p.bot ? "true" : "false", p.important ? "true" : "false" });
+                    };
+                    auto put = [&](jobjectArray a, int k, jobject o) { e->SetObjectArrayElement(a, k, o); if (o) e->DeleteLocalRef(o); };
+                    jobjectArray extra = e->NewObjectArray(4, oc, nullptr);
+                    put(extra, 0, strings(e, { n.shortcutId, n.locusId, n.category }));
+                    jobjectArray people = e->NewObjectArray(jsize(n.people.size()), oc, nullptr);
+                    for (std::size_t i = 0; i < n.people.size(); ++i) put(people, int(i), person(n.people[i]));
+                    put(extra, 1, people);
+                    if (n.messaging) {
+                        const auto& m = *n.messaging;
+                        jobjectArray style = e->NewObjectArray(4, oc, nullptr);
+                        put(style, 0, person(m.user));
+                        put(style, 1, e->NewStringUTF(m.conversationTitle.c_str()));
+                        put(style, 2, e->NewStringUTF(m.groupConversation ? "true" : "false"));
+                        jobjectArray msgs = e->NewObjectArray(jsize(m.messages.size()), oc, nullptr);
+                        for (std::size_t i = 0; i < m.messages.size(); ++i) {
+                            const auto& msg = m.messages[i];
+                            jobjectArray one = e->NewObjectArray(3, oc, nullptr);
+                            put(one, 0, e->NewStringUTF(msg.text.c_str()));
+                            put(one, 1, e->NewStringUTF(std::to_string(msg.timestampMillis).c_str()));
+                            put(one, 2, msg.person ? person(*msg.person) : nullptr);
+                            put(msgs, int(i), one);
+                        }
+                        put(style, 3, msgs);
+                        put(extra, 2, style);
+                    }
+                    if (n.bubble) {
+                        const auto& b = *n.bubble;
+                        put(extra, 3, strings(e, { b.shortcutId, b.data, b.icon, std::to_string(b.desiredHeightDp), b.autoExpand ? "true" : "false",
+                                                   b.suppressNotification ? "true" : "false" }));
+                    }
+                    const bool ok = e->CallStaticBooleanMethod(notes, notify, s, ji, jlong(n.whenMillis), acts, extra);
                     Clear(e);
-                    for (jobject o : { (jobject)s, (jobject)acts, (jobject)ji }) e->DeleteLocalRef(o);
+                    for (jobject o : { (jobject)s, (jobject)acts, (jobject)ji, (jobject)extra, (jobject)oc }) e->DeleteLocalRef(o);
                     return ok;
                 },
                 .cancel = [](int id, const std::string& tag) {

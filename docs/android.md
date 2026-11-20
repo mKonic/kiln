@@ -319,6 +319,33 @@ screen) follow `ShortcutManager`. Shortcuts that never change can be declared in
 `res/xml/shortcuts.xml` and named in `ACTIVITY_XML` with
 `<meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />`.
 
+### Sharing and conversation shortcuts
+
+A chat app can offer its conversations in the system share sheet (direct share), and show
+their notifications as conversations and bubbles. Both use one long-lived shortcut per
+conversation, with the people in it:
+
+```cpp
+#include <kiln/ui/Shortcuts.h>
+
+void PublishChat(const std::string& userId, const std::string& name) {
+    kiln::ui::PushDynamicShortcut({
+        .id = "chat-" + userId, .shortLabel = name, .data = "chat://" + userId,
+        .categories = { "com.example.chat.SHARE_TARGET" },
+        .persons = { { .name = name, .key = userId } },
+        .isConversation = true,
+    });
+}
+```
+
+* `isConversation` makes it long-lived, so the system keeps it after it leaves the dynamic
+  list, and uses its id as the locus id unless `locusId` is set, as ShortcutInfoCompat does.
+  `RemoveLongLivedShortcuts` removes it for good, for example when the chat is deleted.
+* For direct share, `res/xml/shortcuts.xml` declares a `<share-target>` with
+  `targetClass="dev.kiln.KilnActivity"`, the MIME types it takes, and the category the
+  shortcuts carry. The activity needs an `ACTION_SEND` intent filter in `ACTIVITY_XML`.
+  When the user picks a conversation, the `ACTION_SEND` intent carries `ui::kExtraShortcutId`.
+
 ## Notifications
 
 `kiln/ui/Notifications.h` posts notifications in a channel. Tapping one opens the app at its
@@ -351,6 +378,34 @@ void NotifySynced(int count) {
   without one the launcher icon is used.
 * With `ACTIVITY_ATTRIBUTES "android:launchMode=\"singleTop\""` a tap reaches the running
   activity rather than starting another.
+
+### Conversations and bubbles
+
+A message notification uses `MessagingStyle`, and with the conversation's shortcut it shows in
+the conversations section and can float as a bubble:
+
+```cpp
+#include <kiln/ui/Notifications.h>
+
+void NotifyMessage(const std::string& userId, const std::string& name, const std::string& text, std::int64_t at) {
+    using namespace kiln::ui;
+    const Person sender{ .name = name, .key = userId };
+    Notification n{
+        .id = 10, .channelId = "chats", .title = name, .text = text,
+        .shortcutId = "chat-" + userId, .category = kNotificationCategoryMessage, .people = { sender },
+        .bubble = BubbleMetadata{ .shortcutId = "chat-" + userId, .desiredHeightDp = 600 },
+    };
+    n.messaging = MessagingStyle{ .user = { .name = "You" }, .messages = { { .text = text, .timestampMillis = at, .person = sender } } };
+    Notify(n);
+}
+```
+
+* A message with no `person` is the user's own. `MessagingStyle::user` needs a name, or
+  `Notify` returns false.
+* The bubble opens the shortcut's intent in a small window, so the activity needs
+  `ACTIVITY_ATTRIBUTES "android:resizeableActivity=\"true\" android:allowEmbedded=\"true\""`.
+  Without a `shortcutId`, it opens the app at `data` with `icon`. Bubbles show only when the
+  user allows them for the app or the conversation.
 
 ## Background work
 

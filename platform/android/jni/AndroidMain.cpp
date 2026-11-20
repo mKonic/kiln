@@ -1381,7 +1381,7 @@ namespace {
                 jobjectArray list = e->NewObjectArray(jsize(shortcuts.size()), oc, nullptr);
                 for (std::size_t i = 0; i < shortcuts.size(); ++i) {
                     const auto& s = shortcuts[i];
-                    jobjectArray one = e->NewObjectArray(7, oc, nullptr);
+                    jobjectArray one = e->NewObjectArray(11, oc, nullptr);
                     auto set = [&](int k, jobject o) { e->SetObjectArrayElement(one, k, o); if (o) e->DeleteLocalRef(o); };
                     set(0, e->NewStringUTF(s.id.c_str()));
                     set(1, JavaString(e, kiln::foundation::ToUtf16(s.shortLabel)));
@@ -1390,6 +1390,19 @@ namespace {
                     set(4, e->NewStringUTF(std::to_string(s.rank).c_str()));
                     set(5, e->NewStringUTF(s.data.c_str()));
                     set(6, s.intent ? JavaIntent(e, *s.intent) : nullptr);
+                    set(7, JavaStrings(e, s.categories));
+                    {
+                        jobjectArray persons = e->NewObjectArray(jsize(s.persons.size()), oc, nullptr);
+                        for (std::size_t k = 0; k < s.persons.size(); ++k) {
+                            const auto& p = s.persons[k];
+                            jobjectArray jp = JavaStrings(e, { p.name, p.key, p.uri, p.icon, p.bot ? "true" : "false", p.important ? "true" : "false" });
+                            e->SetObjectArrayElement(persons, jsize(k), jp);
+                            e->DeleteLocalRef(jp);
+                        }
+                        set(8, persons);
+                    }
+                    set(9, e->NewStringUTF(s.longLived ? "true" : "false"));
+                    set(10, e->NewStringUTF(s.locusId.c_str()));
                     e->SetObjectArrayElement(list, jsize(i), one);
                     e->DeleteLocalRef(one);
                 }
