@@ -6,6 +6,7 @@
 // has none to keep).
 
 #include "kiln/constraintlayout/core/LinearSystem.h"
+#include "kiln/constraintlayout/core/state/WidgetFrame.h"
 
 #include <array>
 #include <climits>
@@ -102,6 +103,7 @@ namespace kiln::constraintlayout::core {
             KIND_VIRTUAL_LAYOUT = 1u << 5,
             KIND_FLOW = 1u << 6,
             KIND_PLACEHOLDER = 1u << 7,
+            KIND_GRID = 1u << 8,
         };
         bool is(unsigned kind) const { return (mKind & kind) != 0; }
         unsigned mKind = 0;
@@ -138,6 +140,8 @@ namespace kiln::constraintlayout::core {
         std::array<bool, 2> isTerminalWidget{ true, true };
         bool mResolvedHasRatio = false;
         std::string stringId;
+        // The layer values a ConstraintSet gives the widget (and, after update(), its bounds).
+        WidgetFrame frame{ this };
         WidgetRun* getRun(int orientation) const;
         void ensureWidgetRuns();
 
