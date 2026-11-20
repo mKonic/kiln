@@ -58,6 +58,14 @@ target_include_directories(kiln_navigation PUBLIC navigation/src)
 target_link_libraries(kiln_navigation PUBLIC kiln_foundation)
 target_compile_options(kiln_navigation PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 
+# constraintlayout: constraintlayout-core's solver and widgets, and constraintlayout-compose's
+# ConstraintLayout. No FMA contraction, so float results match the Java solver's.
+file(GLOB_RECURSE KILN_CONSTRAINTLAYOUT_SOURCES CONFIGURE_DEPENDS constraintlayout/src/*.cpp)
+add_library(kiln_constraintlayout STATIC ${KILN_CONSTRAINTLAYOUT_SOURCES})
+target_include_directories(kiln_constraintlayout PUBLIC constraintlayout/src)
+target_link_libraries(kiln_constraintlayout PUBLIC kiln_foundation)
+target_compile_options(kiln_constraintlayout PRIVATE -Wall -Wextra -Wno-missing-field-initializers -ffp-contract=off)
+
 # ui_test: the UI testing library (Compose ui-test): finders, matchers, actions, asserts and
 # the main clock over the semantics tree, on the host and on devices.
 file(GLOB_RECURSE KILN_UI_TEST_SOURCES CONFIGURE_DEPENDS testing/src/*.cpp)
@@ -324,7 +332,7 @@ add_executable(kiln_tests ${KILN_TEST_SOURCES} ${KILN_CAPI_TEST_SOURCES})
 # App resources as an app has them: R:: names and, everywhere (no Android Resources in the test
 # process), the generated tables.
 kiln_app_resources(kiln_tests ${CMAKE_SOURCE_DIR}/tests/res TABLE)
-target_link_libraries(kiln_tests PRIVATE kiln_material3 kiln_navigation kiln_sqlite kiln_paging kiln_ui_test "$<LINK_LIBRARY:WHOLE_ARCHIVE,kiln_volition>")
+target_link_libraries(kiln_tests PRIVATE kiln_material3 kiln_navigation kiln_constraintlayout kiln_sqlite kiln_paging kiln_ui_test "$<LINK_LIBRARY:WHOLE_ARCHIVE,kiln_volition>")
 if(ANDROID)
     # Run on a device with tools/device-test (pushed to /data/local/tmp), which builds it.
     set_target_properties(kiln_tests PROPERTIES EXCLUDE_FROM_ALL ON)
