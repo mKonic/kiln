@@ -358,7 +358,11 @@ TEST(AdaptiveStream_hls_live_refreshesAndWaitsForSegments) {
     StreamWindow w = source->Window();
     CHECK(w.dynamic);
     CHECK_EQ(w.durationUs, std::int64_t(16'000'000));
-    CHECK_EQ(w.targetLiveOffsetUs, std::int64_t(12'000'000));   // three target durations
+    CHECK_EQ(w.liveConfiguration->targetOffsetMs, std::int64_t(12000));   // three target durations
+    // No hold back and no item speeds: unit speed (HlsMediaSource.updateLiveConfiguration); no
+    // program date-time: no wall-clock window start.
+    CHECK(w.liveConfiguration->minPlaybackSpeed == 1.f && w.liveConfiguration->maxPlaybackSpeed == 1.f);
+    CHECK_EQ(w.windowStartTimeMs, kTimeUnset);
     CHECK_EQ(w.defaultPositionUs, std::int64_t(4'000'000));      // the segment containing 16 - 12 s
     SegmentStream stream(source, {});
     stream.Start(w.startUs + w.defaultPositionUs);
@@ -514,10 +518,54 @@ TEST(AdaptiveStream_dash_live_window) {
     CHECK(w.dynamic);
     CHECK_EQ(w.startUs + w.durationUs, std::int64_t(120'000'000));   // the last complete segment ends now
     CHECK_EQ(w.durationUs, std::int64_t(60'000'000));
-    CHECK_EQ(w.targetLiveOffsetUs, std::int64_t(12'000'000));
+    CHECK_EQ(w.liveConfiguration->targetOffsetMs, std::int64_t(12000));
     CHECK_EQ(w.defaultPositionUs, std::int64_t(48'000'000));
+    CHECK_EQ(w.windowStartTimeMs, std::int64_t(1'700'000'060'000));
+    CHECK_EQ(w.liveConfiguration->minOffsetMs, std::int64_t(0));
+    CHECK_EQ(w.liveConfiguration->maxOffsetMs, std::int64_t(60'000));
+    CHECK(w.liveConfiguration->minPlaybackSpeed == 1.f && w.liveConfiguration->maxPlaybackSpeed == 1.f);
     const SegmentTimeline t = source->Segments(0, 0);
     CHECK(!t.ended);
     CHECK(!t.segments.empty());
     CHECK_EQ(t.segments.back().EndUs(), std::int64_t(120'000'000));
+}
+
+// DashMediaSource.updateLiveConfiguration: the item's values win over the manifest's
+// ServiceDescription, within the window; the target then sticks.
+TEST(AdaptiveStream_dash_live_configurationFromItemAndServiceDescription) {
+    HlsFixture f;
+    f.nowMs = 1'700'000'120'000;
+    f.http->Set("https://d/ll.mpd", R"(<?xml version="1.0"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="dynamic" availabilityStartTime="2023-11-14T22:13:20Z" minimumUpdatePeriod="PT10S" timeShiftBufferDepth="PT60S">
+  <ServiceDescription id="0">
+    <Latency target="4000" min="2000" max="8000"/>
+    <PlaybackRate min="0.96" max="1.04"/>
+  </ServiceDescription>
+  <Period id="p" start="PT0S">
+    <AdaptationSet mimeType="video/mp4">
+      <SegmentTemplate timescale="1" duration="4" media="v-$Number$.m4s" initialization="v-init.mp4" startNumber="0"/>
+      <Representation id="v" bandwidth="500000" width="640" height="360" codecs="avc1.4d401e"/>
+    </AdaptationSet>
+  </Period>
+</MPD>
+)");
+    auto source = AdaptiveSource::Open("https://d/ll.mpd", "", f.fetcher, [&] { return f.nowMs.load(); });
+    StreamWindow w = source->Window();
+    CHECK_EQ(w.liveConfiguration->targetOffsetMs, std::int64_t(4000));
+    CHECK_EQ(w.liveConfiguration->minOffsetMs, std::int64_t(2000));
+    CHECK_EQ(w.liveConfiguration->maxOffsetMs, std::int64_t(8000));
+    CHECK(w.liveConfiguration->minPlaybackSpeed == 0.96f && w.liveConfiguration->maxPlaybackSpeed == 1.04f);
+
+    auto overridden = AdaptiveSource::Open("https://d/ll.mpd", "", f.fetcher, [&] { return f.nowMs.load(); });
+    MediaItem::LiveConfiguration item;
+    item.targetOffsetMs = 6000;
+    item.maxOffsetMs = 20'000;
+    item.maxPlaybackSpeed = 1.1f;
+    overridden->SetLiveConfiguration(item);
+    w = overridden->Window();
+    CHECK_EQ(w.liveConfiguration->targetOffsetMs, std::int64_t(6000));
+    CHECK_EQ(w.liveConfiguration->maxOffsetMs, std::int64_t(20'000));
+    CHECK(w.liveConfiguration->minPlaybackSpeed == 0.96f && w.liveConfiguration->maxPlaybackSpeed == 1.1f);
+    f.nowMs += 4000;
+    CHECK_EQ(overridden->Window().liveConfiguration->targetOffsetMs, std::int64_t(6000));
 }

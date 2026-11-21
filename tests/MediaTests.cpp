@@ -7,6 +7,7 @@
 #include "kiln/media/Player.h"
 #include "kiln/runtime/Task.h"
 
+#include <chrono>
 #include <map>
 #include <stdexcept>
 
@@ -94,7 +95,7 @@ TEST(MediaPlayerReachesItsEngineAndReportsOnTheMainThread) {
         int window = 0;
         p.SetSurface({ &window });
         CHECK(engine->uri == "asset:///a.mp4" && engine->play && engine->seek == 0 && engine->volume == 1 && engine->window == &window);
-        CHECK(engine->load.startPositionMs == 0 && engine->load.loadId != 0);
+        CHECK(engine->load.startPositionMs == kTimeUnset && engine->load.loadId != 0);
         p.Pause();
         CHECK(!engine->play);
         // A report from the decoding thread arrives with the dispatcher's next run.
@@ -118,6 +119,50 @@ TEST(MediaPlayerReachesItsEngineAndReportsOnTheMainThread) {
         CHECK(firstFrames == 1 && p.State().videoSize.width == 360 && p.State().videoSize.height == 640);
         // After the player goes, a late report is dropped.
         engine->Report(s);
+    }
+    rt::Dispatcher::Main().RunPending();
+    SetPlayerEngineFactory({});
+}
+
+// A live stream: the item's live configuration goes to the engine, the default position is
+// asked for as such (kTimeUnset), and the live state and offset come from the engine's window.
+TEST(MediaPlayerLiveStateAndDefaultPosition) {
+    FakeEngine* engine = nullptr;
+    SetPlayerEngineFactory([&] {
+        auto e = std::make_unique<FakeEngine>();
+        engine = e.get();
+        return std::unique_ptr<PlayerEngine>(std::move(e));
+    });
+    {
+        Player p;
+        MediaItem item = MediaItem::FromUri("https://x/live.m3u8");
+        item.liveConfiguration.targetOffsetMs = 4000;
+        p.SetMediaItem(item);
+        p.Prepare();
+        CHECK(engine->load.startPositionMs == kTimeUnset && engine->load.liveConfiguration.targetOffsetMs == 4000);
+        CHECK(!p.IsCurrentMediaItemLive() && p.CurrentLiveOffsetMs() == kTimeUnset);
+        const std::int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        PlayerState s;
+        s.state = PlaybackState::Ready;
+        s.durationMs = 30'000;
+        s.positionMs = 20'000;
+        s.isCurrentMediaItemLive = s.isCurrentMediaItemDynamic = true;
+        s.currentLiveConfiguration = item.liveConfiguration;
+        s.windowStartTimeMs = nowMs - 26'000;   // the window started 26 s ago, 20 s in: 6 s behind
+        engine->Report(s);
+        rt::Dispatcher::Main().RunPending();
+        CHECK(p.IsCurrentMediaItemLive() && p.IsCurrentMediaItemDynamic() && p.IsCurrentMediaItemSeekable());
+        const std::int64_t offset = p.CurrentLiveOffsetMs();
+        CHECK(offset >= 6'000 && offset < 7'000);
+        p.SeekTo(1000);
+        CHECK(engine->seek == 1000);
+        p.SeekToDefaultPosition();
+        CHECK(engine->seek == kTimeUnset);
+        // Without the window's wall-clock start the offset is not known.
+        s.windowStartTimeMs = kTimeUnset;
+        engine->Report(s);
+        rt::Dispatcher::Main().RunPending();
+        CHECK(p.CurrentLiveOffsetMs() == kTimeUnset);
     }
     rt::Dispatcher::Main().RunPending();
     SetPlayerEngineFactory({});
@@ -376,7 +421,7 @@ TEST(MediaSessionShowsTheNotificationAndKeepsTheServiceAsMedia3Does) {
         CHECK(p.State().state == PlaybackState::Ended);
         const int loads = engine->loads;
         OnMediaSessionCommand(session.Id(), MediaSessionCommand::Play);
-        CHECK(engine->loads == loads + 1 && engine->load.startPositionMs == 0 && engine->play);
+        CHECK(engine->loads == loads + 1 && engine->load.startPositionMs == kTimeUnset && engine->play);
         report(PlaybackState::Ready);
         OnMediaSessionCommand(session.Id(), MediaSessionCommand::SeekTo, 1234);
         CHECK(engine->seek == 1234);

@@ -236,9 +236,9 @@ TEST(PlaylistEditsFollowExoPlayer) {
     // Moving the current item keeps it playing at its new place.
     p.MoveMediaItem(3, 0);
     CHECK(p.CurrentMediaItemIndex() == 0 && p.CurrentMediaItem()->mediaId == "id2" && f.engine->loads == loads);
-    // Removing the current item: the next one that remains plays, from its start.
+    // Removing the current item: the next one that remains plays, from its default position.
     p.RemoveMediaItem(0);
-    CHECK(p.CurrentMediaItem()->uri == "asset:///new.mp3" && f.engine->loads == loads + 1 && f.engine->load.startPositionMs == 0);
+    CHECK(p.CurrentMediaItem()->uri == "asset:///new.mp3" && f.engine->loads == loads + 1 && f.engine->load.startPositionMs == kTimeUnset);
     CHECK(!jumps.empty() && jumps.back() == DiscontinuityReason::Remove);
     // Removing it at the end with nothing after: ENDED at the first item.
     p.SeekTo(p.MediaItemCount() - 1, 0);

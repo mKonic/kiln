@@ -18,6 +18,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -67,7 +68,14 @@ namespace kiln::media::stream {
         std::int64_t defaultPositionUs = 0;             // in the window
         bool dynamic = false;                           // live: the window moves
         bool seekable = true;
-        std::int64_t targetLiveOffsetUs = kTimeUnset;   // the live configuration's target offset
+        // A live stream's (Timeline.Window.liveConfiguration, isLive): the item's configuration
+        // with the media's values filled in.
+        std::optional<MediaItem::LiveConfiguration> liveConfiguration;
+        // Window.windowStartTimeMs: the wall-clock time of the window's start (kTimeUnset: not
+        // known, as for HLS without EXT-X-PROGRAM-DATE-TIME).
+        std::int64_t windowStartTimeMs = kTimeUnset;
+        // The server's clock less the device's (DASH UTCTiming), for the live offset.
+        std::int64_t serverClockOffsetMs = 0;
     };
 
     // HTTP for the stream: GETs with byte ranges, redirects followed, transfers counted by the
@@ -119,6 +127,9 @@ namespace kiln::media::stream {
         // How long after a refresh found nothing new to try again.
         virtual std::int64_t RetryIntervalUs(int group, int track) = 0;
 
+        // The item's live configuration (before any window is asked for).
+        void SetLiveConfiguration(const MediaItem::LiveConfiguration& configuration) { m_ItemLiveConfiguration = m_LiveConfiguration = configuration; }
+
         TimestampAdjusterProvider& Adjusters() { return m_Adjusters; }
         SegmentFetcher& Fetcher() { return *m_Fetcher; }
         // Keys by URL, loaded once (HlsChunkSource's FullSegmentEncryptionKeyCache).
@@ -134,6 +145,8 @@ namespace kiln::media::stream {
         std::function<std::int64_t()> m_NowUnixTimeMs;
         std::vector<StreamGroup> m_Groups;
         TimestampAdjusterProvider m_Adjusters;
+        // The item's, then updated as the windows are made (the media source's liveConfiguration).
+        MediaItem::LiveConfiguration m_ItemLiveConfiguration, m_LiveConfiguration;
         std::mutex m_KeyMutex;
         std::map<std::string, std::vector<std::uint8_t>> m_Keys;
     };

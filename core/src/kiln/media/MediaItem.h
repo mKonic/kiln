@@ -15,6 +15,8 @@ namespace kiln::media {
     // C.TIME_UNSET / C.TIME_END_OF_SOURCE / C.INDEX_UNSET.
     inline constexpr std::int64_t kTimeUnset = std::numeric_limits<std::int64_t>::min() + 1;
     inline constexpr std::int64_t kTimeEndOfSource = std::numeric_limits<std::int64_t>::min();
+    // C.RATE_UNSET: a speed left to the media.
+    inline constexpr float kRateUnset = -std::numeric_limits<float>::max();
     inline constexpr int kIndexUnset = -1;
 
     // MediaMetadata.MEDIA_TYPE_*.
@@ -92,6 +94,14 @@ namespace kiln::media {
             bool operator==(const SubtitleConfiguration&) const = default;
         };
         std::vector<SubtitleConfiguration> subtitleConfigurations;
+        // How a live stream plays (MediaItem.LiveConfiguration): the offset from the live edge it
+        // keeps and the speeds it may use to keep it. Unset values come from the media (a DASH
+        // ServiceDescription, an HLS hold back), else the player's defaults.
+        struct LiveConfiguration {
+            std::int64_t targetOffsetMs = kTimeUnset, minOffsetMs = kTimeUnset, maxOffsetMs = kTimeUnset;
+            float minPlaybackSpeed = kRateUnset, maxPlaybackSpeed = kRateUnset;
+            bool operator==(const LiveConfiguration&) const = default;
+        } liveConfiguration;
         bool operator==(const MediaItem&) const = default;
 
         static MediaItem FromUri(std::string uri) {

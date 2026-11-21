@@ -672,6 +672,8 @@ impl Player {
     pub fn play(&self) { unsafe { sys::kiln_player_play(self.0) } }
     pub fn pause(&self) { unsafe { sys::kiln_player_pause(self.0) } }
     pub fn seek_to(&self, ms: i64) { unsafe { sys::kiln_player_seek_to(self.0, ms) } }
+    /// The item's default position: a live stream's live edge less its target offset.
+    pub fn seek_to_default_position(&self) { unsafe { sys::kiln_player_seek_to_default_position(self.0) } }
     pub fn set_repeat(&self, repeat: bool) { unsafe { sys::kiln_player_set_repeat(self.0, repeat) } }
     pub fn set_volume(&self, volume: f32) { unsafe { sys::kiln_player_set_volume(self.0, volume) } }
     /// Audio focus for `usage` / `content_type` (AudioAttributes.USAGE_* / CONTENT_TYPE_*).
@@ -736,6 +738,21 @@ impl Player {
         let g = group_id.map(CStrBuf::new);
         unsafe { sys::kiln_player_select_track(self.0, track_type, g.as_ref().map_or(std::ptr::null(), |g| g.ptr()), track) }
     }
+    /// The largest video to choose (-1: no limit).
+    pub fn set_max_video_size(&self, max_width: i32, max_height: i32) { unsafe { sys::kiln_player_set_max_video_size(self.0, max_width, max_height) } }
+    /// The highest video bitrate to choose (-1: no limit).
+    pub fn set_max_video_bitrate(&self, max_bitrate: i32) { unsafe { sys::kiln_player_set_max_video_bitrate(self.0, max_bitrate) } }
+    /// The viewport the video shows in (-1 x -1: the display's size).
+    pub fn set_viewport_size(&self, width: i32, height: i32, orientation_may_change: bool) {
+        unsafe { sys::kiln_player_set_viewport_size(self.0, width, height, orientation_may_change) }
+    }
+}
+/// How a live stream plays (see `kiln_media_item`): the offset from the live edge to keep, its
+/// bounds and the speeds that may keep it; -1 / 0: from the media.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LiveConfiguration { pub target_offset_ms: i64, pub min_offset_ms: i64, pub max_offset_ms: i64, pub min_playback_speed: f32, pub max_playback_speed: f32 }
+impl Default for LiveConfiguration {
+    fn default() -> Self { LiveConfiguration { target_offset_ms: -1, min_offset_ms: -1, max_offset_ms: -1, min_playback_speed: 0.0, max_playback_speed: 0.0 } }
 }
 /// A side-loaded subtitle of a `MediaItem` (WebVTT, SubRip).
 #[derive(Clone, Default)]
@@ -744,12 +761,12 @@ pub struct Subtitle { pub uri: String, pub mime_type: Option<String>, pub langua
 #[derive(Clone)]
 pub struct MediaItem {
     pub uri: String, pub media_id: String, pub mime_type: String, pub title: String, pub artist: String, pub artwork_uri: String,
-    pub clip_start_ms: i64, pub clip_end_ms: i64, pub subtitles: Vec<Subtitle>,
+    pub clip_start_ms: i64, pub clip_end_ms: i64, pub subtitles: Vec<Subtitle>, pub live: LiveConfiguration,
 }
 impl MediaItem {
     pub fn from_uri(uri: &str) -> Self {
         MediaItem { uri: uri.into(), media_id: String::new(), mime_type: String::new(), title: String::new(), artist: String::new(),
-                    artwork_uri: String::new(), clip_start_ms: 0, clip_end_ms: -1, subtitles: Vec::new() }
+                    artwork_uri: String::new(), clip_start_ms: 0, clip_end_ms: -1, subtitles: Vec::new(), live: LiveConfiguration::default() }
     }
 }
 /// A track of the current item (see `kiln_track`).
@@ -780,6 +797,11 @@ impl CMediaItems {
             c.clip_end_ms = it.clip_end_ms;
             c.subtitles = list.as_ptr();
             c.subtitle_count = list.len();
+            c.live_target_offset_ms = it.live.target_offset_ms;
+            c.live_min_offset_ms = it.live.min_offset_ms;
+            c.live_max_offset_ms = it.live.max_offset_ms;
+            c.live_min_playback_speed = it.live.min_playback_speed;
+            c.live_max_playback_speed = it.live.max_playback_speed;
             subs.push(list);
             out.push(c);
         }

@@ -941,6 +941,7 @@ TEST(CApiPlayerPlaylistAndTracks) {
         const kiln_player_state& s = capi_playlist_state;
         CHECK(s.media_item_count == 2 && s.current_media_item_index == 0 && std::string(s.current_media_id) == "a" && std::string(s.title) == "First");
         CHECK(s.repeat_mode == KILN_REPEAT_ALL && s.playback_speed == 1.5f && s.has_next_media_item && std::string(s.cues).empty());
+        CHECK(!s.is_live && !s.is_dynamic && s.live_offset_ms == -1 && s.position_ms == 0);   // a file: not live
         CHECK(capi_playlist_tracks == 1 && std::string(capi_playlist_track.group_id) == "s0" && capi_playlist_track.type == 3
               && std::string(capi_playlist_track.language) == "de" && capi_playlist_track.supported);
     }

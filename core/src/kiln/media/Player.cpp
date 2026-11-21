@@ -93,6 +93,7 @@ namespace kiln::media {
 
         // Prepare() was called (and not Stop()); ended: played past the last item.
         bool prepared = false;
+        bool startAtDefault = true;   // no position asked for before prepare: the default position
         bool ended = false;
         std::uint64_t nextLoad = 1, loadId = 0;   // the engine's current load (0: none)
         PlayerState engineState;                  // the current load's
@@ -175,6 +176,14 @@ namespace kiln::media {
         // The engine loops by itself when the item repeats into itself (gaplessly).
         bool EngineRepeats() const { return repeatMode == RepeatMode::One || (repeatMode == RepeatMode::All && Count() == 1); }
 
+        // Where in the media a window position is; the default position (kTimeUnset) is the
+        // clipped start, else the media's own default (a live stream's live edge).
+        static std::int64_t MediaStartMs(const MediaItem& m, std::int64_t windowPositionMs) {
+            const std::int64_t clip = m.clippingConfiguration.startPositionMs;
+            if (windowPositionMs == kTimeUnset) return clip > 0 ? clip : kTimeUnset;
+            return clip + std::max<std::int64_t>(windowPositionMs, 0);
+        }
+        // Load(windowPositionMs): kTimeUnset starts at the default position.
         void Load(std::int64_t windowPositionMs) {
             ended = false;
             error.reset();
@@ -189,10 +198,10 @@ namespace kiln::media {
             loadId = nextLoad++;
             engine->SetRepeat(EngineRepeats());
             engine->Load({ .uri = m.uri, .mimeType = m.mimeType,
-                           .startPositionMs = m.clippingConfiguration.startPositionMs + positionMs,
+                           .startPositionMs = MediaStartMs(m, windowPositionMs),
                            .clipStartMs = m.clippingConfiguration.startPositionMs,
                            .endPositionMs = m.clippingConfiguration.endPositionMs, .loadId = loadId,
-                           .trackSelection = trackSelection });
+                           .trackSelection = trackSelection, .liveConfiguration = m.liveConfiguration });
             LoadText();
         }
         void Unload() {
@@ -348,6 +357,7 @@ namespace kiln::media {
         void LoadCurrentIfPrepared(std::int64_t windowPositionMs) {
             if (!prepared) {
                 positionMs = windowPositionMs == kTimeUnset ? 0 : windowPositionMs;
+                startAtDefault = windowPositionMs == kTimeUnset;
                 return;
             }
             if (items.empty()) {
@@ -433,12 +443,12 @@ namespace kiln::media {
                 if (next != kIndexUnset && next != current) {
                     const PositionInfo was = Position();
                     current = next;
-                    Load(0);
+                    Load(kTimeUnset);
                     Discontinuity(was, DiscontinuityReason::AutoTransition);
                     Transition(MediaItemTransitionReason::Auto);
                 } else if (next == current && !EngineRepeats()) {
                     const PositionInfo was = Position();
-                    Load(0);
+                    Load(kTimeUnset);
                     Discontinuity(was, DiscontinuityReason::AutoTransition);
                     Transition(MediaItemTransitionReason::Repeat);
                 } else {
@@ -657,7 +667,7 @@ namespace kiln::media {
             shuffle = shuffle.CloneAndInsert(index, count);
             if (wasEmpty) {
                 current = shuffleEnabled ? First() : 0;
-                LoadCurrentIfPrepared(positionMs);   // from an empty playlist: the first item plays
+                LoadCurrentIfPrepared(startAtDefault ? kTimeUnset : positionMs);   // from an empty playlist: the first item plays
                 Transition(MediaItemTransitionReason::PlaylistChanged);
             } else if (index <= current) {
                 current += count;
@@ -894,7 +904,7 @@ namespace kiln::media {
             s.ended = true;
             s.error.reset();
         } else {
-            s.Load(s.positionMs);
+            s.Load(s.startAtDefault ? kTimeUnset : s.positionMs);
         }
         s.UpdateWithFocus(s.playWhenReady, s.reason);
         s.Publish();
@@ -932,12 +942,13 @@ namespace kiln::media {
         s.current = index;
         if (!s.prepared) {
             s.positionMs = pos;
+            s.startAtDefault = ms == kTimeUnset;
         } else if (itemChanges || s.ended || s.error || !s.engine || s.loadId == 0) {
-            s.Load(pos);
+            s.Load(ms);
         } else {
             const MediaItem& m = s.items[std::size_t(s.current)];
             s.positionMs = pos;
-            s.engine->SeekTo(m.clippingConfiguration.startPositionMs + pos);
+            s.engine->SeekTo(Shared::MediaStartMs(m, ms));
         }
         s.Discontinuity(was, DiscontinuityReason::Seek);
         if (itemChanges) s.Transition(MediaItemTransitionReason::Seek);
@@ -1048,6 +1059,14 @@ namespace kiln::media {
     }
     std::int64_t Player::TotalBufferedDurationMs() const { return std::max<std::int64_t>(State().bufferedPositionMs - State().positionMs, 0); }
     bool Player::IsCurrentMediaItemSeekable() const { return State().isCurrentMediaItemSeekable; }
+    bool Player::IsCurrentMediaItemLive() const { return State().isCurrentMediaItemLive; }
+    bool Player::IsCurrentMediaItemDynamic() const { return State().isCurrentMediaItemDynamic; }
+    std::int64_t Player::CurrentLiveOffsetMs() const {
+        const PlayerState& st = State();
+        if (!st.isCurrentMediaItemLive || st.windowStartTimeMs == kTimeUnset) return kTimeUnset;
+        const std::int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        return nowMs + st.windowClockOffsetMs - st.windowStartTimeMs - st.positionMs;
+    }
 
     void Player::SetTrackSelectionParameters(TrackSelectionParameters p) {
         Shared& s = *m_Shared;

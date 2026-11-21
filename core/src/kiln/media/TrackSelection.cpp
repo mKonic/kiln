@@ -120,6 +120,232 @@ namespace kiln::media {
         return *this;
     }
 
+    TrackSelectionParameters& TrackSelectionParameters::SetMaxVideoSize(int width, int height) {
+        maxVideoWidth = width;
+        maxVideoHeight = height;
+        return *this;
+    }
+    TrackSelectionParameters& TrackSelectionParameters::SetMinVideoSize(int width, int height) {
+        minVideoWidth = width;
+        minVideoHeight = height;
+        return *this;
+    }
+    TrackSelectionParameters& TrackSelectionParameters::SetViewportSize(int width, int height, bool orientationMayChange) {
+        viewportWidth = width;
+        viewportHeight = height;
+        viewportOrientationMayChange = orientationMayChange;
+        isViewportSizeLimitedByPhysicalDisplaySize = false;
+        return *this;
+    }
+    TrackSelectionParameters& TrackSelectionParameters::SetViewportSizeToPhysicalDisplaySize(bool orientationMayChange) {
+        isViewportSizeLimitedByPhysicalDisplaySize = true;
+        viewportOrientationMayChange = orientationMayChange;
+        return *this;
+    }
+
+    std::pair<int, int> MaxVideoSizeInViewport(bool orientationMayChange, int viewportWidth, int viewportHeight, int videoWidth, int videoHeight) {
+        if (orientationMayChange && (videoWidth > videoHeight) != (viewportWidth > viewportHeight)) std::swap(viewportWidth, viewportHeight);
+        auto ceilDivide = [](std::int64_t n, std::int64_t d) { return int((n + d - 1) / d); };
+        if (std::int64_t(videoWidth) * viewportHeight >= std::int64_t(videoHeight) * viewportWidth)
+            return { viewportWidth, ceilDivide(std::int64_t(viewportWidth) * videoHeight, videoWidth) };   // letter-boxed top and bottom
+        return { ceilDivide(std::int64_t(viewportHeight) * videoWidth, videoHeight), viewportHeight };     // at the sides
+    }
+
+    namespace {
+        constexpr float kFractionToConsiderFullscreen = 0.98f;
+        constexpr float kMinReasonableFrameRate = 10;
+
+        // getMaxVideoPixelsToRetainForViewport: the pixels of the smallest track at least as large
+        // as the viewport shows it (larger ones are left out).
+        long long MaxVideoPixelsToRetain(const std::vector<Format>& group, int viewportWidth, int viewportHeight, bool orientationMayChange) {
+            constexpr long long kAll = 0x7fffffff;
+            if (viewportWidth == 0x7fffffff || viewportHeight == 0x7fffffff) return kAll;
+            long long retain = kAll;
+            for (const Format& f : group) {
+                if (f.width <= 0 || f.height <= 0) continue;
+                const auto [maxWidth, maxHeight] = MaxVideoSizeInViewport(orientationMayChange, viewportWidth, viewportHeight, f.width, f.height);
+                const long long pixels = (long long)f.width * f.height;
+                if (f.width >= int(float(maxWidth) * kFractionToConsiderFullscreen) && f.height >= int(float(maxHeight) * kFractionToConsiderFullscreen) && pixels < retain)
+                    retain = pixels;
+            }
+            return retain;
+        }
+
+        int BestLabelMatchIndex(const Format& f, const std::vector<std::string>& preferred) {
+            for (std::size_t i = 0; i < preferred.size(); ++i)
+                for (const Label& l : f.labels)
+                    if (l.value == preferred[i]) return int(i);
+            return 0x7fffffff;
+        }
+        int VideoCodecPreferenceScore(const std::string& mime) {
+            if (mime == "video/dolby-vision") return 5;
+            if (mime == "video/av01") return 4;
+            if (mime == "video/hevc") return 3;
+            if (mime == "video/x-vnd.on2.vp9") return 2;
+            if (mime == "video/avc") return 1;
+            return 0;
+        }
+
+        enum class Eligibility { No, Fixed, Adaptive };
+
+        // VideoTrackInfo (the platform's decoder for a type is its primary one).
+        struct VideoTrackInfo {
+            int group = 0, track = 0;
+            const Format* format = nullptr;
+            bool withinMax = false, withinMin = false, withinCapabilities = false, reasonableFrameRate = false, mainOrNoRole = false, hdr = false;
+            bool hardwareAccelerated = false;
+            int bitrate = -1;
+            long long pixels = -1;
+            int preferredLanguageIndex = 0x7fffffff, preferredLanguageScore = 0, preferredRoleFlagsScore = 0, preferredLabelIndex = 0x7fffffff;
+            int selectedAudioLanguageScore = 0, preferredMimeTypeIndex = 0x7fffffff, codecPreferenceScore = 0;
+            Eligibility eligibility = Eligibility::No;
+            const TrackSelectionParameters* parameters = nullptr;
+        };
+
+        // ComparisonChain over ints; compareFalseFirst: false before true.
+        struct Chain {
+            int result = 0;
+            Chain& Compare(long long a, long long b) {
+                if (result == 0 && a != b) result = a < b ? -1 : 1;
+                return *this;
+            }
+            Chain& Reverse(long long a, long long b) { return Compare(b, a); }
+            Chain& FalseFirst(bool a, bool b) { return Compare(a ? 1 : 0, b ? 1 : 0); }
+            // FORMAT_VALUE_ORDERING: Format.NO_VALUE (-1) before every value.
+            Chain& FormatValue(long long a, long long b, bool reverse) {
+                if (result != 0) return *this;
+                const int c = a == -1 ? (b == -1 ? 0 : -1) : b == -1 ? 1 : (a < b ? -1 : a > b ? 1 : 0);
+                result = reverse ? -c : c;
+                return *this;
+            }
+        };
+
+        int CompareNonQuality(const VideoTrackInfo& a, const VideoTrackInfo& b) {
+            return Chain()
+                .FalseFirst(a.withinCapabilities, b.withinCapabilities)
+                .Reverse(a.preferredLanguageIndex, b.preferredLanguageIndex)
+                .Compare(a.preferredLanguageScore, b.preferredLanguageScore)
+                .Compare(a.preferredRoleFlagsScore, b.preferredRoleFlagsScore)
+                .Reverse(a.preferredLabelIndex, b.preferredLabelIndex)
+                .FalseFirst(a.mainOrNoRole, b.mainOrNoRole)
+                .Compare(a.selectedAudioLanguageScore, b.selectedAudioLanguageScore)
+                .FalseFirst(a.reasonableFrameRate, b.reasonableFrameRate)
+                .FalseFirst(a.withinMax, b.withinMax)
+                .FalseFirst(a.withinMin, b.withinMin)
+                .Reverse(a.preferredMimeTypeIndex, b.preferredMimeTypeIndex)
+                .FalseFirst(a.hardwareAccelerated, b.hardwareAccelerated)
+                .result;
+        }
+        int CompareQuality(const VideoTrackInfo& a, const VideoTrackInfo& b) {
+            // Higher quality within the constraints and capabilities, else lower.
+            const bool reverse = !(a.withinMax && a.withinCapabilities);
+            Chain chain;
+            if (a.parameters->forceLowestBitrate) chain.FormatValue(a.bitrate, b.bitrate, true);
+            chain.FalseFirst(a.hdr, b.hdr).FormatValue(a.pixels, b.pixels, reverse);
+            if (a.hardwareAccelerated) chain.Compare(a.codecPreferenceScore, b.codecPreferenceScore);
+            chain.FormatValue(a.bitrate, b.bitrate, reverse);
+            return chain.result;
+        }
+        // Collections.max: the first of the greatest.
+        template<typename T, typename C>
+        const T& MaxOf(const std::vector<T>& list, C compare) {
+            std::size_t best = 0;
+            for (std::size_t i = 1; i < list.size(); ++i)
+                if (compare(list[i], list[best]) > 0) best = i;
+            return list[best];
+        }
+        int CompareSelections(const std::vector<VideoTrackInfo>& a, const std::vector<VideoTrackInfo>& b) {
+            if (const int c = CompareNonQuality(MaxOf(a, CompareNonQuality), MaxOf(b, CompareNonQuality))) return c;
+            if (a.size() != b.size()) return a.size() < b.size() ? -1 : 1;
+            return CompareQuality(MaxOf(a, CompareQuality), MaxOf(b, CompareQuality));
+        }
+    }
+
+    VideoSelection SelectVideoTracks(const std::vector<std::vector<Format>>& groups, const std::vector<std::vector<int>>& support,
+                                     const TrackSelectionParameters& p, const std::optional<std::string>& selectedAudioLanguage,
+                                     std::optional<std::pair<int, int>> displaySize) {
+        const int viewportWidth = p.isViewportSizeLimitedByPhysicalDisplaySize && displaySize ? displaySize->first : p.viewportWidth;
+        const int viewportHeight = p.isViewportSizeLimitedByPhysicalDisplaySize && displaySize ? displaySize->second : p.viewportHeight;
+        std::vector<std::string> languages;
+        for (const auto& l : p.preferredVideoLanguages) languages.push_back(NormalizeLanguageCode(l));
+        std::optional<std::string> audioLanguage;
+        if (selectedAudioLanguage && !selectedAudioLanguage->empty() && *selectedAudioLanguage != "und") audioLanguage = NormalizeLanguageCode(*selectedAudioLanguage);
+        std::vector<std::vector<VideoTrackInfo>> selections;
+        for (std::size_t g = 0; g < groups.size(); ++g) {
+            const auto& group = groups[g];
+            const long long retain = MaxVideoPixelsToRetain(group, viewportWidth, viewportHeight, p.viewportOrientationMayChange);
+            std::vector<VideoTrackInfo> infos;
+            for (std::size_t i = 0; i < group.size(); ++i) {
+                const Format& f = group[i];
+                const int supportFlags = g < support.size() && i < support[g].size() ? support[g][i] : 2;
+                const int formatSupport = supportFlags & 3;
+                VideoTrackInfo t;
+                t.group = int(g);
+                t.track = int(i);
+                t.format = &f;
+                t.parameters = &p;
+                const long long pixels = f.width > 0 && f.height > 0 ? (long long)f.width * f.height : -1;
+                const bool suitableForViewport = retain == 0x7fffffff || (pixels != -1 && pixels <= retain);
+                t.withinMax = suitableForViewport && (f.width == -1 || f.width <= p.maxVideoWidth) && (f.height == -1 || f.height <= p.maxVideoHeight)
+                              && (f.frameRate == -1 || f.frameRate <= float(p.maxVideoFrameRate)) && (f.bitrate == -1 || f.bitrate <= p.maxVideoBitrate);
+                t.withinMin = suitableForViewport && (f.width == -1 || f.width >= p.minVideoWidth) && (f.height == -1 || f.height >= p.minVideoHeight)
+                              && (f.frameRate == -1 || f.frameRate >= float(p.minVideoFrameRate)) && (f.bitrate == -1 || f.bitrate >= p.minVideoBitrate);
+                t.withinCapabilities = formatSupport == 2;
+                t.hardwareAccelerated = (supportFlags & kDecoderHardwareAccelerated) != 0;
+                t.reasonableFrameRate = f.frameRate != -1 && f.frameRate >= kMinReasonableFrameRate;
+                t.bitrate = f.bitrate;
+                t.pixels = pixels;
+                for (std::size_t l = 0; l < languages.size(); ++l)
+                    if (const int score = FormatLanguageScore(f.language, languages[l], false); score > 0) {
+                        t.preferredLanguageIndex = int(l);
+                        t.preferredLanguageScore = score;
+                        break;
+                    }
+                t.preferredRoleFlagsScore = RoleFlagMatchScore(f.roleFlags, p.preferredVideoRoleFlags);
+                t.mainOrNoRole = f.roleFlags == 0 || (f.roleFlags & kRoleFlagMain) != 0;
+                t.selectedAudioLanguageScore = FormatLanguageScore(f.language, audioLanguage, !audioLanguage.has_value());
+                for (std::size_t m = 0; m < p.preferredVideoMimeTypes.size(); ++m)
+                    if (f.sampleMimeType == p.preferredVideoMimeTypes[m]) {
+                        t.preferredMimeTypeIndex = int(m);
+                        break;
+                    }
+                t.preferredLabelIndex = BestLabelMatchIndex(f, p.preferredVideoLabels);
+                t.codecPreferenceScore = VideoCodecPreferenceScore(f.sampleMimeType);
+                t.hdr = f.colorTransfer == 6 || f.colorTransfer == 7;   // ColorInfo.isTransferHdr: ST2084, HLG
+                // evaluateSelectionEligibility.
+                if (f.roleFlags & kRoleFlagTrickPlay) t.eligibility = Eligibility::No;
+                else if (!(formatSupport == 2 || (p.exceedRendererCapabilitiesIfNecessary && formatSupport == 1))) t.eligibility = Eligibility::No;
+                else if (!t.withinMax && !p.exceedVideoConstraintsIfNecessary) t.eligibility = Eligibility::No;
+                else
+                    t.eligibility = formatSupport == 2 && t.withinMin && t.withinMax && f.bitrate != -1 && !p.forceHighestSupportedBitrate && !p.forceLowestBitrate
+                                        ? Eligibility::Adaptive
+                                        : Eligibility::Fixed;
+                infos.push_back(t);
+            }
+            // selectTracksForType: each eligible track with the adaptive ones of its type after it.
+            std::vector<bool> used(infos.size(), false);
+            for (std::size_t i = 0; i < infos.size(); ++i) {
+                if (used[i] || infos[i].eligibility == Eligibility::No) continue;
+                std::vector<VideoTrackInfo> selection{ infos[i] };
+                if (infos[i].eligibility == Eligibility::Adaptive)
+                    for (std::size_t j = i + 1; j < infos.size(); ++j)
+                        if (infos[j].eligibility == Eligibility::Adaptive
+                            && (p.allowVideoMixedMimeTypeAdaptiveness || infos[j].format->sampleMimeType == infos[i].format->sampleMimeType)
+                            && infos[j].hardwareAccelerated == infos[i].hardwareAccelerated) {
+                            selection.push_back(infos[j]);
+                            used[j] = true;
+                        }
+                selections.push_back(std::move(selection));
+            }
+        }
+        if (selections.empty()) return {};
+        const auto& best = MaxOf(selections, CompareSelections);
+        VideoSelection out;
+        out.group = best.front().group;
+        for (const auto& t : best) out.tracks.push_back(t.track);
+        return out;
+    }
+
     std::optional<OverrideChoice> OverrideForType(const TrackSelectionParameters& p, TrackType type) {
         for (const auto& o : p.overrides)
             if (o.type == type) return OverrideChoice{ o.groupId, o.trackIndices.empty() ? -1 : o.trackIndices.front() };

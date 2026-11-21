@@ -446,12 +446,13 @@ namespace kiln::media::stream {
             }
 
             // HlsMediaSource.createTimelineForLive / createTimelineForOnDemand.
-            StreamWindow WindowOf(const HlsMediaPlaylist& p) const {
+            StreamWindow WindowOf(const HlsMediaPlaylist& p) {
                 StreamWindow w;
                 const bool live = !p.hasEndTag;
                 w.startUs = p.startTimeUs - m_InitialStartTimeUs;
                 w.durationUs = p.durationUs;
                 w.dynamic = live;
+                if (p.hasProgramDateTime) w.windowStartTimeMs = p.startTimeUs / 1000;
                 auto closestPreceding = [&](std::int64_t positionUs) -> const HlsMediaPlaylist::Segment& {
                     auto it = std::upper_bound(p.segments.begin(), p.segments.end(), positionUs,
                                                [](std::int64_t t, const HlsMediaPlaylist::Segment& s) { return t < s.relativeStartTimeUs; });
@@ -464,15 +465,22 @@ namespace kiln::media::stream {
                     return w;
                 }
                 const std::int64_t liveEdgeOffsetUs = p.hasProgramDateTime ? NowUnixTimeMs() * 1000 - p.GetEndTimeUs() : 0;
+                MediaItem::LiveConfiguration& config = m_LiveConfiguration;
                 std::int64_t target;
-                if (p.startOffsetUs != kTimeUnset) target = p.durationUs - p.startOffsetUs;
-                else if (p.serverControl.partHoldBackUs != kTimeUnset && p.partTargetDurationUs != kTimeUnset) target = p.serverControl.partHoldBackUs;
-                else if (p.serverControl.holdBackUs != kTimeUnset) target = p.serverControl.holdBackUs;
-                else target = 3 * p.targetDurationUs;
-                target += liveEdgeOffsetUs;
+                if (config.targetOffsetMs != kTimeUnset) target = config.targetOffsetMs * 1000;
+                else if (p.startOffsetUs != kTimeUnset) target = p.durationUs - p.startOffsetUs + liveEdgeOffsetUs;
+                else if (p.serverControl.partHoldBackUs != kTimeUnset && p.partTargetDurationUs != kTimeUnset) target = p.serverControl.partHoldBackUs + liveEdgeOffsetUs;
+                else if (p.serverControl.holdBackUs != kTimeUnset) target = p.serverControl.holdBackUs + liveEdgeOffsetUs;
+                else target = 3 * p.targetDurationUs + liveEdgeOffsetUs;
                 target = std::clamp(target, liveEdgeOffsetUs, p.durationUs + liveEdgeOffsetUs);
-                w.targetLiveOffsetUs = target;
-                const std::int64_t start = p.startOffsetUs != kTimeUnset ? p.startOffsetUs : p.durationUs + liveEdgeOffsetUs - target;
+                // updateLiveConfiguration: the target sticks; no speed adjustment unless the item
+                // or the playlist's server control asks for a latency.
+                const bool disableSpeedAdjustment = config.minPlaybackSpeed == kRateUnset && config.maxPlaybackSpeed == kRateUnset &&
+                                                    p.serverControl.holdBackUs == kTimeUnset && p.serverControl.partHoldBackUs == kTimeUnset;
+                config.targetOffsetMs = target / 1000;
+                if (disableSpeedAdjustment) config.minPlaybackSpeed = config.maxPlaybackSpeed = 1.f;
+                w.liveConfiguration = config;
+                const std::int64_t start = p.startOffsetUs != kTimeUnset ? p.startOffsetUs : p.durationUs + liveEdgeOffsetUs - config.targetOffsetMs * 1000;
                 if (p.preciseStart) w.defaultPositionUs = start;
                 else if (p.segments.empty()) w.defaultPositionUs = 0;
                 else w.defaultPositionUs = closestPreceding(start).relativeStartTimeUs;
@@ -498,6 +506,8 @@ namespace kiln::media::stream {
 
         constexpr const char* kAdaptationSetSwitching = "urn:mpeg:dash:adaptation-set-switching:2016";
         constexpr const char* kTrickMode = "http://dashif.org/guidelines/trickmode";
+        // DashMediaSource.MIN_LIVE_DEFAULT_START_POSITION_US.
+        constexpr std::int64_t kMinLiveStartPositionUs = 5'000'000;
 
         class DashSource final : public AdaptiveSource {
         public:
@@ -525,12 +535,15 @@ namespace kiln::media::stream {
                 if (changingImplicitly && m.timeShiftBufferDepthMs != kTimeUnset) startUs = std::max(startUs, endUs - MsToUs(m.timeShiftBufferDepthMs));
                 w.startUs = startUs;
                 w.durationUs = endUs - startUs;
-                w.dynamic = m.dynamic;
+                // isMovingLiveWindow: a dynamic manifest that is updated and has no duration yet.
+                w.dynamic = m.dynamic && m.minUpdatePeriodMs != kTimeUnset && m.durationMs == kTimeUnset;
+                w.serverClockOffsetMs = m_ServerOffsetMs;
                 if (m.dynamic && m.availabilityStartTimeMs != kTimeUnset) {
                     const std::int64_t nowInWindowUs = nowUs - MsToUs(m.availabilityStartTimeMs) - startUs;
-                    const std::int64_t targetMs = TargetOffsetMs(nowInWindowUs, w.durationUs);
-                    w.targetLiveOffsetUs = targetMs * 1000;
-                    w.defaultPositionUs = std::max(nowInWindowUs - targetMs * 1000, std::min<std::int64_t>(5'000'000, w.durationUs / 2));
+                    UpdateLiveConfiguration(nowInWindowUs, w.durationUs);
+                    w.liveConfiguration = m_LiveConfiguration;
+                    w.windowStartTimeMs = m.availabilityStartTimeMs + startUs / 1000;
+                    w.defaultPositionUs = std::max(nowInWindowUs - m_LiveConfiguration.targetOffsetMs * 1000, std::min(kMinLiveStartPositionUs, w.durationUs / 2));
                 }
                 return w;
             }
@@ -793,28 +806,40 @@ namespace kiln::media::stream {
                 return available == INT64_MAX ? periodStartUs : available;
             }
 
-            // DashMediaSource.updateLiveConfiguration's target offset (no media item overrides).
-            std::int64_t TargetOffsetMs(std::int64_t nowInWindowUs, std::int64_t windowDurationUs) const {
+            // DashMediaSource.updateLiveConfiguration: the item's values, then the manifest's
+            // ServiceDescription, suggestedPresentationDelay and the window's bounds.
+            void UpdateLiveConfiguration(std::int64_t nowInWindowUs, std::int64_t windowDurationUs) {
                 const DashManifest& m = *m_Manifest;
+                const MediaItem::LiveConfiguration& item = m_ItemLiveConfiguration;
+                const auto* sd = m.serviceDescription ? &*m.serviceDescription : nullptr;
+                auto constrain = [](std::int64_t v, std::int64_t lo, std::int64_t hi) { return std::max(lo, std::min(v, hi)); };
                 const std::int64_t maxPossibleMs = nowInWindowUs / 1000;
                 std::int64_t maxMs = maxPossibleMs;
-                if (m.serviceDescription && m.serviceDescription->maxOffsetMs != kTimeUnset) maxMs = std::min(maxMs, m.serviceDescription->maxOffsetMs);
+                if (item.maxOffsetMs != kTimeUnset) maxMs = std::min(maxMs, item.maxOffsetMs);
+                else if (sd && sd->maxOffsetMs != kTimeUnset) maxMs = std::min(maxMs, sd->maxOffsetMs);
                 std::int64_t minMs = (nowInWindowUs - windowDurationUs) / 1000;
                 if (minMs < 0 && maxMs > 0) minMs = 0;
                 if (m.minBufferTimeMs != kTimeUnset) minMs = std::min(minMs + m.minBufferTimeMs, maxPossibleMs);
-                if (m.serviceDescription && m.serviceDescription->minOffsetMs != kTimeUnset)
-                    minMs = std::clamp(m.serviceDescription->minOffsetMs, std::min(minMs, maxPossibleMs), std::max(minMs, maxPossibleMs));
+                if (item.minOffsetMs != kTimeUnset) minMs = constrain(item.minOffsetMs, minMs, maxPossibleMs);
+                else if (sd && sd->minOffsetMs != kTimeUnset) minMs = constrain(sd->minOffsetMs, minMs, maxPossibleMs);
                 if (minMs > maxMs) maxMs = minMs;
                 std::int64_t target;
-                if (m.serviceDescription && m.serviceDescription->targetOffsetMs != kTimeUnset) target = m.serviceDescription->targetOffsetMs;
+                if (m_LiveConfiguration.targetOffsetMs != kTimeUnset) target = m_LiveConfiguration.targetOffsetMs;   // kept once set
+                else if (sd && sd->targetOffsetMs != kTimeUnset) target = sd->targetOffsetMs;
                 else if (m.suggestedPresentationDelayMs != kTimeUnset) target = m.suggestedPresentationDelayMs;
                 else target = 30'000;   // DEFAULT_FALLBACK_TARGET_LIVE_OFFSET_MS
                 if (target < minMs) target = minMs;
                 if (target > maxMs) {
-                    const std::int64_t safeUs = std::min<std::int64_t>(5'000'000, windowDurationUs / 2);
-                    target = std::clamp((nowInWindowUs - safeUs) / 1000, minMs, std::max(minMs, maxMs));
+                    const std::int64_t safeUs = std::min<std::int64_t>(kMinLiveStartPositionUs, windowDurationUs / 2);
+                    target = constrain((nowInWindowUs - safeUs) / 1000, minMs, maxMs);
                 }
-                return target;
+                float minSpeed = kRateUnset, maxSpeed = kRateUnset;
+                if (item.minPlaybackSpeed != kRateUnset) minSpeed = item.minPlaybackSpeed;
+                else if (sd) minSpeed = sd->minPlaybackSpeed;
+                if (item.maxPlaybackSpeed != kRateUnset) maxSpeed = item.maxPlaybackSpeed;
+                else if (sd) maxSpeed = sd->maxPlaybackSpeed;
+                if (minSpeed == kRateUnset && maxSpeed == kRateUnset && (!sd || sd->targetOffsetMs == kTimeUnset)) minSpeed = maxSpeed = 1.f;
+                m_LiveConfiguration = {target, minMs, maxMs, minSpeed, maxSpeed};
             }
 
             // The server's clock (DashMediaSource.resolveUtcTimingElement): direct values and

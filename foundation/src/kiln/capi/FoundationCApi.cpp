@@ -1710,6 +1710,10 @@ KILN_API void kiln_player_get_state(kiln_player* p, kiln_player_state* out) {
         out->title = title.c_str();
         out->pixel_width_height_ratio = s.videoSize.pixelWidthHeightRatio;
         out->cues = cues.c_str();
+        out->is_live = s.isCurrentMediaItemLive;
+        out->is_dynamic = s.isCurrentMediaItemDynamic;
+        const std::int64_t offset = p->player->CurrentLiveOffsetMs();
+        out->live_offset_ms = offset == kiln::media::kTimeUnset ? -1 : offset;
     } CATCH_VOID
 }
 
@@ -1726,6 +1730,14 @@ namespace {
             m.mediaMetadata.artworkUri = ToString(c.artwork_uri);
             m.clippingConfiguration.startPositionMs = std::max<int64_t>(c.clip_start_ms, 0);
             m.clippingConfiguration.endPositionMs = c.clip_end_ms < 0 ? kiln::media::kTimeEndOfSource : c.clip_end_ms;
+            if (c.size >= offsetof(kiln_media_item, live_max_playback_speed) + sizeof c.live_max_playback_speed) {
+                auto& live = m.liveConfiguration;
+                live.targetOffsetMs = c.live_target_offset_ms < 0 ? kiln::media::kTimeUnset : c.live_target_offset_ms;
+                live.minOffsetMs = c.live_min_offset_ms < 0 ? kiln::media::kTimeUnset : c.live_min_offset_ms;
+                live.maxOffsetMs = c.live_max_offset_ms < 0 ? kiln::media::kTimeUnset : c.live_max_offset_ms;
+                live.minPlaybackSpeed = c.live_min_playback_speed > 0 ? c.live_min_playback_speed : kiln::media::kRateUnset;
+                live.maxPlaybackSpeed = c.live_max_playback_speed > 0 ? c.live_max_playback_speed : kiln::media::kRateUnset;
+            }
             for (size_t k = 0; c.subtitles && k < c.subtitle_count; ++k) {
                 const kiln_subtitle& t = c.subtitles[k];
                 m.subtitleConfigurations.push_back({ .uri = ToString(t.uri), .mimeType = ToString(t.mime_type), .language = ToString(t.language),
@@ -1751,6 +1763,7 @@ KILN_API void kiln_media_item_init(kiln_media_item* item) {
     *item = {};
     item->size = sizeof *item;
     item->clip_end_ms = -1;
+    item->live_target_offset_ms = item->live_min_offset_ms = item->live_max_offset_ms = -1;
 }
 KILN_API void kiln_player_set_media_items(kiln_player* p, const kiln_media_item* items, size_t count, bool reset) {
     TRY { if (p) p->player->SetMediaItems(ToMediaItems(items, count), reset); } CATCH_VOID
@@ -1794,6 +1807,9 @@ KILN_API void kiln_player_set_repeat_mode(kiln_player* p, kiln_repeat_mode mode)
 }
 KILN_API void kiln_player_set_shuffle_mode_enabled(kiln_player* p, bool enabled) {
     TRY { if (p) p->player->SetShuffleModeEnabled(enabled); } CATCH_VOID
+}
+KILN_API void kiln_player_seek_to_default_position(kiln_player* p) {
+    TRY { if (p) p->player->SeekToDefaultPosition(); } CATCH_VOID
 }
 KILN_API void kiln_player_set_playback_parameters(kiln_player* p, float speed, float pitch) {
     TRY { if (p) p->player->SetPlaybackParameters({ speed, pitch }); } CATCH_VOID
@@ -1844,6 +1860,21 @@ KILN_API void kiln_player_select_track(kiln_player* p, int32_t type, const char*
             const auto ty = kiln::media::TrackType(type);
             if (!group) t.ClearOverridesOfType(ty);
             else t.SetOverrideForType({ .type = ty, .groupId = group, .trackIndices = track < 0 ? std::vector<int>{} : std::vector<int>{ track } });
+        });
+    } CATCH_VOID
+}
+KILN_API void kiln_player_set_max_video_size(kiln_player* p, int32_t w, int32_t h) {
+    TRY { if (p) EditSelection(p, [&](auto& t) { t.SetMaxVideoSize(w < 0 ? INT_MAX : w, h < 0 ? INT_MAX : h); }); } CATCH_VOID
+}
+KILN_API void kiln_player_set_max_video_bitrate(kiln_player* p, int32_t bitrate) {
+    TRY { if (p) EditSelection(p, [&](auto& t) { t.maxVideoBitrate = bitrate < 0 ? INT_MAX : bitrate; }); } CATCH_VOID
+}
+KILN_API void kiln_player_set_viewport_size(kiln_player* p, int32_t w, int32_t h, bool orientationMayChange) {
+    TRY {
+        if (!p) return;
+        EditSelection(p, [&](auto& t) {
+            if (w < 0 || h < 0) t.SetViewportSizeToPhysicalDisplaySize(orientationMayChange);
+            else t.SetViewportSize(w, h, orientationMayChange);
         });
     } CATCH_VOID
 }

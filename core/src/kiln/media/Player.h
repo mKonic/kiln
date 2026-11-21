@@ -127,7 +127,15 @@ namespace kiln::media {
         Tracks tracks;
         // getAvailableCommands (Util.getAvailableCommands over ExoPlayer's permanent ones).
         Commands availableCommands;
-        bool isCurrentMediaItemSeekable = false;   // its duration is known (no live streams here)
+        bool isCurrentMediaItemSeekable = false;   // its window's duration is known
+        // Timeline.Window's live fields: a live stream (isLive: it has a live configuration), one
+        // whose window moves (isDynamic), the configuration it plays with (the item's with the
+        // media's values filled in), the wall-clock time of the window's start (kTimeUnset: not
+        // known) and the server's clock less the device's.
+        bool isCurrentMediaItemLive = false, isCurrentMediaItemDynamic = false;
+        std::optional<MediaItem::LiveConfiguration> currentLiveConfiguration;
+        std::int64_t windowStartTimeMs = kTimeUnset;
+        std::int64_t windowClockOffsetMs = 0;
         // Timeline.Window.getPositionInFirstPeriodMs: where the window starts in its period (an
         // adaptive stream's live window moves along it); positions are in the window.
         std::int64_t positionInFirstPeriodMs = 0;
@@ -153,11 +161,12 @@ namespace kiln::media {
     // One item for the engine to play (empty uri: stop and release).
     struct EngineLoad {
         std::string uri, mimeType;
-        std::int64_t startPositionMs = 0;                 // where to start (in the media)
+        std::int64_t startPositionMs = 0;                 // where to start (in the media; kTimeUnset: the default position)
         std::int64_t clipStartMs = 0;                     // where a repeat starts again
         std::int64_t endPositionMs = kTimeEndOfSource;   // the clipped end
         std::uint64_t loadId = 0;                         // reported back with its states
         TrackSelectionParameters trackSelection;          // which of its tracks to play
+        MediaItem::LiveConfiguration liveConfiguration;   // the item's, for a live stream
     };
 
     // What decodes: the platform's engine. Its methods are called on the main thread; it reports
@@ -167,6 +176,7 @@ namespace kiln::media {
         virtual ~PlayerEngine() = default;
         virtual void Load(EngineLoad load) = 0;
         virtual void SetPlayWhenReady(bool play) = 0;
+        // kTimeUnset: the default position (a live stream's live edge less its target offset).
         virtual void SeekTo(std::int64_t positionMs) = 0;
         virtual void SetRepeat(bool repeat) = 0;
         virtual void SetVolume(float volume) = 0;
@@ -291,9 +301,12 @@ namespace kiln::media {
         int BufferedPercentage() const;
         std::int64_t TotalBufferedDurationMs() const;
         bool IsCurrentMediaItemSeekable() const;
-        // Live and dynamic windows come from live streams, which kiln does not play: false.
-        bool IsCurrentMediaItemLive() const { return false; }
-        bool IsCurrentMediaItemDynamic() const { return false; }
+        // A live HLS or DASH stream: isCurrentMediaItemLive / isCurrentMediaItemDynamic.
+        bool IsCurrentMediaItemLive() const;
+        bool IsCurrentMediaItemDynamic() const;
+        // getCurrentLiveOffset: how far behind the live edge playback is (kTimeUnset: not live, or
+        // the window's wall-clock start is not known).
+        std::int64_t CurrentLiveOffsetMs() const;
 
         // Which tracks play, chosen as DefaultTrackSelector does: the media's audio track (by
         // language, role, label, format, then the system's languages and quality) and video, and a

@@ -7,6 +7,7 @@
 #include "AndroidMedia.h"
 
 #include "kiln/jvm/Jvm.h"
+#include "kiln/media/LivePlaybackSpeedControl.h"
 #include "kiln/media/Player.h"
 #include "kiln/media/Webvtt.h"
 #include "kiln/media/stream/SegmentProbe.h"
@@ -141,8 +142,9 @@ namespace kiln::android {
         void PieceClose(void*) {}
 
         // RendererCapabilities' format support from the platform's decoders
-        // (KilnMedia.decoderSupport): 2 handled, 1 the type but not these properties, 0 no
-        // decoder. Unknown types count as handled (the decoder decides).
+        // (KilnMedia.decoderSupport): 2 handled (with media::kDecoderHardwareAccelerated when the
+        // decoder is), 1 the type but not these properties, 0 no decoder. Unknown types count as
+        // handled (the decoder decides). Level(): the support without the flag.
         int DecoderSupport(const media::Format& f) {
             if (f.sampleMimeType.empty()) return 2;
             const std::string key = f.sampleMimeType + "|" + f.codecs + "|" + std::to_string(f.width) + "x" + std::to_string(f.height) + "@" +
@@ -172,6 +174,31 @@ namespace kiln::android {
             std::lock_guard lock(mutex);
             cache[key] = support;
             return support;
+        }
+
+        int SupportLevel(int support) { return support & 3; }
+
+        // The physical display's mode (TrackSelectionParameters' viewport by default).
+        std::optional<std::pair<int, int>> DisplayModeSize() {
+            static std::optional<std::pair<int, int>> size;
+            static bool asked = false;
+            if (asked) return size;
+            asked = true;
+            try {
+                JNIEnv* env = jvm::Env();
+                static jvm::Global<jclass> media = jvm::FindClass("dev/kiln/KilnMedia");
+                static jmethodID method = jvm::detail::StaticMethod(env, media.get(), "displayModeSize", "()[I");
+                jvm::Local<jintArray> array(static_cast<jintArray>(env->CallStaticObjectMethod(media.get(), method)), env);
+                if (env->ExceptionCheck()) {
+                    env->ExceptionClear();
+                    return size;
+                }
+                jint values[2] = {};
+                if (array.get() && env->GetArrayLength(array.get()) == 2) env->GetIntArrayRegion(array.get(), 0, 2, values);
+                if (values[0] > 0 && values[1] > 0) size = std::pair{ int(values[0]), int(values[1]) };
+            } catch (const std::exception&) {
+            }
+            return size;
         }
 
         // DefaultBandwidthMeter.getSingletonInstance: one estimate for every player.
@@ -477,7 +504,7 @@ namespace kiln::android {
 
             void Load(media::EngineLoad load) override { Command([&] { m_Load = std::move(load); m_UriChanged = true; }); }
             void SetPlayWhenReady(bool play) override { Command([&] { m_PlayWhenReady = play; }); }
-            void SeekTo(std::int64_t ms) override { Command([&] { m_SeekUs = ms * 1000; }); }
+            void SeekTo(std::int64_t ms) override { Command([&] { m_SeekUs = ms == media::kTimeUnset ? kDefaultPositionUs : ms * 1000; }); }
             void SetRepeat(bool repeat) override { Command([&] { m_RepeatWanted = repeat; }); }
             void SetVolume(float v) override { Command([&] { m_VolumeWanted = v; }); }
             void SetPlaybackParameters(media::PlaybackParameters p) override { Command([&] { m_ParamsWanted = p; }); }
@@ -533,6 +560,9 @@ namespace kiln::android {
 
             // --- the playback thread ---------------------------------------------------------
             void Run() {
+                // Attached to the JVM: an extractor on a URL makes its HTTP service through JNI
+                // (NdkMediaDataSource refuses an unattached thread), and the decoder checks call Java.
+                jvm::Env();
                 for (;;) {
                     std::unique_lock lock(m_Mutex);
                     // A stream that buffers or loads keeps working too (its buffer decides when to play,
@@ -567,7 +597,9 @@ namespace kiln::android {
 
                     if (load) {
                         m_LoadId = load->loadId;
-                        m_StartUs = std::max<std::int64_t>(load->startPositionMs, 0) * 1000;
+                        // -1: the default position.
+                        m_StartUs = load->startPositionMs == media::kTimeUnset ? -1 : std::max<std::int64_t>(load->startPositionMs, 0) * 1000;
+                        m_LiveItemConfiguration = load->liveConfiguration;
                         m_EndUs = load->endPositionMs == media::kTimeEndOfSource ? -1 : load->endPositionMs * 1000;
                         m_StartClipUs = std::max<std::int64_t>(load->clipStartMs, 0) * 1000;
                         // From the item's start (a clipped start, or where playback resumes).
@@ -588,7 +620,10 @@ namespace kiln::android {
                         m_Cv.notify_all();
                     }
                     // Positions from the player are in the window (an adaptive stream's moves).
-                    if (seek && m_Prepared) Seek(m_WindowStartUs + std::min(*seek, m_DurationUs > 0 ? m_DurationUs - m_WindowStartUs : *seek));
+                    if (seek && m_Prepared) {
+                        if (*seek == kDefaultPositionUs) SeekToDefaultPosition();
+                        else SeekWithLiveOverride(m_WindowStartUs + std::min(*seek, m_DurationUs > 0 ? m_DurationUs - m_WindowStartUs : *seek));
+                    }
                     if (parametersChanged) ApplyParameters(parameters);
                     if (trackSelection) ApplyTrackSelection(std::move(*trackSelection));
                     if (text) ApplyTextTrack(text->first, text->second);
@@ -630,6 +665,11 @@ namespace kiln::android {
                 m_TextPiece.reset();
                 m_Adaptive.reset();
                 m_WindowStartUs = 0;
+                m_LiveWindow = {};
+                m_LiveSpeedControl = media::LivePlaybackSpeedControl();
+                m_LiveSpeed = 1.f;
+                m_SpeedAfterDrain.reset();
+                m_SpeedDrained = false;
                 m_Rebuffering = false;
                 m_Prepared = false;
                 m_Playing = false;
@@ -815,6 +855,7 @@ namespace kiln::android {
                     } else {
                         auto fetcher = std::make_shared<SegmentFetcher>(net::GetHttpEngine(), &BandwidthMeter());
                         m_Adaptive = AdaptiveSource::Open(uri, m_MimeType, std::move(fetcher));
+                        m_Adaptive->SetLiveConfiguration(m_LiveItemConfiguration);
                     }
                 } catch (const HttpStatusError& e) {
                     return Fail(e.what(), media::PlaybackException::IoBadHttpStatus);
@@ -825,11 +866,13 @@ namespace kiln::android {
                 }
                 const StreamWindow w = m_Adaptive->Window();
                 m_WindowStartUs = w.startUs;
-                m_TargetLiveOffsetUs = w.targetLiveOffsetUs;
+                ApplyLiveWindow(w);
                 m_DurationUs = w.dynamic || w.durationUs == kTimeUnset ? -1 : w.startUs + w.durationUs;
                 m_State.durationMs = w.durationUs == kTimeUnset ? -1 : w.durationUs / 1000;
-                const std::int64_t positionUs =
-                    periodPositionUs ? *periodPositionUs : w.startUs + (w.dynamic && startUs <= 0 ? w.defaultPositionUs : std::max<std::int64_t>(startUs, 0));
+                const std::int64_t positionUs = periodPositionUs ? *periodPositionUs : w.startUs + (startUs < 0 ? w.defaultPositionUs : startUs);
+                // ExoPlayerImplInternal.updatePlaybackSpeedSettingsForNewPeriod: a start asked
+                // for keeps its live offset as the target; the default position, the media's.
+                if (!periodPositionUs && LiveControlled()) m_LiveSpeedControl.SetTargetLiveOffsetOverrideUs(startUs < 0 ? kTimeUnset : LiveOffsetUs(positionUs));
                 m_StreamSelection = SelectStreamGroups();
                 const StreamSelection& sel = m_StreamSelection;
                 ReportStreamTracks();
@@ -928,7 +971,7 @@ namespace kiln::android {
                     for (int i = 0; i < int(formats.size()); ++i) {
                         if (formats[std::size_t(i)].roleFlags & media::kRoleFlagTrickPlay) continue;
                         any.push_back(i);
-                        const int support = DecoderSupport(formats[std::size_t(i)]);
+                        const int support = SupportLevel(DecoderSupport(formats[std::size_t(i)]));
                         if (support == 2) handled.push_back(i);
                         else if (support == 1) exceeding.push_back(i);
                     }
@@ -951,12 +994,22 @@ namespace kiln::android {
                             out.videoTracks = o->trackIndices;
                         }
                     } else {
-                        for (std::size_t i = 0; i < groups.size(); ++i)
-                            if (groups[i].type == media::TrackType::Video) {
-                                out.videoGroup = int(i);
-                                out.videoTracks = supported(int(i));
-                                break;
-                            }
+                        // DefaultTrackSelector.selectVideoTrack over the video groups.
+                        std::vector<std::vector<media::Format>> videoGroups;
+                        std::vector<std::vector<int>> support;
+                        std::vector<int> indices;
+                        for (std::size_t i = 0; i < groups.size(); ++i) {
+                            if (groups[i].type != media::TrackType::Video) continue;
+                            videoGroups.push_back(groups[i].formats);
+                            support.emplace_back();
+                            for (const auto& f : groups[i].formats) support.back().push_back(DecoderSupport(f));
+                            indices.push_back(int(i));
+                        }
+                        const media::VideoSelection v = media::SelectVideoTracks(videoGroups, support, m_TrackSelection, std::nullopt, DisplayModeSize());
+                        if (v.group >= 0) {
+                            out.videoGroup = indices[std::size_t(v.group)];
+                            out.videoTracks = v.tracks;
+                        }
                     }
                 }
                 if (!m_TrackSelection.disabledTrackTypes.contains(media::TrackType::Audio)) {
@@ -985,7 +1038,7 @@ namespace kiln::android {
                         std::vector<int> support(formats.size());
                         bool anyHandled = false;
                         for (std::size_t i = 0; i < formats.size(); ++i) {
-                            support[i] = DecoderSupport(formats[i]);
+                            support[i] = SupportLevel(DecoderSupport(formats[i]));
                             anyHandled = anyHandled || support[i] == 2;
                         }
                         std::vector<bool> playable(formats.size());
@@ -1020,7 +1073,7 @@ namespace kiln::android {
                     out.type = g.type;
                     out.formats = g.formats;
                     for (const auto& f : g.formats)
-                        out.trackSupported.push_back(g.type == media::TrackType::Text ? TextSupported(f) : DecoderSupport(f) == 2);
+                        out.trackSupported.push_back(g.type == media::TrackType::Text ? TextSupported(f) : SupportLevel(DecoderSupport(f)) == 2);
                     out.trackSelected.assign(g.formats.size(), false);
                     const bool videoHere = int(i) == sel.videoGroup && g.type == media::TrackType::Video;
                     const bool audioHere = int(i) == sel.audioGroup && g.type == media::TrackType::Audio;
@@ -1032,7 +1085,7 @@ namespace kiln::android {
                         audio.id = g.id + ":audio";
                         audio.type = media::TrackType::Audio;
                         audio.formats = { *g.embeddedAudio };
-                        audio.trackSupported = { DecoderSupport(*g.embeddedAudio) == 2 };
+                        audio.trackSupported = { SupportLevel(DecoderSupport(*g.embeddedAudio)) == 2 };
                         audio.trackSelected = { int(i) == sel.audioGroup };
                         m_State.tracks.groups.push_back(std::move(audio));
                     }
@@ -1305,8 +1358,11 @@ namespace kiln::android {
                 const std::int64_t buffered = StreamsBufferedUs();
                 if (buffered == media::stream::kTimeUnset) return false;
                 std::int64_t minUs = m_Rebuffering ? 5'000'000 : 2'500'000;
-                if (m_TargetLiveOffsetUs > 0) minUs = std::min(minUs, m_TargetLiveOffsetUs / 2);
-                minUs = std::int64_t(double(minUs) * m_Params.speed);
+                // The speed control's target (unset without one: DefaultLoadControl's
+                // targetLiveOffsetUs).
+                const std::int64_t targetLiveOffsetUs = LiveControlled() ? m_LiveSpeedControl.GetTargetLiveOffsetUs() : media::stream::kTimeUnset;
+                if (targetLiveOffsetUs != media::stream::kTimeUnset) minUs = std::min(minUs, targetLiveOffsetUs / 2);
+                minUs = std::int64_t(double(minUs) * Speed());
                 return buffered - m_ClockBaseUs >= minUs;
             }
             // A live window moves as the playlists refresh: positions follow it once a second.
@@ -1322,7 +1378,93 @@ namespace kiln::android {
                     }
                 }
                 m_WindowStartUs = w.startUs;
+                ApplyLiveWindow(w);
                 m_State.durationMs = w.durationUs == media::stream::kTimeUnset ? -1 : w.durationUs / 1000;
+            }
+
+            // --- live playback speed ------------------------------------------------------------
+            void ApplyLiveWindow(const media::stream::StreamWindow& w) {
+                m_LiveWindow = w;
+                if (LiveControlled()) m_LiveSpeedControl.SetLiveConfiguration(*w.liveConfiguration);
+            }
+            // ExoPlayerImplInternal.shouldUseLivePlaybackSpeedControl: a live, moving window whose
+            // wall-clock start is known.
+            bool LiveControlled() const {
+                return m_Adaptive && m_LiveWindow.liveConfiguration && m_LiveWindow.dynamic && m_LiveWindow.windowStartTimeMs != media::stream::kTimeUnset;
+            }
+            // getLiveOffsetUs: wall-clock now (the server's) less the time at periodUs.
+            std::int64_t LiveOffsetUs(std::int64_t periodUs) const {
+                const std::int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                return (nowMs + m_LiveWindow.serverClockOffsetMs - m_LiveWindow.windowStartTimeMs) * 1000 - (periodUs - m_LiveWindow.startUs);
+            }
+            // The speed playback runs at: the player's, else (at 1) the live speed control's.
+            float Speed() const { return m_Params.speed == 1.f ? m_LiveSpeed : m_Params.speed; }
+            // ExoPlayerImplInternal.doSomeWork: while playing a live stream at the player's unit
+            // speed, the speed control's speed; else 1.
+            void UpdateLiveSpeed() {
+                std::optional<float> wanted;
+                if (!LiveControlled() || m_Params.speed != 1.f) {
+                    wanted = 1.f;
+                } else if (m_PlayingWanted && m_State.state == media::PlaybackState::Ready) {
+                    const std::int64_t now = ClockUs();
+                    const std::int64_t buffered = StreamsBufferedUs();
+                    const std::int64_t bufferedDurationUs = buffered == media::stream::kTimeUnset ? 0 : std::max<std::int64_t>(buffered - now, 0);
+                    wanted = m_LiveSpeedControl.GetAdjustedPlaybackSpeed(LiveOffsetUs(now), bufferedDurationUs);
+                }
+                if (!wanted || *wanted == (m_SpeedAfterDrain ? *m_SpeedAfterDrain : m_LiveSpeed)) return;
+                if (m_Params.speed != 1.f) {   // not in use: no audio to change
+                    m_LiveSpeed = *wanted;
+                    m_SpeedAfterDrain.reset();
+                    return;
+                }
+                // DefaultAudioSink.setAudioProcessorPlaybackParameters: written audio is drained
+                // first so the frame where the new speed starts is known.
+                if (m_Audio && m_Stream && m_AudioBaseFrame >= 0) {
+                    m_SpeedAfterDrain = *wanted;
+                    return;
+                }
+                SetSpeedNow(*wanted);
+            }
+            void SetSpeedNow(float speed) {
+                // The standalone clock goes on from where it is at the new speed.
+                m_ClockBaseUs = ClockUs();
+                m_ClockRealUs = NowUs();
+                m_LiveSpeed = speed;
+                m_SpeedAfterDrain.reset();
+                m_SpeedDrained = false;
+                if (m_Audio) ConfigureSonic();
+            }
+            // Between decoded buffers, once Sonic has given out what it held: the new speed, with
+            // a checkpoint where its audio starts (applyAudioProcessorPlaybackParametersAndSkipSilence).
+            bool ApplySpeedAfterDrain() {
+                if (Stretching() && !m_SpeedDrained) {
+                    m_SpeedDrained = true;
+                    m_Sonic.QueueEndOfStream();
+                    m_PendingPcm.clear();
+                    m_PendingPcmOffset = 0;
+                    m_Sonic.GetOutput(m_PendingPcm);
+                    if (m_Volume < 1) for (auto& v : m_PendingPcm) v = std::int16_t(float(v) * m_Volume);
+                    if (!m_PendingPcm.empty()) return false;   // written first
+                }
+                const float speed = *m_SpeedAfterDrain;
+                if (m_Stream && m_AudioBaseFrame >= 0) m_AudioCheckpoints.push_back({ speed, m_PcmEndUs, AAudioStream_getFramesWritten(m_Stream) });
+                SetSpeedNow(speed);
+                return true;
+            }
+            void SeekToDefaultPosition() {
+                std::int64_t us = 0;
+                if (m_Adaptive) {
+                    const media::stream::StreamWindow w = m_Adaptive->Window();
+                    m_WindowStartUs = w.startUs;
+                    ApplyLiveWindow(w);
+                    us = w.startUs + w.defaultPositionUs;
+                }
+                Seek(us);
+                if (LiveControlled()) m_LiveSpeedControl.SetTargetLiveOffsetOverrideUs(media::stream::kTimeUnset);
+            }
+            void SeekWithLiveOverride(std::int64_t us) {
+                Seek(us);
+                if (LiveControlled()) m_LiveSpeedControl.SetTargetLiveOffsetOverrideUs(LiveOffsetUs(us));
             }
 
             // --- tracks ---------------------------------------------------------------------------
@@ -1360,8 +1502,18 @@ namespace kiln::android {
                     return otherwise();
                 };
                 const int video = pick(media::TrackType::Video, [&] {
-                    for (std::size_t i = 0; i < m_Formats.size(); ++i) if (m_Types[i] == media::TrackType::Video) return int(i);
-                    return -1;
+                    // DefaultTrackSelector.selectVideoTrack: each of the file's video tracks is a group.
+                    std::vector<std::vector<media::Format>> groups;
+                    std::vector<std::vector<int>> support;
+                    std::vector<int> indices;
+                    for (std::size_t i = 0; i < m_Formats.size(); ++i)
+                        if (m_Types[i] == media::TrackType::Video) {
+                            groups.push_back({ m_Formats[i] });
+                            support.push_back({ DecoderSupport(m_Formats[i]) });
+                            indices.push_back(int(i));
+                        }
+                    const media::VideoSelection v = media::SelectVideoTracks(groups, support, m_TrackSelection, std::nullopt, DisplayModeSize());
+                    return v.group >= 0 ? indices[std::size_t(v.group)] : -1;
                 });
                 const int audio = pick(media::TrackType::Audio, [&] {
                     std::vector<media::Format> formats;
@@ -1416,7 +1568,7 @@ namespace kiln::android {
             // --- position and seeking -----------------------------------------------------------
             // SonicAudioProcessor for speed and pitch (it passes audio through at the defaults).
             void ConfigureSonic() {
-                m_Sonic.Configure(std::max(m_SampleRate, 1), std::max(m_Channels, 1), m_Params.speed, m_Params.pitch);
+                m_Sonic.Configure(std::max(m_SampleRate, 1), std::max(m_Channels, 1), Speed(), m_Params.pitch);
                 m_SonicEnded = false;
                 m_SonicFirst = true;
             }
@@ -1426,6 +1578,8 @@ namespace kiln::android {
             void ApplyParameters(const media::PlaybackParameters& p) {
                 const std::int64_t now = m_Prepared ? ClockUs() : 0;
                 m_Params = p;
+                m_LiveSpeed = 1.f;
+                m_SpeedAfterDrain.reset();
                 if (m_Audio) ConfigureSonic();
                 if (m_Prepared) {
                     Seek(std::max<std::int64_t>(now, 0));
@@ -1435,6 +1589,13 @@ namespace kiln::android {
             }
 
             void StartFrom(std::int64_t us) {
+                // A speed waiting for the audio to drain applies at once: nothing is queued.
+                if (m_SpeedAfterDrain) {
+                    m_LiveSpeed = *std::exchange(m_SpeedAfterDrain, std::nullopt);
+                    if (m_Audio) ConfigureSonic();
+                }
+                m_SpeedDrained = false;
+                m_AudioCheckpoints.clear();
                 m_AllowDiscontinuity = true;
                 m_Rebase = false;
                 m_Sonic.Flush();
@@ -1497,21 +1658,33 @@ namespace kiln::android {
             // The media time: the audio's while it plays, else the standalone clock.
             std::int64_t ClockUs() {
                 if (m_Playing && m_Stream && m_StreamStarted && m_AudioBaseFrame >= 0) {
-                    std::int64_t frame = 0, time = 0, playoutUs = -1;
+                    std::int64_t frame = 0, time = 0, played = 0;   // played: the output's frame now
                     // Only a timestamp taken since the stream (re)started: after a pause or flush
                     // AAudio still reports the last one, from before.
                     if (AAudioStream_getTimestamp(m_Stream, CLOCK_MONOTONIC, &frame, &time) == AAUDIO_OK && frame > m_AudioBaseFrame
                         && time >= m_StreamStartNs) {
-                        playoutUs = (frame - m_AudioBaseFrame) * 1'000'000 / m_SampleRate + (NowNs() - time) / 1000;
+                        played = frame + (NowNs() - time) * m_SampleRate / 1'000'000'000;
                     } else {
                         // AudioTrackPositionTracker without a timestamp yet: the playback head (the
                         // frames read), and until it moves, the position where the audio starts,
                         // not real time (which runs ahead of the output's latency, then jumps back).
-                        const std::int64_t read = AAudioStream_getFramesRead(m_Stream);
-                        playoutUs = read > m_AudioBaseFrame ? (read - m_AudioBaseFrame) * 1'000'000 / m_SampleRate : 0;
+                        played = std::max<std::int64_t>(AAudioStream_getFramesRead(m_Stream), m_AudioBaseFrame);
                     }
-                    // Time-stretched audio: the media time it played (getMediaDuration).
-                    std::int64_t us = m_AudioBasePtsUs + (Stretching() ? m_Sonic.MediaDuration(playoutUs) : playoutUs);
+                    // DefaultAudioSink.applyMediaPositionParameters: audio at a new speed plays
+                    // from its checkpoint on; until then, the old speed's.
+                    while (!m_AudioCheckpoints.empty() && played >= m_AudioCheckpoints.front().frame) {
+                        const AudioCheckpoint& c = m_AudioCheckpoints.front();
+                        m_AudioBaseFrame = c.frame;
+                        m_AudioBasePtsUs = c.mediaUs;
+                        m_AudioBaseSpeed = c.speed;
+                        m_AudioCheckpoints.pop_front();
+                    }
+                    const std::int64_t playoutUs = (played - m_AudioBaseFrame) * 1'000'000 / m_SampleRate;
+                    // Time-stretched audio: the media time it played (getMediaDuration); audio
+                    // processed before a speed change: scaled by its speed.
+                    std::int64_t us = m_AudioBasePtsUs + (!m_AudioCheckpoints.empty() ? std::int64_t(double(playoutUs) * m_AudioBaseSpeed)
+                                                          : Stretching()                ? m_Sonic.MediaDuration(playoutUs)
+                                                                                        : playoutUs);
                     // MediaCodecAudioRenderer.updateCurrentPosition: never backwards, except
                     // after a discontinuity (a seek or a new start).
                     if (!m_AllowDiscontinuity) us = std::max(us, m_AudioPositionUs);
@@ -1524,7 +1697,7 @@ namespace kiln::android {
                 }
                 // StandaloneMediaClock: real time at the playback speed.
                 return m_Playing && m_State.state == media::PlaybackState::Ready
-                           ? m_ClockBaseUs + std::int64_t(double(NowUs() - m_ClockRealUs) * m_Params.speed)
+                           ? m_ClockBaseUs + std::int64_t(double(NowUs() - m_ClockRealUs) * Speed())
                            : m_ClockBaseUs;
             }
 
@@ -1576,6 +1749,7 @@ namespace kiln::android {
                     m_AudioBaseFrame = -1;
                     m_Rebase = true;
                 }
+                m_AudioCheckpoints.clear();
                 AAudioStreamBuilder* b = nullptr;
                 if (AAudio_createStreamBuilder(&b) != AAUDIO_OK) return;
                 AAudioStreamBuilder_setFormat(b, AAUDIO_FORMAT_PCM_I16);
@@ -1612,6 +1786,7 @@ namespace kiln::android {
             void DrainAudio() {
                 Track& t = *m_Audio;
                 while (m_PendingPcmOffset >= m_PendingPcm.size() && !t.outputDone) {
+                    if (m_SpeedAfterDrain && !ApplySpeedAfterDrain()) break;
                     AMediaCodecBufferInfo info{};
                     ssize_t idx = AMediaCodec_dequeueOutputBuffer(t.codec, &info, 0);
                     if (idx == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
@@ -1633,6 +1808,7 @@ namespace kiln::android {
                     if (data && info.size > 0 && endUs > t.seekTargetUs) {
                         const auto* pcm = reinterpret_cast<const std::int16_t*>(data + info.offset);
                         m_PendingPcmOffset = 0;
+                        m_PcmEndUs = endUs;
                         if (Stretching()) {
                             // Through Sonic; its output comes in pitch periods, not buffer by buffer.
                             if (m_SonicFirst) {
@@ -1678,6 +1854,7 @@ namespace kiln::android {
                     }
                     if (m_AudioBaseFrame < 0) {
                         m_AudioBaseFrame = AAudioStream_getFramesWritten(m_Stream);
+                        m_AudioBaseSpeed = Speed();
                         if (std::exchange(m_Rebase, false)) {
                             // Unstretched: the next sample's time; stretched: where playback got to,
                             // with Sonic's time mapping counted from here.
@@ -1742,7 +1919,7 @@ namespace kiln::android {
                     }
                     media::FrameTiming timing;
                     // calculateEarlyTimeUs: media time ahead, in real time at the playback speed.
-                    timing.earlyUs = std::int64_t(double(m_PendingVideoPts - ClockUs()) / m_Params.speed);
+                    timing.earlyUs = std::int64_t(double(m_PendingVideoPts - ClockUs()) / Speed());
                     timing.started = m_Playing;
                     timing.firstFrameRendered = m_FirstFrameRendered;
                     timing.lastFrame = m_PendingVideoEos;
@@ -1811,8 +1988,9 @@ namespace kiln::android {
                         return Fail(error, error.starts_with("HTTP ") ? media::PlaybackException::IoBadHttpStatus : media::PlaybackException::IoNetworkConnectionFailed);
                     const std::int64_t now = ClockUs();
                     for (const auto& s : { m_VideoStream, m_AudioStream, m_TextStream })
-                        if (s) s->SetPlaybackPosition(now, m_Params.speed);
+                        if (s) s->SetPlaybackPosition(now, Speed());
                     RefreshWindow();
+                    UpdateLiveSpeed();
                     ProcessText();
                 }
                 if (m_Video) FeedInput(*m_Video);
@@ -1833,6 +2011,7 @@ namespace kiln::android {
                     if ((buffered != media::stream::kTimeUnset && buffered <= ClockUs()) || StreamsStarving()) {
                         m_State.state = media::PlaybackState::Buffering;
                         m_Rebuffering = true;
+                        m_LiveSpeedControl.NotifyRebuffer();
                         SetPlaying(m_PlayingWanted);
                     }
                 }
@@ -1861,6 +2040,13 @@ namespace kiln::android {
                 s.isPlaying = m_Playing;
                 if (m_Prepared && m_Adaptive) {
                     s.positionInFirstPeriodMs = m_WindowStartUs / 1000;
+                    s.isCurrentMediaItemLive = m_LiveWindow.liveConfiguration.has_value();
+                    s.isCurrentMediaItemDynamic = m_LiveWindow.dynamic;
+                    s.currentLiveConfiguration = m_LiveWindow.liveConfiguration;
+                    if (s.currentLiveConfiguration && LiveControlled() && m_LiveSpeedControl.GetTargetLiveOffsetUs() != media::stream::kTimeUnset)
+                        s.currentLiveConfiguration->targetOffsetMs = m_LiveSpeedControl.GetTargetLiveOffsetUs() / 1000;
+                    s.windowStartTimeMs = m_LiveWindow.windowStartTimeMs;
+                    s.windowClockOffsetMs = m_LiveWindow.serverClockOffsetMs;
                     std::int64_t us = ClockUs();
                     if (m_DurationUs > 0) us = std::min(us, m_DurationUs);
                     s.positionMs = std::max<std::int64_t>(us - m_WindowStartUs, 0) / 1000;
@@ -1948,7 +2134,21 @@ namespace kiln::android {
             // timeline (the clock runs on that timeline; the player sees positions in the window).
             std::shared_ptr<media::stream::AdaptiveSource> m_Adaptive;
             std::shared_ptr<media::stream::SegmentStream> m_VideoStream, m_AudioStream;
-            std::int64_t m_WindowStartUs = 0, m_WindowCheckedUs = 0, m_TargetLiveOffsetUs = -1;
+            std::int64_t m_WindowStartUs = 0, m_WindowCheckedUs = 0;
+            // A live stream: the item's configuration, the window last seen, and the speed that
+            // keeps playback at its target offset (applied to the audio once it drains, then from
+            // its checkpoint's frame on).
+            static constexpr std::int64_t kDefaultPositionUs = INT64_MIN;
+            media::MediaItem::LiveConfiguration m_LiveItemConfiguration;
+            media::stream::StreamWindow m_LiveWindow;
+            media::LivePlaybackSpeedControl m_LiveSpeedControl;
+            float m_LiveSpeed = 1.f;
+            std::optional<float> m_SpeedAfterDrain;
+            bool m_SpeedDrained = false;
+            struct AudioCheckpoint { float speed; std::int64_t mediaUs, frame; };
+            std::deque<AudioCheckpoint> m_AudioCheckpoints;
+            float m_AudioBaseSpeed = 1.f;
+            std::int64_t m_PcmEndUs = 0;   // the end of the decoded audio given to Sonic or the output
             bool m_Rebuffering = false;
             StreamSelection m_StreamSelection;
             int m_VideoGroup = -1;

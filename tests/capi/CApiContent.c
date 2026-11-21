@@ -273,13 +273,19 @@ void capi_playlist(void* user) {
         items[1].uri = "asset:///b.mp4";
         items[1].media_id = "b";
         items[1].clip_start_ms = 1000;
+        items[1].live_target_offset_ms = 5000;
+        items[1].live_max_playback_speed = 1.05f;
         kiln_player_set_media_items(player, items, 2, true);
+        kiln_player_set_max_video_size(player, 1280, 720);
+        kiln_player_set_max_video_bitrate(player, -1);
+        kiln_player_set_viewport_size(player, -1, -1, true);
         kiln_player_set_repeat_mode(player, KILN_REPEAT_ALL);
         kiln_player_set_playback_parameters(player, 1.5f, 1.0f);
         const char* langs[] = { "de" };
         kiln_player_set_preferred_text_languages(player, langs, 1);
         kiln_player_seek_to_next(player);
         kiln_player_seek_to_next(player);   /* wraps to the first */
+        kiln_player_seek_to_default_position(player);
     }
     kiln_player_get_state(player, &capi_playlist_state);
     capi_playlist_tracks = kiln_player_track_count(player);

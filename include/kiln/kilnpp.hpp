@@ -475,6 +475,7 @@ namespace kpp {
         void play() { kiln_player_play(m_P); }
         void pause() { kiln_player_pause(m_P); }
         void seekTo(int64_t ms) { kiln_player_seek_to(m_P, ms); }
+        void seekToDefaultPosition() { kiln_player_seek_to_default_position(m_P); }
         void setRepeat(bool repeat) { kiln_player_set_repeat(m_P, repeat); }
         void setVolume(float volume) { kiln_player_set_volume(m_P, volume); }
         // usage / contentType: AudioAttributes.USAGE_* / CONTENT_TYPE_* (1 media, 2 music).
@@ -527,6 +528,11 @@ namespace kpp {
         }
         void setTrackTypeDisabled(int32_t type, bool disabled) { kiln_player_set_track_type_disabled(m_P, type, disabled); }
         void selectTrack(int32_t type, const char* groupId, int32_t track) { kiln_player_select_track(m_P, type, groupId, track); }
+        // Video constraints; see kiln_player_set_max_video_size.
+        void setMaxVideoSize(int32_t maxWidth, int32_t maxHeight) { kiln_player_set_max_video_size(m_P, maxWidth, maxHeight); }
+        void setMaxVideoSizeSd() { setMaxVideoSize(1279, 719); }
+        void setMaxVideoBitrate(int32_t maxBitrate) { kiln_player_set_max_video_bitrate(m_P, maxBitrate); }
+        void setViewportSize(int32_t width, int32_t height, bool orientationMayChange) { kiln_player_set_viewport_size(m_P, width, height, orientationMayChange); }
         kiln_player* get() const { return m_P; }
 
     private:

@@ -1108,6 +1108,10 @@ typedef struct kiln_player_state {
     const char* title;                  /* the current item's (its metadata over the stream's) */
     float pixel_width_height_ratio;     /* of the video as shown (video_width x video_height) */
     const char* cues;                   /* the subtitles showing now, one line per cue; "" none */
+    /* A live HLS or DASH stream, whether its window moves, and how far behind the live edge
+     * playback is (-1: not known). */
+    bool is_live, is_dynamic;
+    int64_t live_offset_ms;
 } kiln_player_state;
 typedef enum kiln_repeat_mode { KILN_REPEAT_OFF, KILN_REPEAT_ONE, KILN_REPEAT_ALL } kiln_repeat_mode;
 
@@ -1132,6 +1136,10 @@ typedef struct kiln_media_item {
     int64_t clip_end_ms;                /* -1: to the end */
     const kiln_subtitle* subtitles;
     size_t subtitle_count;
+    /* A live stream's offset from the live edge to keep, its bounds, and the speeds that may keep
+     * it (MediaItem.LiveConfiguration); -1 / 0: from the media. */
+    int64_t live_target_offset_ms, live_min_offset_ms, live_max_offset_ms;
+    float live_min_playback_speed, live_max_playback_speed;
 } kiln_media_item;
 KILN_API void kiln_media_item_init(kiln_media_item* item);
 KILN_API kiln_player* kiln_remember_player(kiln_key key);
@@ -1139,6 +1147,8 @@ KILN_API void kiln_player_set_media_uri(kiln_player* player, const char* uri);
 KILN_API void kiln_player_play(kiln_player* player);
 KILN_API void kiln_player_pause(kiln_player* player);
 KILN_API void kiln_player_seek_to(kiln_player* player, int64_t position_ms);
+/* The item's default position: a live stream's live edge less its target offset. */
+KILN_API void kiln_player_seek_to_default_position(kiln_player* player);
 KILN_API void kiln_player_set_repeat(kiln_player* player, bool repeat);
 KILN_API void kiln_player_set_volume(kiln_player* player, float volume);
 KILN_API void kiln_player_get_state(kiln_player* player, kiln_player_state* out);
@@ -1182,6 +1192,11 @@ KILN_API void kiln_player_set_preferred_audio_languages(kiln_player* player, con
 KILN_API void kiln_player_set_preferred_text_languages(kiln_player* player, const char* const* languages, size_t count);
 KILN_API void kiln_player_set_track_type_disabled(kiln_player* player, int32_t type, bool disabled);
 KILN_API void kiln_player_select_track(kiln_player* player, int32_t type, const char* group_id, int32_t track);
+/* The largest video to choose (-1: no limit; setMaxVideoSize), its highest bitrate (-1: no
+ * limit), and the viewport it shows in (-1 x -1: the display's size). */
+KILN_API void kiln_player_set_max_video_size(kiln_player* player, int32_t max_width, int32_t max_height);
+KILN_API void kiln_player_set_max_video_bitrate(kiln_player* player, int32_t max_bitrate);
+KILN_API void kiln_player_set_viewport_size(kiln_player* player, int32_t width, int32_t height, bool orientation_may_change);
 /* Audio focus (usage and content type: AudioAttributes.USAGE_* / CONTENT_TYPE_*; only media 1
  * and game 14 can be handled) and pausing when headphones are unplugged. */
 KILN_API void kiln_player_set_audio_attributes(kiln_player* player, int32_t usage, int32_t content_type, bool handle_audio_focus);

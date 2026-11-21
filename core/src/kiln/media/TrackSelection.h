@@ -9,6 +9,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace kiln::media {
@@ -88,6 +89,22 @@ namespace kiln::media {
     };
 
     struct TrackSelectionParameters {
+        // Video: the largest and smallest size, frame rate and bitrate wanted, the viewport it
+        // shows in (tracks far larger than it would show are left out; by default the physical
+        // display's size), and the languages, labels, roles and formats to prefer.
+        int maxVideoWidth = 0x7fffffff, maxVideoHeight = 0x7fffffff, maxVideoFrameRate = 0x7fffffff, maxVideoBitrate = 0x7fffffff;
+        int minVideoWidth = 0, minVideoHeight = 0, minVideoFrameRate = 0, minVideoBitrate = 0;
+        int viewportWidth = 0x7fffffff, viewportHeight = 0x7fffffff;
+        bool viewportOrientationMayChange = true;
+        bool isViewportSizeLimitedByPhysicalDisplaySize = true;
+        std::vector<std::string> preferredVideoMimeTypes, preferredVideoLanguages, preferredVideoLabels;
+        int preferredVideoRoleFlags = 0;
+        bool forceHighestSupportedBitrate = false;
+        // DefaultTrackSelector.Parameters: the closest track when none meets the constraints, or a
+        // track the decoders can't fully handle when none can.
+        bool exceedVideoConstraintsIfNecessary = true;
+        bool exceedRendererCapabilitiesIfNecessary = true;
+        bool allowVideoMixedMimeTypeAdaptiveness = false;   // adapt between video formats of different types
         // Audio: the languages (in order of preference), roles, labels and formats to prefer;
         // without a match, the system's languages.
         std::vector<std::string> preferredAudioLanguages;
@@ -116,8 +133,37 @@ namespace kiln::media {
         TrackSelectionParameters& SetOverrideForType(TrackSelectionOverride o);
         TrackSelectionParameters& ClearOverridesOfType(TrackType type);
         TrackSelectionParameters& SetTrackTypeDisabled(TrackType type, bool disabled);
+        // setMaxVideoSizeSd (1279 x 719), setMaxVideoSize, clearVideoSizeConstraints,
+        // setMinVideoSize, setViewportSize (turning off the physical display's), clearViewportSizeConstraints,
+        // setViewportSizeToPhysicalDisplaySize.
+        TrackSelectionParameters& SetMaxVideoSizeSd() { return SetMaxVideoSize(1279, 719); }
+        TrackSelectionParameters& SetMaxVideoSize(int width, int height);
+        TrackSelectionParameters& ClearVideoSizeConstraints() { return SetMaxVideoSize(0x7fffffff, 0x7fffffff); }
+        TrackSelectionParameters& SetMinVideoSize(int width, int height);
+        TrackSelectionParameters& SetViewportSize(int width, int height, bool orientationMayChange);
+        TrackSelectionParameters& ClearViewportSizeConstraints() { return SetViewportSize(0x7fffffff, 0x7fffffff, true); }
+        TrackSelectionParameters& SetViewportSizeToPhysicalDisplaySize(bool orientationMayChange);
         bool operator==(const TrackSelectionParameters&) const = default;
     };
+
+    // TrackSelectionUtil.getMaxVideoSizeInViewport: the largest size a video of this shape shows at
+    // in the viewport (turned with it when the orientation may change).
+    std::pair<int, int> MaxVideoSizeInViewport(bool orientationMayChange, int viewportWidth, int viewportHeight, int videoWidth, int videoHeight);
+
+    // DefaultTrackSelector.selectVideoTrack over VideoTrackInfo: of the video groups, the best
+    // selection (adaptive tracks of one group, or a fixed track), by the parameters' constraints and
+    // preferences, then quality. support[g][i]: 2 a decoder handles the track, 1 it takes the type
+    // but not these properties, 0 none; kDecoderHardwareAccelerated added when that decoder is
+    // (missing: 2). displaySize: the physical display's mode, when known.
+    inline constexpr int kDecoderHardwareAccelerated = 8;
+    struct VideoSelection {
+        int group = -1;
+        std::vector<int> tracks;
+        bool operator==(const VideoSelection&) const = default;
+    };
+    VideoSelection SelectVideoTracks(const std::vector<std::vector<Format>>& groups, const std::vector<std::vector<int>>& support,
+                                     const TrackSelectionParameters& parameters, const std::optional<std::string>& selectedAudioLanguage,
+                                     std::optional<std::pair<int, int>> displaySize);
 
     // Util.normalizeLanguageCode: lower case with '-', ISO 639-2 codes as ISO 639-1 ("eng" is
     // "en"), macrolanguages explicit ("nb" is "no-nob"), legacy tags replaced.

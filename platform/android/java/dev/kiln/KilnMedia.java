@@ -530,8 +530,9 @@ final class KilnMedia {
     // --- decoder support (MediaCodecUtil / MediaCodecInfo.isFormatSupported) -----------------
     private static MediaCodecInfo[] sDecoders;
 
-    // 2: a decoder plays the format (C.FORMAT_HANDLED); 1: a decoder takes the type but not these
-    // properties (FORMAT_EXCEEDS_CAPABILITIES); 0: none takes the type. -1 for unknown values.
+    // 2: a decoder plays the format (C.FORMAT_HANDLED), plus 8 when it is hardware accelerated;
+    // 1: a decoder takes the type but not these properties (FORMAT_EXCEEDS_CAPABILITIES); 0: none
+    // takes the type. -1 for unknown values.
     static synchronized int decoderSupport(String mime, String codecs, int width, int height, float frameRate, int channels, int sampleRate) {
         if (sDecoders == null) sDecoders = new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos();
         int best = 0;
@@ -547,9 +548,18 @@ final class KilnMedia {
             } catch (IllegalArgumentException e) {
                 continue;
             }
-            if (formatSupported(caps, mime, codecs, width, height, frameRate, channels, sampleRate)) return 2;
+            if (formatSupported(caps, mime, codecs, width, height, frameRate, channels, sampleRate)) return 2 | (info.isHardwareAccelerated() ? 8 : 0);
         }
         return best;
+    }
+
+    // Util.getCurrentDisplayModeSize: the default display's mode in physical pixels.
+    static int[] displayModeSize() {
+        android.hardware.display.DisplayManager manager = sContext.getSystemService(android.hardware.display.DisplayManager.class);
+        android.view.Display display = manager != null ? manager.getDisplay(android.view.Display.DEFAULT_DISPLAY) : null;
+        if (display == null) return new int[] { 0, 0 };
+        android.view.Display.Mode mode = display.getMode();
+        return new int[] { mode.getPhysicalWidth(), mode.getPhysicalHeight() };
     }
 
     private static boolean formatSupported(MediaCodecInfo.CodecCapabilities caps, String mime, String codecs, int width, int height, float frameRate,

@@ -10,6 +10,7 @@
 #include <chrono>
 #include <climits>
 #include <map>
+#include <set>
 #include <thread>
 
 using namespace kiln;
@@ -564,4 +565,140 @@ TEST(PlayerWakeLocksDeviceVolumeAndStuckDetection) {
     d.RunPending();
     SetPlayerEngineFactory({});
     d.SetVirtualTime(wasVirtual);
+}
+
+// Ported from media3 DefaultTrackSelectorTest's video cases (VideoTrackInfo).
+namespace {
+    Format VideoFormat(int bitrate = 450'000) {
+        Format f;
+        f.sampleMimeType = "video/avc";
+        f.width = 1024;
+        f.height = 768;
+        f.SetBitrates(bitrate, -1);
+        return f;
+    }
+    VideoSelection SelectVideo(const std::vector<std::vector<Format>>& groups, const TrackSelectionParameters& p = {},
+                               std::optional<std::string> audio = std::nullopt, std::vector<std::vector<int>> support = {}) {
+        return SelectVideoTracks(groups, support, p, audio, std::nullopt);
+    }
+    bool Is(const VideoSelection& s, int group, std::set<int> tracks) {
+        return s.group == group && std::set<int>(s.tracks.begin(), s.tracks.end()) == tracks && s.tracks.size() == tracks.size();
+    }
+}
+
+TEST(VideoTrackSelection_multipleTracks_adaptive) {
+    CHECK(Is(SelectVideo({ { VideoFormat(), VideoFormat() } }), 0, { 0, 1 }));
+    // Without bitrates: a fixed selection of the first.
+    CHECK(Is(SelectVideo({ { VideoFormat(-1), VideoFormat(-1) } }), 0, { 0 }));
+}
+
+TEST(VideoTrackSelection_mixedMimeTypes) {
+    Format h264 = VideoFormat(), h265 = VideoFormat();
+    h265.sampleMimeType = "video/hevc";
+    CHECK(Is(SelectVideo({ { h264, h265 } }), 0, { 0 }));
+    CHECK(Is(SelectVideo({ { h265, h264 } }), 0, { 0 }));
+    TrackSelectionParameters p;
+    p.allowVideoMixedMimeTypeAdaptiveness = true;
+    CHECK(Is(SelectVideo({ { h265, h264 } }, p), 0, { 0, 1 }));
+}
+
+TEST(VideoTrackSelection_interactsWithSelectedAudioLanguage) {
+    Format main = VideoFormat();
+    main.roleFlags = kRoleFlagMain;
+    Format mainEnglish = main, mainGerman = main, mainNone = main, alternateGerman = VideoFormat();
+    mainEnglish.language = "en";
+    mainGerman.language = "de";
+    alternateGerman.language = "de";
+    alternateGerman.roleFlags = kRoleFlagAlternate;
+    CHECK(Is(SelectVideo({ { mainNone } }), 0, { 0 }));
+    CHECK(Is(SelectVideo({ { mainGerman }, { mainEnglish } }, {}, "deu"), 0, { 0 }));
+    CHECK(Is(SelectVideo({ { alternateGerman }, { mainEnglish } }, {}, "deu"), 1, { 0 }));
+}
+
+TEST(VideoTrackSelection_forceBitrates) {
+    // forceLowestBitrate: the lowest within the capabilities; forceHighestSupportedBitrate: the
+    // highest within them (as the audio cases upstream).
+    TrackSelectionParameters p;
+    p.forceLowestBitrate = true;
+    CHECK(Is(SelectVideo({ { VideoFormat(5000), VideoFormat(15000), VideoFormat(30000) } }, p, std::nullopt, { { 1, 2, 2 } }), 0, { 1 }));
+    TrackSelectionParameters q;
+    q.forceHighestSupportedBitrate = true;
+    CHECK(Is(SelectVideo({ { VideoFormat(5000), VideoFormat(15000), VideoFormat(30000) } }, q, std::nullopt, { { 2, 2, 1 } }), 0, { 1 }));
+}
+
+TEST(VideoTrackSelection_preferredMimeTypes) {
+    Format av1, vp9, low, high;
+    av1.sampleMimeType = "video/av01";
+    vp9.sampleMimeType = "video/x-vnd.on2.vp9";
+    low.sampleMimeType = high.sampleMimeType = "video/avc";
+    low.SetBitrates(400, -1);
+    high.SetBitrates(800, -1);
+    const std::vector<std::vector<Format>> groups = { { av1 }, { vp9 }, { low, high } };
+    TrackSelectionParameters p;
+    p.preferredVideoMimeTypes = { "video/x-vnd.on2.vp9" };
+    CHECK(Is(SelectVideo(groups, p), 1, { 0 }));
+    p.preferredVideoMimeTypes = { "video/x-vnd.on2.vp9", "video/av01" };
+    CHECK(Is(SelectVideo(groups, p), 1, { 0 }));
+    p.preferredVideoMimeTypes = { "video/divx", "video/avc" };
+    CHECK(Is(SelectVideo(groups, p), 2, { 0, 1 }));
+    // No preference: the most tracks.
+    CHECK(Is(SelectVideo(groups), 2, { 0, 1 }));
+}
+
+TEST(VideoTrackSelection_preferredLabelsAndRoles) {
+    Format unlabeled = VideoFormat(), labeled = VideoFormat();
+    labeled.labels = { { "", "commentary" } };
+    TrackSelectionParameters p;
+    p.preferredVideoLabels = { "commentary" };
+    CHECK(Is(SelectVideo({ { unlabeled }, { labeled } }, p), 1, { 0 }));
+    Format lowPriority = VideoFormat(), highPriority = VideoFormat();
+    lowPriority.labels = { { "", "low_priority" } };
+    highPriority.labels = { { "", "high_priority" } };
+    p.preferredVideoLabels = { "high_priority", "low_priority" };
+    CHECK(Is(SelectVideo({ { lowPriority }, { highPriority } }, p), 1, { 0 }));
+    // Role flags come before labels.
+    Format labeledWrongRole = VideoFormat(), unlabeledRightRole = VideoFormat();
+    labeledWrongRole.roleFlags = kRoleFlagDub;
+    labeledWrongRole.labels = { { "", "commentary" } };
+    unlabeledRightRole.roleFlags = kRoleFlagCommentary;
+    p.preferredVideoLabels = { "commentary" };
+    p.preferredVideoRoleFlags = kRoleFlagCommentary;
+    CHECK(Is(SelectVideo({ { labeledWrongRole }, { unlabeledRightRole } }, p), 1, { 0 }));
+    // More matching roles win, over an adaptive group without roles.
+    Format noRolesLow = VideoFormat(4000), noRolesHigh = VideoFormat(8000), lessRoles = VideoFormat(8000), moreRoles = VideoFormat(8000);
+    lessRoles.roleFlags = kRoleFlagCaption;
+    moreRoles.roleFlags = kRoleFlagCaption | kRoleFlagCommentary | kRoleFlagDub;
+    TrackSelectionParameters r;
+    r.preferredVideoRoleFlags = kRoleFlagCaption | kRoleFlagCommentary;
+    CHECK(Is(SelectVideo({ { noRolesLow, noRolesHigh }, { moreRoles }, { lessRoles } }, r), 1, { 0 }));
+}
+
+TEST(VideoTrackSelection_viewport) {
+    Format low, mid, high;
+    low.sampleMimeType = mid.sampleMimeType = high.sampleMimeType = "video/avc";
+    low.SetBitrates(400, -1);
+    low.width = 600;
+    low.height = 400;
+    mid.SetBitrates(800, -1);
+    mid.width = 1200;
+    mid.height = 800;
+    high.SetBitrates(2000, -1);
+    high.width = 2400;
+    high.height = 1600;
+    const std::vector<std::vector<Format>> groups = { { low, mid, high } };
+    CHECK(Is(SelectVideo(groups, TrackSelectionParameters{}.SetViewportSize(450, 650, true)), 0, { 0, 1 }));
+    CHECK(Is(SelectVideo(groups, TrackSelectionParameters{}.SetViewportSize(450, 650, false)), 0, { 0 }));
+    CHECK(Is(SelectVideo(groups, TrackSelectionParameters{}.SetViewportSize(1201, 801, true)), 0, { 0, 1 }));
+    // The physical display's size (450 x 650).
+    TrackSelectionParameters display = TrackSelectionParameters{}.SetViewportSizeToPhysicalDisplaySize(true);
+    CHECK(Is(SelectVideoTracks(groups, {}, display, std::nullopt, std::pair{ 450, 650 }), 0, { 0, 1 }));
+    display.SetViewportSizeToPhysicalDisplaySize(false);
+    CHECK(Is(SelectVideoTracks(groups, {}, display, std::nullopt, std::pair{ 450, 650 }), 0, { 0 }));
+    // kiln: max size constraints leave the larger ones out (setMaxVideoSizeSd).
+    CHECK(Is(SelectVideo(groups, TrackSelectionParameters{}.SetMaxVideoSizeSd()), 0, { 0 }));
+    // ... unless nothing is within them: the closest, fixed.
+    CHECK(Is(SelectVideo({ { mid, high } }, TrackSelectionParameters{}.SetMaxVideoSizeSd()), 0, { 0 }));
+    TrackSelectionParameters strict = TrackSelectionParameters{}.SetMaxVideoSizeSd();
+    strict.exceedVideoConstraintsIfNecessary = false;
+    CHECK(SelectVideo({ { mid, high } }, strict).group == -1);
 }

@@ -25,7 +25,7 @@ namespace kiln::media::dash {
     using stream::StreamKey;
 
     // C.RATE_UNSET.
-    inline constexpr float kRateUnset = -std::numeric_limits<float>::max();
+    using media::kRateUnset;
 
     // RangedUri: a byte range of a URI, possibly relative to a base URL.
     struct RangedUri {
