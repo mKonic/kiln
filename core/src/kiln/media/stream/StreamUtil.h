@@ -5,6 +5,7 @@
 // xs:dateTime, DrmInitData and its PSSH boxes, and Base64 as android.util.Base64 decodes.
 
 #include "kiln/media/TrackSelection.h"
+#include "kiln/media/stream/DrmInitData.h"
 
 #include <array>
 #include <cstdint>
@@ -16,9 +17,9 @@
 namespace kiln::media::stream {
 
     // C.TIME_UNSET / C.LENGTH_UNSET / C.INDEX_UNSET.
-    inline constexpr std::int64_t kTimeUnset = INT64_MIN + 1;
+    using media::kTimeUnset;   // C.TIME_UNSET
     inline constexpr std::int64_t kLengthUnset = -1;
-    inline constexpr int kIndexUnset = -1;
+    using media::kIndexUnset;   // C.INDEX_UNSET
     inline constexpr std::int64_t kMicrosPerSecond = 1'000'000;
 
     // ParserException: a manifest that cannot be read.
@@ -104,6 +105,10 @@ namespace kiln::media::stream {
     std::string GetCodecsWithoutType(const std::string& codecs, TrackType trackType);
     int GetCodecCountOfType(const std::string& codecs, TrackType trackType);
     // Util.getColorInfoForDolbyVision into the format's colour fields; false when none applies.
+    // What Format's constructor does with Builder.setLanguage/setLabel/setLabels: normalizes the
+    // language, then fills labels from label (or label from labels, preferring the language's).
+    void FinishFormat(Format& format);
+
     bool ApplyColorInfoForDolbyVision(Format& format, const std::string& codecs, const std::string& supplementalCodecs,
                                       const std::string& supplementalProfiles);
     inline constexpr int kColorSpaceBt2020 = 6, kColorRangeFull = 1, kColorRangeLimited = 2, kColorTransferSt2084 = 6, kColorTransferHlg = 7;
@@ -116,47 +121,35 @@ namespace kiln::media::stream {
 
     // Util.parseXsDateTime: milliseconds since the epoch.
     std::int64_t ParseXsDateTime(const std::string& value);
+    // Util.parseXsDuration: an xs:duration in milliseconds; anything else is read as a number of
+    // hours (std::invalid_argument if it is not one).
+    std::int64_t ParseXsDuration(const std::string& value);
+    // Util.scaleLargeTimestamp: timestamp * multiplier / divisor without overflow, rounded down.
+    std::int64_t ScaleLargeTimestamp(std::int64_t timestamp, std::int64_t multiplier, std::int64_t divisor);
+    // Util.ceilDivide.
+    inline std::int64_t CeilDivide(std::int64_t numerator, std::int64_t denominator) { return (numerator + denominator - 1) / denominator; }
+    // Util.msToUs (kTimeUnset and C.TIME_END_OF_SOURCE kept).
+    inline std::int64_t MsToUs(std::int64_t timeMs) { return timeMs == kTimeUnset || timeMs == INT64_MIN ? timeMs : timeMs * 1000; }
+
+    // StreamKey: a stream of a manifest (period, group, then index in it), ordered by period,
+    // group and stream index.
+    struct StreamKey {
+        int periodIndex = 0;
+        int groupIndex = 0;
+        int streamIndex = 0;
+        auto operator<=>(const StreamKey&) const = default;
+    };
 
     // android.util.Base64.decode(DEFAULT).
     std::vector<std::uint8_t> Base64Decode(const std::string& text);
 
-    // A 128-bit UUID, most significant byte first (java.util.UUID's order).
-    using Uuid = std::array<std::uint8_t, 16>;
-    Uuid ParseUuid(const std::string& text);
-    inline constexpr Uuid kWidevineUuid = { 0xed, 0xef, 0x8b, 0xa9, 0x79, 0xd6, 0x4a, 0xce, 0xa3, 0xc8, 0x27, 0xdc, 0xd5, 0x1d, 0x21, 0xed };
-    inline constexpr Uuid kPlayreadyUuid = { 0x9a, 0x04, 0xf0, 0x79, 0x98, 0x40, 0x42, 0x86, 0xab, 0x92, 0xe6, 0x5b, 0xe0, 0x88, 0x5f, 0x95 };
-    inline constexpr Uuid kClearkeyUuid = { 0xe2, 0x71, 0x9d, 0x58, 0xa9, 0x85, 0xb3, 0xc9, 0x78, 0x1a, 0xb0, 0x30, 0xaf, 0x78, 0xd3, 0x0e };
-    inline constexpr Uuid kCommonPsshUuid = { 0x10, 0x77, 0xef, 0xec, 0xc0, 0xb2, 0x4d, 0x02, 0xac, 0xe3, 0x3c, 0x1e, 0x52, 0xe2, 0xfb, 0x4b };
-    inline constexpr Uuid kUuidNil = {};
-
     // PsshAtomUtil.buildPsshAtom (version 0).
     std::vector<std::uint8_t> BuildPsshAtom(const Uuid& systemId, const std::vector<std::uint8_t>& data);
+    // PsshAtomUtil.buildPsshAtom(systemId, keyIds, data): a version 1 box with key ids (version 0
+    // without them).
+    std::vector<std::uint8_t> BuildPsshAtom(const Uuid& systemId, const std::vector<Uuid>* keyIds, const std::vector<std::uint8_t>* data);
+    // PsshAtomUtil.parseUuid: the system id of a well-formed pssh box.
+    std::optional<Uuid> ParsePsshUuid(const std::vector<std::uint8_t>& atom);
 
-    // DrmInitData: the protection schemes of a stream (C.CENC_TYPE_* scheme type), sorted as
-    // media3 sorts them (by UUID, with C.UUID_NIL last).
-    struct SchemeData {
-        Uuid uuid{};
-        std::string licenseServerUrl;
-        std::string mimeType;
-        std::optional<std::vector<std::uint8_t>> data;
-        SchemeData copyWithData(std::optional<std::vector<std::uint8_t>> d) const {
-            SchemeData s = *this;
-            s.data = std::move(d);
-            return s;
-        }
-        // Whether this applies to the scheme (a C.UUID_NIL scheme applies to all of them).
-        bool Matches(const Uuid& schemeUuid) const { return uuid == kUuidNil || uuid == schemeUuid; }
-        bool HasData() const { return data.has_value(); }
-        bool operator==(const SchemeData&) const = default;
-    };
-    struct DrmInitData {
-        std::string schemeType;   // "" for Java's null
-        std::vector<SchemeData> schemeDatas;
-        DrmInitData() = default;
-        DrmInitData(std::string schemeType, std::vector<SchemeData> schemeDatas);
-        bool operator==(const DrmInitData&) const = default;
-    };
-    inline constexpr const char* kCencTypeCenc = "cenc";
-    inline constexpr const char* kCencTypeCbcs = "cbcs";
 
 }

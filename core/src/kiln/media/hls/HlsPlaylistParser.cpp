@@ -561,6 +561,7 @@ namespace kiln::media::hls {
                 format.selectionFlags = ParseSelectionFlags(mediaLine);
                 format.roleFlags = ParseRoleFlags(mediaLine, variableDefinitions);
                 format.language = ParseOptionalStringAttr(mediaLine, REGEX_LANGUAGE, variableDefinitions).value_or("");
+                FinishFormat(format);
                 const std::optional<std::string> referenceUri = ParseOptionalStringAttr(mediaLine, REGEX_URI, variableDefinitions);
                 const std::string uri = referenceUri ? ResolveUri(baseUri, *referenceUri) : std::string();
                 const HlsTrackMetadataEntry metadata{ groupId, name, {} };

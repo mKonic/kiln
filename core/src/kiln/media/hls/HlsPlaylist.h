@@ -21,13 +21,7 @@ namespace kiln::media::hls {
     using stream::kLengthUnset;
     using stream::kTimeUnset;
 
-    // StreamKey: a stream of a manifest (group, then index in it).
-    struct StreamKey {
-        int periodIndex = 0;
-        int groupIndex = 0;
-        int streamIndex = 0;
-        bool operator==(const StreamKey&) const = default;
-    };
+    using stream::StreamKey;
 
     // HlsTrackMetadataEntry: a variant's (or rendition's) group, name and the variants sharing its URL.
     struct HlsTrackMetadataEntry {

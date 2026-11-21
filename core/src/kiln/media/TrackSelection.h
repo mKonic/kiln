@@ -4,6 +4,7 @@
 // of an item's tracks play, from the app's preferences and the media's own flags.
 
 #include "kiln/media/MediaItem.h"
+#include "kiln/media/stream/DrmInitData.h"
 
 #include <optional>
 #include <set>
@@ -23,6 +24,13 @@ namespace kiln::media {
     // C.TRACK_TYPE_*.
     enum class TrackType { None = -2, Unknown = -1, Default = 0, Audio = 1, Video = 2, Text = 3, Image = 4, Metadata = 5 };
 
+    // Label: a track's name in a language (Format.labels).
+    struct Label {
+        std::string language;   // "" when unspecified
+        std::string value;
+        bool operator==(const Label&) const = default;
+    };
+
     // Format: what a track holds (-1: unknown).
     struct Format {
         std::string id, label, language, sampleMimeType;
@@ -39,6 +47,10 @@ namespace kiln::media {
         float selectionPriority = -1;
         // ColorInfo (C.COLOR_SPACE_* / COLOR_RANGE_* / COLOR_TRANSFER_*), -1 when unknown.
         int colorSpace = -1, colorRange = -1, colorTransfer = -1;
+        // A DASH manifest's names for the track, image tiles, and protection schemes.
+        std::vector<Label> labels;
+        int tileCountHorizontal = -1, tileCountVertical = -1;
+        std::optional<stream::DrmInitData> drmInitData;
         void SetBitrates(int average, int peak) {
             averageBitrate = average;
             peakBitrate = peak;

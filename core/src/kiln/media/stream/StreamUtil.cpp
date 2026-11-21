@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstdlib>
 #include <regex>
 
 namespace kiln::media::stream {
@@ -20,6 +22,14 @@ namespace kiln::media::stream {
             return s.substr(b, e - b);
         }
         bool StartsWith(const std::string& s, const char* p) { return s.rfind(p, 0) == 0; }
+        // Double.parseDouble (leading and trailing whitespace allowed, nothing else).
+        double JavaParseDouble(const std::string& s) {
+            std::size_t used = 0;
+            const double v = std::stod(s, &used);
+            for (std::size_t i = used; i < s.size(); i++)
+                if (static_cast<unsigned char>(s[i]) > ' ') throw std::invalid_argument("not a number: " + s);
+            return v;
+        }
         std::string TopLevelType(const std::string& mimeType) {
             const std::size_t slash = mimeType.find('/');
             return slash == std::string::npos ? std::string() : mimeType.substr(0, slash);
@@ -191,6 +201,20 @@ namespace kiln::media::stream {
         for (const std::string& codec : SplitCodecs(codecs))
             if (MimeTypes::GetTrackTypeOfCodec(codec) == trackType) count++;
         return count;
+    }
+
+    void FinishFormat(Format& format) {
+        format.language = NormalizeLanguageCode(format.language);
+        if (format.labels.empty() && !format.label.empty()) {
+            format.labels = { Label{ format.language, format.label } };
+        } else if (!format.labels.empty() && format.label.empty()) {
+            format.label = format.labels.front().value;
+            for (const Label& l : format.labels)
+                if (l.language == format.language) {
+                    format.label = l.value;
+                    break;
+                }
+        }
     }
 
     bool ApplyColorInfoForDolbyVision(Format& format, const std::string& codecs, const std::string& supplementalCodecs,
@@ -375,6 +399,57 @@ namespace kiln::media::stream {
         return time;
     }
 
+    std::int64_t ParseXsDuration(const std::string& value) {
+        static const std::regex pattern("^(-)?P(([0-9]*)Y)?(([0-9]*)M)?(([0-9]*)D)?(T(([0-9]*)H)?(([0-9]*)M)?(([0-9.]*)S)?)?$");
+        std::smatch m;
+        if (!std::regex_match(value, m, pattern)) return std::int64_t(JavaParseDouble(value) * 3600 * 1000);
+        const bool negated = m[1].matched && m[1].length() > 0;
+        auto part = [&](int group, double scale) { return m[group].matched ? JavaParseDouble(m[group].str()) * scale : 0.0; };
+        double durationSeconds = part(3, 31556908) + part(5, 2629739) + part(7, 86400) + part(10, 3600) + part(12, 60) + part(14, 1);
+        const std::int64_t durationMillis = std::int64_t(durationSeconds * 1000);
+        return negated ? -durationMillis : durationMillis;
+    }
+
+    namespace {
+        // LongMath.saturatedMultiply.
+        std::int64_t SaturatedMultiply(std::int64_t a, std::int64_t b) {
+            std::int64_t r;
+            if (!__builtin_mul_overflow(a, b, &r)) return r;
+            return (a < 0) == (b < 0) ? INT64_MAX : INT64_MIN;
+        }
+        std::int64_t Gcd(std::int64_t a, std::int64_t b) {
+            while (b != 0) {
+                const std::int64_t t = a % b;
+                a = b;
+                b = t;
+            }
+            return a;
+        }
+    }
+
+    // Util.scaleLargeValue with RoundingMode.DOWN (integer division truncates toward zero).
+    std::int64_t ScaleLargeTimestamp(std::int64_t value, std::int64_t multiplier, std::int64_t divisor) {
+        if (value == 0 || multiplier == 0) return 0;
+        if (divisor >= multiplier && divisor % multiplier == 0) return value / (divisor / multiplier);
+        if (divisor < multiplier && multiplier % divisor == 0) return SaturatedMultiply(value, multiplier / divisor);
+        if (divisor >= value && divisor % value == 0) return multiplier / (divisor / value);
+        if (divisor < value && value % divisor == 0) return SaturatedMultiply(multiplier, value / divisor);
+        const std::int64_t numerator = SaturatedMultiply(value, multiplier);
+        if (numerator != INT64_MAX && numerator != INT64_MIN) return numerator / divisor;
+        const std::int64_t gcdMd = Gcd(std::abs(multiplier), std::abs(divisor));
+        const std::int64_t simplifiedMultiplier = multiplier / gcdMd;
+        std::int64_t simplifiedDivisor = divisor / gcdMd;
+        const std::int64_t gcdVd = Gcd(std::abs(value), std::abs(simplifiedDivisor));
+        const std::int64_t simplifiedValue = value / gcdVd;
+        simplifiedDivisor /= gcdVd;
+        const std::int64_t simplifiedNumerator = SaturatedMultiply(simplifiedValue, simplifiedMultiplier);
+        if (simplifiedNumerator != INT64_MAX && simplifiedNumerator != INT64_MIN) return simplifiedNumerator / simplifiedDivisor;
+        const double result = double(simplifiedValue) * (double(simplifiedMultiplier) / double(simplifiedDivisor));
+        if (result > double(INT64_MAX)) return INT64_MAX;
+        if (result < double(INT64_MIN)) return INT64_MIN;
+        return std::int64_t(std::trunc(result));
+    }
+
     std::vector<std::uint8_t> Base64Decode(const std::string& text) {
         auto value = [](char c) -> int {
             if (c >= 'A' && c <= 'Z') return c - 'A';
@@ -428,6 +503,58 @@ namespace kiln::media::stream {
         put32(std::uint32_t(data.size()));
         out.insert(out.end(), data.begin(), data.end());
         return out;
+    }
+
+    std::vector<std::uint8_t> BuildPsshAtom(const Uuid& systemId, const std::vector<Uuid>* keyIds, const std::vector<std::uint8_t>* data) {
+        const std::size_t dataLength = data ? data->size() : 0;
+        std::uint32_t length = 12 + 16 + 4 + std::uint32_t(dataLength);
+        if (keyIds) length += 4 + std::uint32_t(keyIds->size() * 16);
+        std::vector<std::uint8_t> out;
+        auto put32 = [&](std::uint32_t v) {
+            for (int s = 24; s >= 0; s -= 8) out.push_back(std::uint8_t(v >> s));
+        };
+        put32(length);
+        out.insert(out.end(), { 'p', 's', 's', 'h' });
+        put32(keyIds ? 0x01000000 : 0);
+        out.insert(out.end(), systemId.begin(), systemId.end());
+        if (keyIds) {
+            put32(std::uint32_t(keyIds->size()));
+            for (const Uuid& keyId : *keyIds) out.insert(out.end(), keyId.begin(), keyId.end());
+        }
+        put32(std::uint32_t(dataLength));
+        if (data) out.insert(out.end(), data->begin(), data->end());
+        return out;
+    }
+
+    std::optional<Uuid> ParsePsshUuid(const std::vector<std::uint8_t>& atom) {
+        if (atom.size() < 12 + 16 + 4) return std::nullopt;
+        std::size_t pos = 0;
+        auto read32 = [&]() -> std::uint32_t {
+            if (pos + 4 > atom.size()) throw std::out_of_range("pssh");
+            const std::uint32_t v = std::uint32_t(atom[pos]) << 24 | std::uint32_t(atom[pos + 1]) << 16 | std::uint32_t(atom[pos + 2]) << 8 | atom[pos + 3];
+            pos += 4;
+            return v;
+        };
+        try {
+            if (read32() != atom.size()) return std::nullopt;
+            if (read32() != 0x70737368) return std::nullopt;   // 'pssh'
+            const std::uint32_t version = read32() >> 24;
+            if (version > 1) return std::nullopt;
+            Uuid uuid;
+            if (pos + 16 > atom.size()) return std::nullopt;
+            std::copy(atom.begin() + std::ptrdiff_t(pos), atom.begin() + std::ptrdiff_t(pos + 16), uuid.begin());
+            pos += 16;
+            if (version == 1) {
+                const std::uint32_t keyIdCount = read32();
+                if (keyIdCount > (atom.size() - pos) / 16) return std::nullopt;
+                pos += std::size_t(keyIdCount) * 16;
+            }
+            const std::uint32_t dataSize = read32();
+            if (dataSize != atom.size() - pos) return std::nullopt;
+            return uuid;
+        } catch (const std::out_of_range&) {
+            return std::nullopt;
+        }
     }
 
     DrmInitData::DrmInitData(std::string type, std::vector<SchemeData> datas) : schemeType(std::move(type)), schemeDatas(std::move(datas)) {
