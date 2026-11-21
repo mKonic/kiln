@@ -863,7 +863,8 @@ void SaveNote(const std::string& treeUri, std::span<const std::uint8_t> text) {
 ### Playing media
 
 `media::Player` (`kiln/media/Player.h`) plays audio and video files from assets, files,
-`content://` URIs and `http(s)://` URLs. It decodes on its own thread and plays sound through
+`content://` URIs and `http(s)://` URLs, and streams over HLS, DASH, SmoothStreaming and RTSP
+(see [Streaming](#streaming)). It decodes on its own thread and plays sound through
 AAudio. `VideoSurface` (`kiln/foundation/VideoSurface.h`) shows the video, at the video's
 aspect ratio:
 
@@ -961,6 +962,48 @@ kiln::media::MediaItem WithSubtitles() {
   as `AnnotatedString`s.
 * Subtitles inside the media file (MP4 tx3g, MKV text tracks) are listed in `tracks` but not
   shown. TTML and SSA files are not read.
+
+### Streaming
+
+The player streams the way media3's ExoPlayer does. It recognises the format from the URI:
+`.m3u8` for HLS, `.mpd` for DASH, `.ism` or `/Manifest` for SmoothStreaming, and `rtsp://`
+for RTSP. When the URI has no extension, give the item a `mimeType`, such as
+`application/x-mpegURL`, `application/dash+xml`, `application/vnd.ms-sstr+xml` or
+`application/x-rtsp`.
+
+```cpp
+void Live(kiln::media::Player& player) {
+    kiln::media::MediaItem item = kiln::media::MediaItem::FromUri("https://example.com/live/master.m3u8");
+    item.liveConfiguration.targetOffsetMs = 8'000;   // stay 8 s behind the live edge
+    player.SetMediaItem(item);
+    kiln::media::TrackSelectionParameters params = player.GetTrackSelectionParameters();
+    params.SetMaxVideoSizeSd();   // at most 1279 x 719
+    player.SetTrackSelectionParameters(params);
+    player.Prepare();
+    player.Play();
+}
+```
+
+* **Adapting.** HLS, DASH and SmoothStreaming switch between a stream's video qualities as the
+  measured bandwidth changes, the way ExoPlayer's AdaptiveTrackSelection does. Qualities larger
+  than the viewport are skipped, and so are qualities over the limits in
+  `TrackSelectionParameters`: `SetMaxVideoSize`, `maxVideoBitrate` and `SetViewportSize`.
+  A stream's audio languages and subtitles appear in `tracks` and are chosen like a file's.
+* **Live streams.** `IsCurrentMediaItemLive()` and `IsCurrentMediaItemDynamic()` say whether the
+  stream is live and whether its window moves. Playback starts behind the live edge by the
+  target offset. That offset comes from `liveConfiguration`, else from the stream (an HLS hold
+  back, or a DASH service description), else from the player's default. To hold the offset,
+  the player speeds up or slows down slightly, within `minPlaybackSpeed` and
+  `maxPlaybackSpeed`. `CurrentLiveOffsetMs()` reports how far behind the edge playback is, and
+  `SeekToDefaultPosition()` goes back to the edge. Falling out of the window fails with
+  `PlaybackException::BehindLiveWindow`.
+* **RTSP.** The player sets up the session, then receives RTP over UDP. If no packets arrive,
+  or the server refuses UDP, it switches to TCP. An `rtspt://` URI uses TCP from the start. For
+  a server that asks for credentials, put them in the URI (`rtsp://user:password@host/path`);
+  both Basic and Digest authentication work. Supported codecs: H.263, H.264, H.265, MPEG-4
+  video, VP8, VP9, AAC, AC-3, AMR, Opus, PCM, A-law and µ-law. Seeking works when the server
+  supports it.
+* Protected (DRM) streams are not played. Their tracks are listed but marked as unsupported.
 
 ### Audio focus and media controls
 
