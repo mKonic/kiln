@@ -30,6 +30,20 @@ namespace kiln::media {
         int bitrate = -1, channelCount = -1, sampleRate = -1;   // audio
         int width = -1, height = -1;                            // video
         float frameRate = -1;
+        // Adaptive streams (HLS, DASH): the RFC 6381 codecs, the container's MIME type, the
+        // declared average and peak bitrates (bitrate is the peak when known, else the average,
+        // as media3's Format.bitrate), the CEA-608/708 channel, and the manifest's score.
+        std::string codecs, containerMimeType;
+        int averageBitrate = -1, peakBitrate = -1;
+        int accessibilityChannel = -1;
+        float selectionPriority = -1;
+        // ColorInfo (C.COLOR_SPACE_* / COLOR_RANGE_* / COLOR_TRANSFER_*), -1 when unknown.
+        int colorSpace = -1, colorRange = -1, colorTransfer = -1;
+        void SetBitrates(int average, int peak) {
+            averageBitrate = average;
+            peakBitrate = peak;
+            bitrate = peak != -1 ? peak : average;
+        }
         bool operator==(const Format&) const = default;
     };
 
