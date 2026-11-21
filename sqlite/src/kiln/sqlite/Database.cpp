@@ -1,5 +1,6 @@
 #include "kiln/sqlite/Database.h"
 
+#include "kiln/Assets.h"
 #include "kiln/ui/AppDirectories.h"
 
 #include "sqlite3.h"
@@ -8,6 +9,8 @@
 #include <cctype>
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <thread>
 
 namespace kiln::sqlite {
@@ -53,6 +56,33 @@ namespace kiln::sqlite {
         }
     }
 
+    namespace {
+        // isMigrationRequired: false when a destructive migration may stand in.
+        bool IsMigrationRequired(const DatabaseOptions& o, int from, int to) {
+            if (from > to && o.fallbackToDestructiveMigrationOnDowngrade) return false;
+            const auto& notRequiredFrom = o.fallbackToDestructiveMigrationFrom;
+            return !o.fallbackToDestructiveMigration && std::find(notRequiredFrom.begin(), notRequiredFrom.end(), from) == notRequiredFrom.end();
+        }
+        // readVersion: the header's user_version, a big-endian int at offset 60.
+        std::optional<int> ReadVersion(const std::string& path) {
+            std::ifstream in(path, std::ios::binary);
+            if (!in) return std::nullopt;
+            in.seekg(60);
+            unsigned char b[4];
+            if (!in.read(reinterpret_cast<char*>(b), 4)) return std::nullopt;
+            return int((std::uint32_t(b[0]) << 24) | (std::uint32_t(b[1]) << 16) | (std::uint32_t(b[2]) << 8) | std::uint32_t(b[3]));
+        }
+        std::vector<std::string> UserTables(Connection& c) {
+            std::vector<std::string> names;
+            for (Statement s = c.Prepare("SELECT name FROM sqlite_master WHERE type = 'table'"); s.Step();) {
+                std::string name = s.GetText(0);
+                if (name.starts_with("sqlite_") || name == "android_metadata" || name == "room_master_table") continue;
+                names.push_back(std::move(name));
+            }
+            return names;
+        }
+    }
+
     std::optional<std::vector<const Migration*>> FindMigrationPath(const std::vector<Migration>& migrations, int start, int end) {
         std::vector<const Migration*> result;
         if (start == end) return result;
@@ -78,6 +108,167 @@ namespace kiln::sqlite {
         if (m_Options.version < 1) throw std::invalid_argument("kiln: a database version must be above 0");
         m_InMemory = m_Options.name.empty() && m_Options.path.empty();
         m_Path = m_InMemory ? ":memory:" : !m_Options.path.empty() ? m_Options.path : ui::DatabasePath(m_Options.name);
+        // Builder.build's checks.
+        for (const Migration& m : m_Options.migrations)
+            for (const int version : { m.startVersion, m.endVersion })
+                if (std::find(m_Options.fallbackToDestructiveMigrationFrom.begin(), m_Options.fallbackToDestructiveMigrationFrom.end(), version) != m_Options.fallbackToDestructiveMigrationFrom.end()) {
+                    throw std::invalid_argument("kiln: Inconsistency detected. A Migration was supplied that has a start or end version equal to a start version "
+                                                "supplied to fallbackToDestructiveMigrationFrom. Start version is: " + std::to_string(version));
+                }
+        const int sources = int(!m_Options.createFromAsset.empty()) + int(!m_Options.createFromFile.empty()) + int(bool(m_Options.createFromInputStream));
+        if (sources > 1) throw std::invalid_argument("kiln: Both createFromAsset() and createFromFile() was called on this Builder, but the database can only be created using one of the two configurations.");
+        if (sources && m_InMemory) throw std::invalid_argument("kiln: Cannot create from asset or file for an in-memory database.");
+        if (m_Options.autoCloseTimeoutMs < 0) throw std::invalid_argument("kiln: autoCloseTimeout must be >= 0");
+        if (m_Options.autoCloseTimeoutMs > 0) {
+            if (m_InMemory) throw std::invalid_argument("kiln: Cannot create auto-closing database for an in-memory database.");
+            m_AutoCloser = std::thread([this] { AutoCloseLoop(); });
+        }
+    }
+
+    void Database::IncrementUse() {
+        std::lock_guard lock(m_UseMutex);
+        ++m_Uses;
+    }
+    void Database::DecrementUse() {
+        {
+            std::lock_guard lock(m_UseMutex);
+            --m_Uses;
+            m_LastUse = std::chrono::steady_clock::now();
+        }
+        m_UseChanged.notify_all();
+    }
+
+    // AutoCloser: once nothing has used the database for the timeout, close its connections
+    // (they open again on the next use).
+    void Database::AutoCloseLoop() {
+        const auto timeout = std::chrono::milliseconds(m_Options.autoCloseTimeoutMs);
+        std::unique_lock lock(m_UseMutex);
+        while (!m_StopAutoClose) {
+            // Wait for an idle open database.
+            m_UseChanged.wait(lock, [&] { return m_StopAutoClose || (m_Uses == 0 && m_Configured.load()); });
+            if (m_StopAutoClose) break;
+            const auto due = m_LastUse + timeout;
+            if (m_UseChanged.wait_until(lock, due, [&] { return m_StopAutoClose || m_Uses != 0 || m_LastUse + timeout != due; })) continue;
+            // Still unused for the whole timeout: close (no use can start while m_UseMutex is held
+            // by this check, and none is running).
+            lock.unlock();
+            {
+                std::scoped_lock both(m_WriterMutex, m_ReadersMutex);
+                std::lock_guard uses(m_UseMutex);
+                if (m_Uses == 0 && !m_Closed && m_Writer.IsOpen()) {
+                    m_Writer.Close();
+                    m_FreeReaders.clear();
+                    m_ReadersOpen = 0;
+                    m_Configured = false;
+                    m_AutoClosed = true;
+                }
+            }
+            lock.lock();
+        }
+    }
+
+    // PrePackagedCopySQLiteDriver.verifyDatabaseFile: copy when there is no file, or when its
+    // version would be migrated destructively anyway.
+    void Database::VerifyPrepackagedFile() {
+        namespace fs = std::filesystem;
+        if (!fs::exists(m_Path)) {
+            CopyPrepackaged(m_Path);
+            return;
+        }
+        const std::optional<int> current = ReadVersion(m_Path);
+        if (!current || *current == m_Options.version) return;
+        if (FindMigrationPath(m_Options.migrations, *current, m_Options.version)) return;   // migrations come first
+        if (IsMigrationRequired(m_Options, *current, m_Options.version)) return;
+        bool deleted = false;
+        for (const char* postfix : { "", "-wal", "-shm", "-journal" }) {
+            std::error_code ec;
+            if (fs::exists(m_Path + postfix)) deleted = fs::remove(m_Path + postfix, ec) || deleted;
+        }
+        if (!deleted) {
+            std::fprintf(stderr, "kiln: failed to delete database file (%s) for a copy destructive migration\n", m_Path.c_str());
+            return;
+        }
+        try {
+            CopyPrepackaged(m_Path);
+        } catch (const std::exception& e) {
+            // There is a database to open (an empty one); upstream forgives this.
+            std::fprintf(stderr, "kiln: unable to copy database file: %s\n", e.what());
+        }
+    }
+
+    // copyDatabase: through an intermediate file, so a half copy never takes the database's place.
+    void Database::CopyPrepackaged(const std::string& destination) {
+        namespace fs = std::filesystem;
+        std::vector<std::uint8_t> bytes;
+        if (!m_Options.createFromAsset.empty()) {
+            auto asset = ReadAsset(m_Options.createFromAsset);
+            if (!asset) throw std::runtime_error("kiln: no asset " + m_Options.createFromAsset + " to create the database from");
+            bytes = std::move(*asset);
+        } else if (!m_Options.createFromFile.empty()) {
+            std::ifstream in(m_Options.createFromFile, std::ios::binary);
+            if (!in) throw std::runtime_error("kiln: cannot read " + m_Options.createFromFile + " to create the database from");
+            bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        } else {
+            bytes = m_Options.createFromInputStream();
+        }
+        const fs::path dest(destination);
+        if (dest.has_parent_path()) fs::create_directories(dest.parent_path());
+        const std::string intermediate = destination + "-kiln-copy.tmp";
+        {
+            std::ofstream out(intermediate, std::ios::binary | std::ios::trunc);
+            out.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+            if (!out) throw std::runtime_error("kiln: failed to write " + intermediate);
+        }
+        if (m_Options.onOpenPrepackagedDatabase) {
+            Connection c = Connection::Open(intermediate);
+            m_Options.onOpenPrepackagedDatabase(c);
+        }
+        std::error_code ec;
+        fs::rename(intermediate, dest, ec);
+        if (ec) {
+            fs::remove(intermediate, ec);
+            throw std::runtime_error("kiln: Failed to move intermediate file (" + intermediate + ") to destination (" + destination + ").");
+        }
+    }
+
+    // tryOpenInitialConnection: a retry after a short wait; then, when allowed, the corrupt file
+    // goes and a new one is made.
+    Connection Database::OpenInitialConnection() {
+        try {
+            return OpenAndVerify(m_Path);
+        } catch (...) {
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        try {
+            return OpenAndVerify(m_Path);
+        } catch (const Error&) {
+            if (m_InMemory || !m_Options.allowDataLossOnRecovery) throw;
+        }
+        for (const char* postfix : { "", "-wal", "-shm", "-journal" }) {
+            std::error_code ec;
+            std::filesystem::remove(m_Path + postfix, ec);
+        }
+        return OpenAndVerify(m_Path);
+    }
+
+    void Database::ClearAllTablesBlocking() {
+        UseGuard use(*this);
+        std::unique_lock lock(m_WriterMutex);
+        Connection& c = WriterLocked();
+        SyncTriggersLocked(c);
+        const std::vector<std::string> tables = UserTables(c);
+        bool hasForeignKeys = false;
+        for (const auto& t : tables) {
+            Statement fk = c.Prepare("PRAGMA foreign_key_list(`" + t + "`)");
+            if (fk.Step()) hasForeignKeys = true;
+        }
+        c.WithTransaction(TransactionType::Immediate, [&] {
+            if (hasForeignKeys) c.Execute("PRAGMA defer_foreign_keys = TRUE");
+            for (const auto& t : tables) c.Execute("DELETE FROM `" + t + "`");
+        });
+        NotifyLocked(c);
+        c.Execute("PRAGMA wal_checkpoint(FULL)");
+        c.Execute("VACUUM");
     }
 
     std::shared_ptr<Database> Database::Open(DatabaseOptions options) { return std::make_shared<Database>(std::move(options)); }
@@ -85,6 +276,12 @@ namespace kiln::sqlite {
     Database::~Database() { Close(); }
 
     void Database::Close() {
+        {
+            std::lock_guard lock(m_UseMutex);
+            m_StopAutoClose = true;
+        }
+        m_UseChanged.notify_all();
+        if (m_AutoCloser.joinable() && m_AutoCloser.get_id() != std::this_thread::get_id()) m_AutoCloser.join();
         {
             std::lock_guard lock(m_WriterMutex);
             m_Closed = true;
@@ -96,6 +293,7 @@ namespace kiln::sqlite {
         m_FreeReaders.clear();
         m_ReadersOpen = 0;
         m_ReadersClosed = true;
+        m_Configured = false;
     }
 
     // The write connection, opened and configured on first use (RoomConnectionManager.openLocked).
@@ -103,14 +301,14 @@ namespace kiln::sqlite {
         if (m_Closed) throw Error(SQLITE_MISUSE, "database is closed");
         if (m_Writer.IsOpen()) return m_Writer;
         // tryOpenInitialConnection: a second try after a short wait before giving up.
-        Connection c;
-        try {
-            c = OpenAndVerify(m_Path);
-        } catch (const Error&) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-            c = OpenAndVerify(m_Path);
+        if (!m_InMemory && !m_PrepackagedVerified && (!m_Options.createFromAsset.empty() || !m_Options.createFromFile.empty() || m_Options.createFromInputStream)) {
+            VerifyPrepackagedFile();
+            m_PrepackagedVerified = true;
         }
-        ConfigureDatabase(c);
+        Connection c = OpenInitialConnection();
+        // After an auto-close only the connection is configured again (the auto-open callback).
+        if (std::exchange(m_AutoClosed, false)) ConfigureConnection(c);
+        else ConfigureDatabase(c);
         // TriggerBasedInvalidationTracker.configureConnection
         c.Execute("PRAGMA temp_store = MEMORY");
         c.Execute("PRAGMA recursive_triggers = 1");
@@ -127,10 +325,15 @@ namespace kiln::sqlite {
     }
 
     // configureDatabase: pragmas, then create or migrate to the wanted version.
-    void Database::ConfigureDatabase(Connection& c) {
+    // configureConnection: the pragmas every opened connection gets.
+    void Database::ConfigureConnection(Connection& c) {
         ConfigureBusyTimeout(c);
         if (!m_InMemory) c.Execute(m_Options.journalMode == JournalMode::WriteAheadLogging ? "PRAGMA journal_mode = WAL" : "PRAGMA journal_mode = TRUNCATE");
         ConfigureSynchronous(c, m_Options.journalMode);
+    }
+
+    void Database::ConfigureDatabase(Connection& c) {
+        ConfigureConnection(c);
         const int version = int(PragmaLong(c, "PRAGMA user_version"));
         const int wanted = m_Options.version;
         if (version != wanted) {
@@ -142,9 +345,7 @@ namespace kiln::sqlite {
                     for (const Migration* m : *path) m->migrate(c);
                 } else {
                     // isMigrationRequired: destructive fallbacks stand in for the missing path.
-                    const bool downgrade = version > wanted;
-                    const bool destructive = m_Options.fallbackToDestructiveMigration || (downgrade && m_Options.fallbackToDestructiveMigrationOnDowngrade);
-                    if (!destructive) {
+                    if (IsMigrationRequired(m_Options, version, wanted)) {
                         throw std::runtime_error("kiln: a migration from " + std::to_string(version) + " to " + std::to_string(wanted) +
                             " was required but not found. Add it to DatabaseOptions::migrations or allow destructive migrations with fallbackToDestructiveMigration.");
                     }
@@ -174,11 +375,13 @@ namespace kiln::sqlite {
     Database::ReaderLease Database::AcquireReader() {
         // The schema exists once the write connection was configured; after that a file's
         // readers do not wait for the writer.
-        if (m_InMemory || !m_Configured.load()) {
+        const bool single = m_InMemory || m_Options.singleConnection;
+        if (single || !m_Configured.load()) {
             std::unique_lock lock(m_WriterMutex);
             Connection& writer = WriterLocked();
-            // A database in memory is one connection (each connection would be its own database).
-            if (m_InMemory) {
+            // A database in memory is one connection (each connection would be its own database);
+            // a single-connection pool shares it too.
+            if (single) {
                 ReaderLease lease;
                 lease.db = this;
                 lease.connection = &writer;
@@ -189,7 +392,9 @@ namespace kiln::sqlite {
         std::unique_lock lock(m_ReadersMutex);
         if (m_ReadersClosed) throw Error(SQLITE_MISUSE, "database is closed");
         const int max = std::max(1, m_Options.maxReaders);
-        m_ReaderFree.wait(lock, [&] { return !m_FreeReaders.empty() || m_ReadersOpen < max; });
+        // ConnectionPool's acquire timeout.
+        if (!m_ReaderFree.wait_for(lock, std::chrono::milliseconds(std::max(1, m_Options.connectionPoolTimeoutMs)), [&] { return !m_FreeReaders.empty() || m_ReadersOpen < max; }))
+            throw Error(SQLITE_BUSY, "Timed out attempting to acquire a reader connection.");
         ReaderLease lease;
         lease.db = this;
         if (!m_FreeReaders.empty()) {

@@ -169,7 +169,15 @@ rt::Flow<std::vector<std::string>> NoteTitles(std::shared_ptr<sqlite::Database> 
 * A new file gets `onCreate`. A file at an older version runs the `migrations` that lead to
   `version`, in one transaction. Without a path, opening fails unless
   `fallbackToDestructiveMigration` is set, which drops every table and creates the schema
-  again.
+  again. `fallbackToDestructiveMigrationFrom` allows that only from the listed versions.
+* An app can ship its data: `createFromAsset` (or `createFromFile`) copies a prepackaged
+  database in place on first open, and again when a destructive migration would replace the
+  file anyway. `onOpenPrepackagedDatabase` sees the copy before it is used.
+* `ClearAllTables()` deletes every row and keeps the schema. `autoCloseTimeoutMs` closes
+  idle connections, which open again on the next use. `allowDataLossOnRecovery` replaces a
+  file that is corrupt instead of failing. `singleConnection`, `maxReaders` and
+  `connectionPoolTimeoutMs` shape the connection pool, and `queryDispatcher` runs the work on
+  your own pool.
 * `Write` runs on a background thread in a transaction: it commits when the function
   returns and rolls back when it throws. `Read` runs on one of several read-only
   connections and does not wait for a write in progress (write-ahead logging).

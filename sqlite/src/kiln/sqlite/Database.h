@@ -31,12 +31,14 @@
 #include <kiln/Function.h>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace kiln::sqlite {
@@ -66,13 +68,40 @@ namespace kiln::sqlite {
         bool fallbackToDestructiveMigration = false;
         // The same for downgrades only.
         bool fallbackToDestructiveMigrationOnDowngrade = false;
+        // fallbackToDestructiveMigrationFrom(startVersions): destructive only from these versions
+        // (no migration may start or end at one of them).
+        std::vector<int> fallbackToDestructiveMigrationFrom;
         // Callback.onDestructiveMigration, after the tables were dropped.
         kiln::Function<void(Connection&)> onDestructiveMigration;
         // Callback.onOpen: each time the database is opened, on its write connection.
         kiln::Function<void(Connection&)> onOpen;
+        // createFromAsset / createFromFile / createFromInputStream: a prepackaged database copied
+        // in when there is no file yet (or the file's version needs a destructive migration and a
+        // fresh copy can replace it). One of the three.
+        std::string createFromAsset;
+        std::string createFromFile;
+        kiln::Function<std::vector<std::uint8_t>()> createFromInputStream;
+        // PrepackagedDatabaseCallback.onOpenPrepackagedDatabase: the copy, before it is put in
+        // place (and before migrations).
+        kiln::Function<void(Connection&)> onOpenPrepackagedDatabase;
         JournalMode journalMode = JournalMode::WriteAheadLogging;
-        // Read connections kept open (Room's pool has 4 with write-ahead logging).
+        // Read connections kept open (Room's pool has 4 with write-ahead logging):
+        // setMultipleConnectionPool(maxReaders, 1).
         int maxReaders = 4;
+        // setSingleConnectionPool: reads and writes share the one connection (the default with
+        // JournalMode::Truncate, where readers would wait for the writer anyway).
+        bool singleConnection = false;
+        // setConnectionPoolTimeout: how long a read waits for a free connection before it fails
+        // with SQLITE_BUSY.
+        int connectionPoolTimeoutMs = 30'000;
+        // allowDataLossOnRecovery: a file that cannot be opened even on the retry (corrupt) is
+        // deleted with its journals and created again, instead of failing.
+        bool allowDataLossOnRecovery = false;
+        // setAutoCloseTimeout: after this long unused the connections close, and open again on
+        // the next use (0: never). Not for a database in memory.
+        int autoCloseTimeoutMs = 0;
+        // setQueryCoroutineContext: the pool Read and Write run on (the IO pool when null).
+        rt::BackgroundDispatcher* queryDispatcher = nullptr;
     };
 
     // MigrationContainer.findMigrationPath: the migrations from start to end, taking the
@@ -88,20 +117,22 @@ namespace kiln::sqlite {
 
         // fn(Connection&) on the IO pool with a read-only connection; co_await gives its result.
         template<typename F> auto Read(F fn) {
-            return rt::WithContext(rt::TaskDispatchers::Platform().IO(), [self = shared_from_this(), fn = std::move(fn)]() mutable { return self->ReadBlocking(fn); });
+            return rt::WithContext(QueryPool(), [self = shared_from_this(), fn = std::move(fn)]() mutable { return self->ReadBlocking(fn); });
         }
         // fn(Connection&) on the IO pool with the write connection, in an immediate transaction:
         // committed when fn returns, rolled back when it throws (the exception comes out of the
         // co_await). Observed queries over the changed tables then run again.
         template<typename F> auto Write(F fn) {
-            return rt::WithContext(rt::TaskDispatchers::Platform().IO(), [self = shared_from_this(), fn = std::move(fn)]() mutable { return self->WriteBlocking(fn); });
+            return rt::WithContext(QueryPool(), [self = shared_from_this(), fn = std::move(fn)]() mutable { return self->WriteBlocking(fn); });
         }
         // The same on the calling thread, for code already off the main thread.
         template<typename F> auto ReadBlocking(F&& fn) -> std::invoke_result_t<F, Connection&> {
+            UseGuard use(*this);
             ReaderLease lease = AcquireReader();
             return fn(*lease.connection);
         }
         template<typename F> auto WriteBlocking(F&& fn) -> std::invoke_result_t<F, Connection&> {
+            UseGuard use(*this);
             std::unique_lock lock(m_WriterMutex);
             Connection& c = WriterLocked();
             SyncTriggersLocked(c);
@@ -135,14 +166,34 @@ namespace kiln::sqlite {
         // another connection's triggers this cannot see; through this database's own write
         // connection it can).
         void RefreshInvalidations();
+        // clearAllTables: deletes every row of every table (the schema stays), then checkpoints
+        // and vacuums. Observed queries run again.
+        auto ClearAllTables() {
+            return rt::WithContext(QueryPool(), [self = shared_from_this()] { self->ClearAllTablesBlocking(); });
+        }
+        void ClearAllTablesBlocking();
 
         // Closes the connections once running work is done; later use throws.
         void Close();
         const std::string& Path() const { return m_Path; }
+        // isOpen: a connection is open and configured (not before first use, after Close, or
+        // while auto-closed).
+        bool IsOpen() const { return m_Configured.load(); }
 
         explicit Database(DatabaseOptions options);
 
     private:
+        rt::BackgroundDispatcher& QueryPool() const { return m_Options.queryDispatcher ? *m_Options.queryDispatcher : rt::TaskDispatchers::Platform().IO(); }
+        Connection OpenInitialConnection();
+        // AutoCloser's reference count around each use.
+        struct UseGuard {
+            Database& db;
+            explicit UseGuard(Database& d) : db(d) { db.IncrementUse(); }
+            ~UseGuard() { db.DecrementUse(); }
+        };
+        void IncrementUse();
+        void DecrementUse();
+        void AutoCloseLoop();
         struct ReaderLease {
             Database* db = nullptr;
             Connection* connection = nullptr;
@@ -153,7 +204,10 @@ namespace kiln::sqlite {
         };
         ReaderLease AcquireReader();
         Connection& WriterLocked();
+        void VerifyPrepackagedFile();
+        void CopyPrepackaged(const std::string& destination);
         void ConfigureDatabase(Connection& c);
+        void ConfigureConnection(Connection& c);
         void SyncTriggersLocked(Connection& c);
         void NotifyLocked(Connection& c);
         std::vector<int> ResolveTables(const std::vector<std::string>& tables);
@@ -163,6 +217,14 @@ namespace kiln::sqlite {
         DatabaseOptions m_Options;
         std::string m_Path;
         bool m_InMemory = false;
+        bool m_PrepackagedVerified = false;
+        bool m_AutoClosed = false;   // reopen with the connection's pragmas only
+        std::mutex m_UseMutex;
+        std::condition_variable m_UseChanged;
+        int m_Uses = 0;
+        std::chrono::steady_clock::time_point m_LastUse;
+        bool m_StopAutoClose = false;
+        std::thread m_AutoCloser;
         rt::Dispatcher* m_Home;   // the dispatcher of the thread that opened it: where the flows run
 
         std::mutex m_WriterMutex;          // the write connection and trigger sync

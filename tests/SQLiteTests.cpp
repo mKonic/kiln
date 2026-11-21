@@ -6,6 +6,8 @@
 
 #include <chrono>
 #include <cstdio>
+#include <atomic>
+#include <fstream>
 #include <thread>
 #include <unistd.h>
 
@@ -246,4 +248,149 @@ TEST(SQLiteReadersRunWhileAWriteIsOpen) {
     try { db->ReadBlocking([](Connection&) {}); } catch (const Error&) { closed = true; }
     CHECK(closed);
     std::remove(path.c_str());
+}
+
+// Room's fallbackToDestructiveMigrationFrom, createFromFile / createFromInputStream with
+// PrepackagedDatabaseCallback (PrePackagedCopySQLiteDriver), and clearAllTables.
+TEST(SQLiteDatabaseDestructiveFromPrepackagedAndClear) {
+    const std::string path = TempFile("from.db");
+    {
+        auto db = Database::Open({ .path = path, .version = 2, .onCreate = [](Connection& c) { c.ExecuteScript(kSchema); } });
+        db->WriteBlocking([](Connection& c) { c.Execute("INSERT INTO note (title) VALUES ('v2')"); });
+    }
+    {
+        // Destructive only from the listed versions: 2 is listed.
+        int created = 0;
+        auto db = Database::Open({ .path = path, .version = 3, .onCreate = [&](Connection& c) { ++created; c.ExecuteScript(kSchema); },
+                                   .fallbackToDestructiveMigrationFrom = { 2 } });
+        CHECK(db->ReadBlocking([](Connection& c) { return Titles(c); }).empty() && created == 1);
+    }
+    {
+        // From 3, not listed: a migration is required.
+        auto db = Database::Open({ .path = path, .version = 4, .fallbackToDestructiveMigrationFrom = { 2 } });
+        bool failed = false;
+        try { db->ReadBlocking([](Connection&) {}); } catch (const std::runtime_error&) { failed = true; }
+        CHECK(failed);
+    }
+    // A migration touching a listed version is inconsistent.
+    bool inconsistent = false;
+    try { Database::Open({ .path = path, .version = 4, .migrations = { { 2, 4, [](Connection&) {} } }, .fallbackToDestructiveMigrationFrom = { 2 } }); }
+    catch (const std::invalid_argument&) { inconsistent = true; }
+    CHECK(inconsistent);
+    std::remove(path.c_str());
+
+    // A prepackaged file at version 1 with a row; the callback sees it before it is put in place.
+    const std::string packaged = TempFile("packaged.db");
+    {
+        Connection c = Connection::Open(packaged);
+        c.ExecuteScript(kSchema);
+        c.Execute("INSERT INTO note (title) VALUES ('shipped')");
+        c.Execute("PRAGMA user_version = 1");
+    }
+    const std::string target = TempFile("target.db");
+    int callbacks = 0;
+    {
+        auto db = Database::Open({ .path = target, .version = 1, .createFromFile = packaged,
+                                   .onOpenPrepackagedDatabase = [&](Connection& c) { ++callbacks; CHECK(Titles(c) == std::vector<std::string>{ "shipped" }); } });
+        CHECK(db->ReadBlocking([](Connection& c) { return Titles(c); }) == std::vector<std::string>{ "shipped" });
+        db->WriteBlocking([](Connection& c) { c.Execute("INSERT INTO note (title) VALUES ('mine')"); });
+    }
+    CHECK(callbacks == 1);
+    {
+        // The file exists at the same version: kept, not copied again.
+        auto db = Database::Open({ .path = target, .version = 1, .createFromFile = packaged });
+        CHECK(db->ReadBlocking([](Connection& c) { return Titles(c); }).size() == 2);
+    }
+    {
+        // A newer version without a migration but destructive allowed: a fresh copy replaces it
+        // (then created to version 2 from the copy's version 1 destructively).
+        auto bytes = [&] {
+            std::ifstream in(packaged, std::ios::binary);
+            return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        };
+        auto db = Database::Open({ .path = target, .version = 2, .onCreate = [](Connection& c) { c.ExecuteScript(kSchema); },
+                                   .fallbackToDestructiveMigration = true, .createFromInputStream = bytes });
+        CHECK(db->ReadBlocking([](Connection& c) { return Titles(c); }).empty());   // copied, then destroyed to version 2
+        // clearAllTables: rows go, the tables stay, observers hear it.
+        db->WriteBlocking([](Connection& c) { c.Execute("INSERT INTO note (title) VALUES ('a')"); c.Execute("INSERT INTO tag (name) VALUES ('t')"); });
+        db->ClearAllTablesBlocking();
+        CHECK(db->ReadBlocking([](Connection& c) { return Titles(c); }).empty());
+        CHECK(db->ReadBlocking([](Connection& c) { Statement q = c.Query("SELECT COUNT(*) FROM tag"); q.Step(); return q.GetInt(0); }) == 0);
+    }
+    // In memory: no prepackaged source.
+    bool rejected = false;
+    try { Database::Open({ .createFromFile = packaged }); } catch (const std::invalid_argument&) { rejected = true; }
+    CHECK(rejected);
+    std::remove(target.c_str());
+    std::remove(packaged.c_str());
+}
+
+// allowDataLossOnRecovery (tryOpenInitialConnection), setConnectionPoolTimeout,
+// setSingleConnectionPool.
+TEST(SQLiteDatabaseRecoveryPoolTimeoutAndSingleConnection) {
+    const std::string path = TempFile("corrupt.db");
+    {
+        std::ofstream out(path, std::ios::binary);
+        out << std::string(4096, 'x');   // not a database
+    }
+    bool failed = false;
+    try {
+        auto db = Database::Open({ .path = path, .onCreate = [](Connection& c) { c.ExecuteScript(kSchema); } });
+        db->ReadBlocking([](Connection&) {});
+    } catch (const Error&) {
+        failed = true;
+    }
+    CHECK(failed);
+    {
+        auto db = Database::Open({ .path = path, .onCreate = [](Connection& c) { c.ExecuteScript(kSchema); }, .allowDataLossOnRecovery = true });
+        db->WriteBlocking([](Connection& c) { c.Execute("INSERT INTO note (title) VALUES ('fresh')"); });
+        CHECK(db->ReadBlocking([](Connection& c) { return Titles(c); }) == std::vector<std::string>{ "fresh" });
+    }
+    std::remove(path.c_str());
+
+    // One reader held: the next read times out.
+    const std::string pooled = TempFile("pool.db");
+    auto db = Database::Open({ .path = pooled, .onCreate = [](Connection& c) { c.ExecuteScript(kSchema); }, .maxReaders = 1, .connectionPoolTimeoutMs = 50 });
+    db->ReadBlocking([](Connection&) {});
+    std::atomic<bool> holding{ false }, release{ false };
+    std::thread holder([&] {
+        db->ReadBlocking([&](Connection&) {
+            holding = true;
+            while (!release) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        });
+    });
+    while (!holding) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    bool busy = false;
+    try { db->ReadBlocking([](Connection&) {}); } catch (const Error& e) { busy = (e.code & 0xff) == 5; }
+    release = true;
+    holder.join();
+    CHECK(busy);
+    db.reset();
+    std::remove(pooled.c_str());
+
+    // A single connection: reads go through the write connection and see its writes.
+    auto one = Database::Open({ .path = TempFile("single.db"), .onCreate = [](Connection& c) { c.ExecuteScript(kSchema); }, .singleConnection = true });
+    one->WriteBlocking([](Connection& c) { c.Execute("INSERT INTO note (title) VALUES ('one')"); });
+    CHECK(one->ReadBlocking([](Connection& c) { return Titles(c); }) == std::vector<std::string>{ "one" });
+}
+
+// setAutoCloseTimeout (AutoCloser): idle connections close and open again on the next use, with
+// the data and onOpen not run again.
+TEST(SQLiteDatabaseAutoCloses) {
+    int opened = 0;
+    auto db = Database::Open({ .path = TempFile("auto.db"), .onCreate = [](Connection& c) { c.ExecuteScript(kSchema); },
+                               .onOpen = [&](Connection&) { ++opened; }, .autoCloseTimeoutMs = 30 });
+    db->WriteBlocking([](Connection& c) { c.Execute("INSERT INTO note (title) VALUES ('kept')"); });
+    CHECK(opened == 1);
+    CHECK(db->IsOpen());
+    for (int i = 0; i < 100 && db->IsOpen(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(!db->IsOpen());
+    CHECK(db->ReadBlocking([](Connection& c) { return Titles(c); }) == std::vector<std::string>{ "kept" });
+    CHECK(db->IsOpen());
+    CHECK(opened == 1);
+    db->WriteBlocking([](Connection& c) { c.Execute("INSERT INTO note (title) VALUES ('after')"); });
+    CHECK(db->ReadBlocking([](Connection& c) { return Titles(c); }).size() == 2);
+    bool rejected = false;
+    try { Database::Open({ .autoCloseTimeoutMs = 10 }); } catch (const std::invalid_argument&) { rejected = true; }
+    CHECK(rejected);
 }
