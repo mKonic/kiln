@@ -1,5 +1,6 @@
 #include "AndroidHttp.h"
 
+#include "kiln/media/stream/BandwidthMeter.h"
 #include "kiln/net/Http.h"
 
 #include <string>
@@ -143,6 +144,10 @@ namespace kiln::android {
             s.transport = static_cast<net::NetworkState::Transport>(transport);
             net::Connectivity().SetValue(s);
         }
+        // KilnNetworkType.networkTypeChanged: C.NETWORK_TYPE_*, on its background thread.
+        void NetworkTypeChanged(JNIEnv*, jclass, jint networkType) {
+            media::stream::NetworkTypeObserver::Instance().Update(static_cast<media::stream::NetworkType>(networkType));
+        }
     }
 
     void InstallHttp(JNIEnv* env) {
@@ -155,6 +160,15 @@ namespace kiln::android {
         env->RegisterNatives(c, methods, 2);
         net::SetHttpEngine(std::make_shared<AndroidHttpEngine>(env, c));
         env->DeleteLocalRef(c);
+        if (jclass networkType = env->FindClass("dev/kiln/KilnNetworkType")) {
+            static const JNINativeMethod networkTypeMethods[] = {
+                { "networkTypeChanged", "(I)V", reinterpret_cast<void*>(&NetworkTypeChanged) },
+            };
+            env->RegisterNatives(networkType, networkTypeMethods, 1);
+            env->DeleteLocalRef(networkType);
+        } else {
+            env->ExceptionClear();
+        }
     }
 
 }

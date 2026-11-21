@@ -19,6 +19,7 @@ final class KilnProcess {
         Context app = context.getApplicationContext();
         KilnWork.attach(app);
         KilnHttp.attach(app);
+        KilnNetworkType.attach(app);
         KilnMedia.attach(app);
         KilnNotifications.attach(app);
         KilnWidgetReceiver.attach(app);
