@@ -2011,12 +2011,14 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
         else w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
     }
     /** ui::StartActivity: Context.startActivity, a new task when not started from an activity. */
-    boolean startActivityFromNative(Object[] spec) {
+    /** options: {enter animation, exit animation, share identity, pass through} ("" unset). */
+    boolean startActivityFromNative(Object[] spec, String[] options) {
         android.content.Intent intent = KilnActivityResults.toIntent(spec);
         android.app.Activity activity = KilnPip.activityOf(this);
+        android.os.Bundle bundle = KilnBundles.activityOptions(getContext(), options);
         try {
-            if (activity != null) activity.startActivity(intent);
-            else getContext().startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            if (activity != null) activity.startActivity(intent, bundle);
+            else getContext().startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK), bundle);
             return true;
         } catch (android.content.ActivityNotFoundException | SecurityException e) {
             return false;

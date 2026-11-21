@@ -42,7 +42,7 @@ TEST(StartActivityGoesThroughTheActivityHost) {
     CHECK(!Share({ .text = "x" }) && !ShouldShowRequestPermissionRationale("android.permission.CAMERA"));
     std::vector<Intent> started;
     SetActivityHost({
-        .startActivity = [&](const Intent& i) { started.push_back(i); return true; },
+        .startActivity = [&](const Intent& i, const ActivityOptions&) { started.push_back(i); return true; },
         .shouldShowRequestPermissionRationale = [](const std::string& p) { return p == "android.permission.CAMERA"; },
     });
     CHECK(Share({ .text = "x" }, "Title") && OpenUri("https://example.com"));

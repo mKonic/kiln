@@ -26,7 +26,8 @@ namespace kiln::ui {
         return *intent == *o.intent;
     }
 
-    bool StartActivity(const Intent& intent) { return Host().startActivity && Host().startActivity(intent); }
+    bool StartActivity(const Intent& intent) { return StartActivity(intent, {}); }
+    bool StartActivity(const Intent& intent, const ActivityOptions& options) { return Host().startActivity && Host().startActivity(intent, options); }
     bool ShouldShowRequestPermissionRationale(const std::string& permission) {
         return Host().shouldShowRequestPermissionRationale && Host().shouldShowRequestPermissionRationale(permission);
     }

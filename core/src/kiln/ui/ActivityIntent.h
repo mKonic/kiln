@@ -27,13 +27,22 @@ namespace kiln::ui {
     // Context.startActivity: starts an activity without waiting for a result (a share sheet, a
     // browser, another app). False when no activity handles the intent, or off Android.
     bool StartActivity(const Intent& intent);
+    // ActivityOptions for startActivity(intent, options): custom enter / exit animations (by
+    // resource name), sharing the app's identity (API 34) and letting touches outside pass
+    // through (API 36).
+    struct ActivityOptions {
+        std::string enterAnimation, exitAnimation;
+        std::optional<bool> shareIdentity, allowPassThroughOnTouchOutside;
+        bool operator==(const ActivityOptions&) const = default;
+    };
+    bool StartActivity(const Intent& intent, const ActivityOptions& options);
     // Activity.shouldShowRequestPermissionRationale: the user turned the permission down
     // before without asking not to be asked again, so the app should explain why it needs it.
     bool ShouldShowRequestPermissionRationale(const std::string& permission);
 
     // The main activity, for the calls above.
     struct ActivityHost {
-        kiln::Function<bool(const Intent&)> startActivity;
+        kiln::Function<bool(const Intent&, const ActivityOptions&)> startActivity;
         kiln::Function<bool(const std::string&)> shouldShowRequestPermissionRationale;
     };
     void SetActivityHost(ActivityHost host);

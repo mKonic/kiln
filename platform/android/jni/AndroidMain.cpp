@@ -1364,7 +1364,7 @@ namespace {
         {
             // ui::StartActivity / ShouldShowRequestPermissionRationale on the main window's view.
             jclass vc = env->GetObjectClass(view);
-            static jmethodID start = env->GetMethodID(vc, "startActivityFromNative", "([Ljava/lang/Object;)Z");
+            static jmethodID start = env->GetMethodID(vc, "startActivityFromNative", "([Ljava/lang/Object;[Ljava/lang/String;)Z");
             static jmethodID rationale = env->GetMethodID(vc, "shouldShowRequestPermissionRationaleFromNative", "(Ljava/lang/String;)Z");
             env->DeleteLocalRef(vc);
             jclass shc = env->FindClass("dev/kiln/KilnShortcuts");
@@ -1418,13 +1418,16 @@ namespace {
                 return out;
             });
             kiln::ui::SetActivityHost({
-                .startActivity = [](const kiln::ui::Intent& intent) -> bool {
+                .startActivity = [](const kiln::ui::Intent& intent, const kiln::ui::ActivityOptions& o) -> bool {
                     if (!g_Host || !g_Host->view) return false;
                     JNIEnv* e = MainEnv();
                     jobjectArray ji = JavaIntent(e, intent);
-                    const bool ok = e->CallBooleanMethod(g_Host->view, start, ji);
+                    auto tri = [](const std::optional<bool>& b) { return std::string(!b ? "" : *b ? "true" : "false"); };
+                    jobjectArray jo = JavaStrings(e, { o.enterAnimation, o.exitAnimation, tri(o.shareIdentity), tri(o.allowPassThroughOnTouchOutside) });
+                    const bool ok = e->CallBooleanMethod(g_Host->view, start, ji, jo);
                     if (e->ExceptionCheck()) e->ExceptionClear();
                     e->DeleteLocalRef(ji);
+                    e->DeleteLocalRef(jo);
                     return ok;
                 },
                 .shouldShowRequestPermissionRationale = [](const std::string& p) -> bool {
@@ -2703,6 +2706,53 @@ namespace {
             else if (const auto* nb = std::get_if<kiln::ui::BundleNested>(&v)) {
                 kinds.push_back(11);
                 jv = JavaBundle(env, nb->bundle ? *nb->bundle : kiln::ui::Bundle{});
+            }
+            else if (const auto* bm = std::get_if<kiln::ui::BundleBitmap>(&v)) {
+                // {byte[] encoded or null, String drawable}
+                kinds.push_back(12);
+                jobjectArray pair = env->NewObjectArray(2, oc, nullptr);
+                if (!bm->encoded.empty()) {
+                    jbyteArray a = env->NewByteArray(jsize(bm->encoded.size()));
+                    env->SetByteArrayRegion(a, 0, jsize(bm->encoded.size()), reinterpret_cast<const jbyte*>(bm->encoded.data()));
+                    env->SetObjectArrayElement(pair, 0, a);
+                    env->DeleteLocalRef(a);
+                }
+                jstring d = env->NewStringUTF(bm->drawable.c_str());
+                env->SetObjectArrayElement(pair, 1, d);
+                env->DeleteLocalRef(d);
+                jv = pair;
+            }
+            else if (const auto* ao = std::get_if<kiln::ui::BundleAnimationOptions>(&v)) { kinds.push_back(16); jv = JavaStrings(env, { ao->enter, ao->exit }); }
+            else if (const auto* pi = std::get_if<kiln::ui::BundlePendingIntent>(&v)) { kinds.push_back(13); jv = JavaString(env, kiln::foundation::ToUtf16(pi->data)); }
+            else if (const auto* bl = std::get_if<kiln::ui::BundleList>(&v)) {
+                kinds.push_back(14);
+                jobjectArray list = env->NewObjectArray(jsize(bl->bundles.size()), oc, nullptr);
+                for (std::size_t j = 0; j < bl->bundles.size(); ++j) {
+                    jobject e = JavaBundle(env, bl->bundles[j] ? *bl->bundles[j] : kiln::ui::Bundle{});
+                    env->SetObjectArrayElement(list, jsize(j), e);
+                    env->DeleteLocalRef(e);
+                }
+                jv = list;
+            }
+            else if (const auto* sp = std::get_if<kiln::ui::BundleSparse>(&v)) {
+                // {int[] keys, Object[] bundles}
+                kinds.push_back(15);
+                std::vector<jint> ids;
+                jobjectArray bundles = env->NewObjectArray(jsize(sp->items.size()), oc, nullptr);
+                for (std::size_t j = 0; j < sp->items.size(); ++j) {
+                    ids.push_back(sp->items[j].first);
+                    jobject e = JavaBundle(env, sp->items[j].second ? *sp->items[j].second : kiln::ui::Bundle{});
+                    env->SetObjectArrayElement(bundles, jsize(j), e);
+                    env->DeleteLocalRef(e);
+                }
+                jintArray jids = env->NewIntArray(jsize(ids.size()));
+                env->SetIntArrayRegion(jids, 0, jsize(ids.size()), ids.data());
+                jobjectArray pair = env->NewObjectArray(2, oc, nullptr);
+                env->SetObjectArrayElement(pair, 0, jids);
+                env->SetObjectArrayElement(pair, 1, bundles);
+                env->DeleteLocalRef(jids);
+                env->DeleteLocalRef(bundles);
+                jv = pair;
             }
             if (jv) {
                 env->SetObjectArrayElement(values, i, jv);
