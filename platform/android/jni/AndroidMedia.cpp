@@ -9,6 +9,7 @@
 #include "kiln/jvm/Jvm.h"
 #include "kiln/media/LivePlaybackSpeedControl.h"
 #include "kiln/media/Player.h"
+#include "kiln/media/rtsp/RtspSession.h"
 #include "kiln/media/Webvtt.h"
 #include "kiln/media/stream/SegmentProbe.h"
 #include "kiln/media/stream/AdaptiveSource.h"
@@ -220,7 +221,9 @@ namespace kiln::android {
         // each, into a short queue the playback thread takes from without waiting. The platform's
         // extractors read ahead of the samples they return, so a read may wait for the next
         // segment; only this thread waits.
-        class TrackReader {
+        // Where a streamed track's samples come from (an adaptive stream's pieces, an RTSP
+        // session's sample queue): its format first, then samples, then the end.
+        class SampleSource {
         public:
             struct Item {
                 enum class Kind { Format, Sample, End, NoTrack } kind = Kind::Sample;
@@ -229,6 +232,17 @@ namespace kiln::android {
                 std::vector<std::uint8_t> data;   // Sample
                 std::int64_t timeUs = 0;
             };
+            virtual ~SampleSource() = default;
+            virtual std::optional<Item> Pop() = 0;
+            // The first item (the format, or that there is no such track); nullopt until the deadline.
+            virtual std::optional<Item> PopFirst(std::int64_t timeoutUs) = 0;
+            // Nothing queued, and more is awaited from the network: playback will stall.
+            virtual bool Starving() const = 0;
+        };
+
+        class TrackReader final : public SampleSource {
+        public:
+            using Item = SampleSource::Item;
 
             TrackReader(std::shared_ptr<media::stream::SegmentStream> stream, int reader, bool video)
                 : m_Stream(std::move(stream)), m_Reader(reader), m_Video(video), m_Thread([this] { Run(); }) {}
@@ -242,7 +256,7 @@ namespace kiln::android {
                 m_Thread.join();
             }
 
-            std::optional<Item> Pop() {
+            std::optional<Item> Pop() override {
                 std::optional<Item> item;
                 {
                     std::lock_guard lock(m_Mutex);
@@ -256,14 +270,14 @@ namespace kiln::android {
             }
             // The first item (the first piece's format, or that it has no such track); nullopt
             // until the deadline.
-            std::optional<Item> PopFirst(std::int64_t timeoutUs) {
+            std::optional<Item> PopFirst(std::int64_t timeoutUs) override {
                 std::unique_lock lock(m_Mutex);
                 m_Cv.wait_for(lock, std::chrono::microseconds(timeoutUs), [this] { return !m_Queue.empty() || m_Finished; });
                 lock.unlock();
                 return Pop();
             }
             // Nothing queued, and the extractor waits for bytes not loaded yet: playback will stall.
-            bool Starving() const {
+            bool Starving() const override {
                 std::lock_guard lock(m_Mutex);
                 return m_Queue.empty() && !m_Finished && (!m_Piece || m_Piece->IsWaiting(m_Reader) || !m_Piece->CanOpen());
             }
@@ -431,6 +445,86 @@ namespace kiln::android {
         };
 
         // One track: its own extractor (seeked on its own) and decoder.
+        // media::Format as MediaCodec takes it (MediaCodecUtil / Format.getMediaFormat): the codec
+        // data as csd buffers.
+        AMediaFormat* ToMediaFormat(const media::Format& f) {
+            AMediaFormat* m = AMediaFormat_new();
+            const bool raw = f.sampleMimeType == media::rtsp::kMimeAudioRaw;
+            AMediaFormat_setString(m, AMEDIAFORMAT_KEY_MIME, f.sampleMimeType.c_str());
+            if (f.width > 0) AMediaFormat_setInt32(m, AMEDIAFORMAT_KEY_WIDTH, f.width);
+            if (f.height > 0) AMediaFormat_setInt32(m, AMEDIAFORMAT_KEY_HEIGHT, f.height);
+            if (f.sampleRate > 0) AMediaFormat_setInt32(m, AMEDIAFORMAT_KEY_SAMPLE_RATE, f.sampleRate);
+            if (f.channelCount > 0) AMediaFormat_setInt32(m, AMEDIAFORMAT_KEY_CHANNEL_COUNT, f.channelCount);
+            if (raw) AMediaFormat_setInt32(m, "pcm-encoding", 2);   // 16-bit (the reader converts to it)
+            const auto& init = f.initializationData;
+            auto setCsd = [&](const char* key, const std::vector<std::uint8_t>& data) { AMediaFormat_setBuffer(m, key, data.data(), data.size()); };
+            if (f.sampleMimeType == media::stream::MimeTypes::VIDEO_H265 && !init.empty()) {
+                std::vector<std::uint8_t> all;
+                for (const auto& d : init) all.insert(all.end(), d.begin(), d.end());
+                setCsd("csd-0", all);   // VPS, SPS and PPS together
+            } else {
+                static const char* kKeys[] = { "csd-0", "csd-1", "csd-2" };
+                for (std::size_t i = 0; i < init.size() && i < 3; ++i) setCsd(kKeys[i], init[i]);
+            }
+            return m;
+        }
+
+        // An RTSP track's samples from its session (RtspMediaPeriod's SampleStreamImpl), raw PCM
+        // turned into 16-bit little-endian for the output.
+        class RtspTrackReader final : public SampleSource {
+        public:
+            RtspTrackReader(std::shared_ptr<media::rtsp::RtspSession> session, int track) : m_Session(std::move(session)), m_Track(track) {}
+            std::optional<Item> Pop() override {
+                std::optional<media::rtsp::SampleQueue::Item> next = m_Session->Read(m_Track);
+                if (!next) {
+                    if (!m_EndGiven && m_Session->IsEnded(m_Track)) {
+                        m_EndGiven = true;
+                        Item end;
+                        end.kind = Item::Kind::End;
+                        return end;
+                    }
+                    return std::nullopt;
+                }
+                Item item;
+                if (next->kind == media::rtsp::SampleQueue::Item::Kind::Format) {
+                    item.kind = Item::Kind::Format;
+                    m_PcmEncoding = next->format.pcmEncoding;
+                    item.format.reset(ToMediaFormat(next->format));
+                    return item;
+                }
+                item.kind = Item::Kind::Sample;
+                item.timeUs = next->timeUs;
+                item.data = std::move(next->data);
+                if (m_PcmEncoding == media::rtsp::kEncodingPcm16BitBigEndian) {
+                    for (std::size_t i = 0; i + 1 < item.data.size(); i += 2) std::swap(item.data[i], item.data[i + 1]);
+                } else if (m_PcmEncoding == media::rtsp::kEncodingPcm8Bit) {
+                    std::vector<std::uint8_t> wide(item.data.size() * 2);
+                    for (std::size_t i = 0; i < item.data.size(); ++i) {
+                        const std::int16_t v = std::int16_t((int(item.data[i]) - 128) << 8);
+                        wide[i * 2] = std::uint8_t(v & 0xff);
+                        wide[i * 2 + 1] = std::uint8_t((v >> 8) & 0xff);
+                    }
+                    item.data = std::move(wide);
+                }
+                return item;
+            }
+            std::optional<Item> PopFirst(std::int64_t timeoutUs) override {
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::microseconds(timeoutUs);
+                for (;;) {
+                    if (auto item = Pop()) return item;
+                    if (m_Session->Error() || std::chrono::steady_clock::now() > deadline) return std::nullopt;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                }
+            }
+            bool Starving() const override { return !m_Session->HasSamples(m_Track) && !m_Session->IsEnded(m_Track); }
+
+        private:
+            std::shared_ptr<media::rtsp::RtspSession> m_Session;
+            int m_Track;
+            int m_PcmEncoding = -1;
+            bool m_EndGiven = false;
+        };
+
         struct Track {
             int index = -1;
             std::string mime;
@@ -445,7 +539,11 @@ namespace kiln::android {
             std::shared_ptr<media::stream::SegmentStream> stream;
             int reader = 0;
             bool video = false;
-            std::unique_ptr<TrackReader> sampleReader;
+            std::unique_ptr<SampleSource> sampleReader;
+            // A streamed track (an adaptive stream's or an RTSP session's): its reader, and how
+            // to make a new one after a seek.
+            bool streamed = false;
+            std::function<std::unique_ptr<SampleSource>()> makeReader;
             std::optional<TrackReader::Item> pending;   // taken from the reader, waiting for an input buffer
             bool fed = false;                            // samples went to a decoder since the start or a seek
             // A new rendition: its codec-specific data goes in before its samples, or the decoder
@@ -661,6 +759,7 @@ namespace kiln::android {
                 CloseAudio();
                 m_Video.reset();
                 m_Audio.reset();
+                m_Rtsp.reset();   // TEARDOWN, the loaders stop
                 m_Source.reset();
                 m_VideoStream.reset();
                 m_AudioStream.reset();
@@ -686,6 +785,7 @@ namespace kiln::android {
                 m_State = {};
                 m_State.playWhenReady = m_PlayingWanted;
                 if (uri.empty()) return;
+                if (IsRtsp(uri)) return OpenRtsp(uri, startUs);
                 if (media::stream::AdaptiveSource::InferProtocol(uri, m_MimeType)) return OpenAdaptive(uri, startUs);
                 std::string error;
                 m_Source = OpenSource(uri, error);
@@ -823,7 +923,7 @@ namespace kiln::android {
                 }
                 m_PendingVideo = -1;
                 m_Video->ReleaseCodec();
-                if (window && m_Video->stream) {
+                if (window && m_Video->streamed) {
                     if (!CreateVideoCodec(window)) return;
                     m_FirstFrameRendered = false;
                     // Nothing read yet (no surface since the start): decoding starts where the
@@ -849,6 +949,69 @@ namespace kiln::android {
             // then the tracks of their first pieces.
             // `source`: the manifest already loaded (new track preferences), playing on from
             // `periodPositionUs`.
+            // Util.inferContentType: an rtsp / rtspt URI, or MimeTypes.APPLICATION_RTSP.
+            bool IsRtsp(const std::string& uri) const {
+                std::string scheme = uri.substr(0, uri.find(':'));
+                for (char& c : scheme) c = char(std::tolower(static_cast<unsigned char>(c)));
+                return scheme == "rtsp" || scheme == "rtspt" || m_MimeType == "application/x-rtsp";
+            }
+            // RtspMediaSource: the session describes the presentation; its tracks play from
+            // their sample queues.
+            void OpenRtsp(const std::string& uri, std::int64_t startUs) {
+                auto session = std::make_shared<media::rtsp::RtspSession>(uri);
+                session->Prepare();
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+                while (!session->IsPrepared()) {
+                    if (const auto error = session->Error()) return Fail(*error, media::PlaybackException::IoNetworkConnectionFailed);
+                    if (std::chrono::steady_clock::now() > deadline) return Fail("timed out describing " + uri, media::PlaybackException::IoNetworkConnectionTimeout);
+                    {
+                        std::lock_guard lock(m_Mutex);
+                        if (m_Quit || m_UriChanged) return;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
+                m_Rtsp = session;
+                m_Formats = session->TrackFormats();
+                m_Types.clear();
+                for (const auto& f : m_Formats)
+                    m_Types.push_back(f.sampleMimeType.starts_with("video/") ? media::TrackType::Video
+                                      : f.sampleMimeType.starts_with("audio/") ? media::TrackType::Audio
+                                                                                : media::TrackType::Unknown);
+                const media::rtsp::RtspSession::Timeline timeline = session->GetTimeline();
+                m_DurationUs = timeline.durationUs == media::stream::kTimeUnset ? -1 : timeline.durationUs;
+                m_State.durationMs = m_DurationUs >= 0 ? m_DurationUs / 1000 : -1;
+                const auto [video, audio] = SelectTracks();
+                std::vector<int> selected;
+                for (int t : { video, audio })
+                    if (t >= 0) selected.push_back(t);
+                if (selected.empty()) return Fail("no playable track in " + uri, media::PlaybackException::ParsingContainerUnsupported);
+                const std::int64_t positionUs = std::max<std::int64_t>(startUs, 0);
+                session->SelectTracks(selected, positionUs);
+                auto openTrack = [&](int index, bool isVideo) -> std::unique_ptr<Track> {
+                    auto t = std::make_unique<Track>();
+                    t->index = index;
+                    t->video = isVideo;
+                    t->streamed = true;
+                    t->seekTargetUs = positionUs;
+                    t->makeReader = [session, index] { return std::make_unique<RtspTrackReader>(session, index); };
+                    t->sampleReader = t->makeReader();
+                    std::optional<TrackReader::Item> first = t->sampleReader->PopFirst(30'000'000);
+                    if (!first || first->kind != TrackReader::Item::Kind::Format) return nullptr;
+                    t->format = first->format.release();
+                    t->mime = m_Formats[std::size_t(index)].sampleMimeType;
+                    return t;
+                };
+                if (video >= 0) m_Video = openTrack(video, true);
+                if (audio >= 0) m_Audio = openTrack(audio, false);
+                if (!m_Video && !m_Audio) {
+                    if (const auto error = session->Error()) return Fail(*error, media::PlaybackException::IoNetworkConnectionFailed);
+                    return Fail("no audio or video from " + uri, media::PlaybackException::ParsingContainerUnsupported);
+                }
+                ReportTracks(video, audio);
+                m_Network = true;
+                FinishOpen(positionUs);
+            }
+
             void OpenAdaptive(const std::string& uri, std::int64_t startUs, std::shared_ptr<media::stream::AdaptiveSource> source = nullptr,
                               std::optional<std::int64_t> periodPositionUs = std::nullopt) {
                 using namespace media::stream;
@@ -918,7 +1081,9 @@ namespace kiln::android {
                     t->reader = reader;
                     t->video = video;
                     t->seekTargetUs = positionUs;
-                    t->sampleReader = std::make_unique<TrackReader>(stream, reader, video);
+                    t->streamed = true;
+                    t->makeReader = [stream, reader, video] { return std::make_unique<TrackReader>(stream, reader, video); };
+                    t->sampleReader = t->makeReader();
                     std::optional<TrackReader::Item> first = t->sampleReader->PopFirst(30'000'000);
                     if (!first || first->kind != TrackReader::Item::Kind::Format) return nullptr;
                     t->format = first->format.release();
@@ -1213,7 +1378,7 @@ namespace kiln::android {
             // the sink (AudioRenderer's audioSink.hasPendingData), no video frame to show.
             bool StreamsStarving() const {
                 for (const Track* t : { m_Video.get(), m_Audio.get() }) {
-                    if (!t || !t->stream || !t->codec || t->inputDone || t->pending || !t->sampleReader || !t->sampleReader->Starving()) continue;
+                    if (!t || !t->streamed || !t->codec || t->inputDone || t->pending || !t->sampleReader || !t->sampleReader->Starving()) continue;
                     if (t == m_Audio.get()) {
                         if (m_PendingPcmOffset < m_PendingPcm.size()) continue;
                         if (m_Stream && AAudioStream_getFramesWritten(m_Stream) - AAudioStream_getFramesRead(m_Stream) > m_SampleRate / 50) continue;
@@ -1324,6 +1489,7 @@ namespace kiln::android {
             }
 
             bool StreamsBusy() const {
+                if (m_Rtsp) return true;   // samples arrive without a wake-up
                 if (!m_Adaptive) return false;
                 if (m_State.state == media::PlaybackState::Buffering) return true;
                 for (const auto& st : { m_VideoStream, m_AudioStream })
@@ -1338,12 +1504,17 @@ namespace kiln::android {
                 return {};
             }
             bool StreamsEnded() const {
+                if (m_Rtsp) return m_Rtsp->BufferedPositionUs() == INT64_MIN;   // loading finished
                 for (const auto& s : { m_VideoStream, m_AudioStream })
                     if (s && !s->IsEnded()) return false;
                 return true;
             }
             // How far every stream is loaded (kTimeUnset while one has nothing).
             std::int64_t StreamsBufferedUs() const {
+                if (m_Rtsp) {
+                    const std::int64_t b = m_Rtsp->BufferedPositionUs();
+                    return b == INT64_MIN ? media::stream::kTimeUnset : b;
+                }
                 std::int64_t buffered = INT64_MAX;
                 for (const auto& s : { m_VideoStream, m_AudioStream }) {
                     if (!s || s->IsEnded()) continue;
@@ -1356,7 +1527,7 @@ namespace kiln::android {
             // DefaultLoadControl.shouldStartPlayback: 2.5 s loaded ahead (5 s after a rebuffer, at
             // most half a live stream's target offset), or everything.
             bool StreamsReadyToPlay() const {
-                if (!m_Adaptive || StreamsEnded()) return true;
+                if ((!m_Adaptive && !m_Rtsp) || StreamsEnded()) return true;
                 if (StreamsStarving()) return false;
                 const std::int64_t buffered = StreamsBufferedUs();
                 if (buffered == media::stream::kTimeUnset) return false;
@@ -1615,14 +1786,16 @@ namespace kiln::android {
                 m_LastReleaseUs = NowUs();
             }
 
-            void Seek(std::int64_t us) {
+            // tellSource false: the source moved by itself (an RTSP discontinuity).
+            void Seek(std::int64_t us, bool tellSource = true) {
                 m_PendingVideo = -1;
                 // Streams load again from the segment containing the position.
                 // The readers stop before their pieces go; they start again on the new ones.
                 for (Track* t : { m_Video.get(), m_Audio.get() })
-                    if (t && t->stream) t->sampleReader.reset();
+                    if (t && t->streamed) t->sampleReader.reset();
                 // HlsMediaPeriod.seekToUs: the timestamp adjusters start again with the new chunks.
                 if (m_Adaptive) m_Adaptive->Adjusters().Reset();
+                if (m_Rtsp && tellSource) m_Rtsp->SeekToUs(us);
                 if (m_VideoStream) m_VideoStream->Start(us);
                 if (m_AudioStream && m_AudioStream != m_VideoStream) m_AudioStream->Start(us);
                 if (m_TextStream) {
@@ -1633,8 +1806,8 @@ namespace kiln::android {
                 }
                 for (Track* t : { m_Video.get(), m_Audio.get() }) {
                     if (!t) continue;
-                    if (t->stream) {
-                        t->sampleReader = std::make_unique<TrackReader>(t->stream, t->reader, t->video);
+                    if (t->streamed) {
+                        t->sampleReader = t->makeReader();
                         t->pending.reset();
                         t->pendingConfig.clear();
                         if (t->reinitFormat) AMediaFormat_delete(t->reinitFormat);
@@ -1725,7 +1898,7 @@ namespace kiln::android {
             // --- decoding ------------------------------------------------------------------------
             void FeedInput(Track& t) {
                 if (!t.codec) return;
-                if (t.stream) return FeedStreamInput(t);
+                if (t.streamed) return FeedStreamInput(t);
                 for (int i = 0; i < 4 && !t.inputDone; ++i) {
                     ssize_t idx = AMediaCodec_dequeueInputBuffer(t.codec, 0);
                     if (idx < 0) return;
@@ -1986,6 +2159,11 @@ namespace kiln::android {
             }
 
             void DoSomeWork() {
+                if (m_Rtsp) {
+                    if (const auto error = m_Rtsp->Error()) return Fail(*error, media::PlaybackException::IoNetworkConnectionFailed);
+                    // readDiscontinuity: the server would not seek; playback goes on from 0.
+                    if (m_Rtsp->ReadDiscontinuity()) Seek(0, false);
+                }
                 if (m_Adaptive) {
                     if (const std::string error = StreamError(); !error.empty())
                         return Fail(error, error.starts_with("HTTP ") ? media::PlaybackException::IoBadHttpStatus : media::PlaybackException::IoNetworkConnectionFailed);
@@ -2009,7 +2187,7 @@ namespace kiln::android {
                 }
                 // ExoPlayerImplInternal: playing with nothing loaded for the position: buffering
                 // again (until DefaultLoadControl's buffer after a rebuffer is there).
-                if (m_Adaptive && m_State.state == media::PlaybackState::Ready && !StreamsEnded()) {
+                if ((m_Adaptive || m_Rtsp) && m_State.state == media::PlaybackState::Ready && !StreamsEnded()) {
                     const std::int64_t buffered = StreamsBufferedUs();
                     if ((buffered != media::stream::kTimeUnset && buffered <= ClockUs()) || StreamsStarving()) {
                         m_State.state = media::PlaybackState::Buffering;
@@ -2041,7 +2219,7 @@ namespace kiln::android {
                 s.videoSize = m_ReportedVideoSize;
                 s.playWhenReady = m_PlayingWanted;
                 s.isPlaying = m_Playing;
-                if (m_Prepared && m_Adaptive) {
+                if (m_Prepared && (m_Adaptive || m_Rtsp)) {
                     s.positionInFirstPeriodMs = m_WindowStartUs / 1000;
                     s.isCurrentMediaItemLive = m_LiveWindow.liveConfiguration.has_value();
                     s.isCurrentMediaItemDynamic = m_LiveWindow.dynamic;
@@ -2059,6 +2237,15 @@ namespace kiln::android {
                     s.isLoading = false;
                     for (const auto& st : { m_VideoStream, m_AudioStream })
                         if (st && st->IsLoading()) s.isLoading = true;
+                    if (m_Rtsp) {
+                        // RtspMediaSource's SinglePeriodTimeline: live (with the item's live
+                        // configuration) when the range is open, never dynamic.
+                        s.isLoading = m_Rtsp->IsLoading();
+                        if (m_Rtsp->GetTimeline().live) {
+                            s.isCurrentMediaItemLive = true;
+                            s.currentLiveConfiguration = m_LiveItemConfiguration;
+                        }
+                    }
                 } else if (m_Prepared) {
                     std::int64_t us = ClockUs();
                     if (m_DurationUs > 0) us = std::min(us, m_DurationUs);
@@ -2143,6 +2330,8 @@ namespace kiln::android {
             // its checkpoint's frame on).
             static constexpr std::int64_t kDefaultPositionUs = INT64_MIN;
             media::MediaItem::LiveConfiguration m_LiveItemConfiguration;
+            // An RTSP presentation (its tracks read from it).
+            std::shared_ptr<media::rtsp::RtspSession> m_Rtsp;
             media::stream::StreamWindow m_LiveWindow;
             media::LivePlaybackSpeedControl m_LiveSpeedControl;
             float m_LiveSpeed = 1.f;
