@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <variant>
 #include <vector>
@@ -48,6 +49,9 @@ namespace kiln::paging {
         // Items before and after this page that are not loaded, when known (placeholders).
         int itemsBefore = kCountUndefined, itemsAfter = kCountUndefined;
         bool operator==(const Page&) const = default;
+        // iterator: over the items.
+        auto begin() const { return data.begin(); }
+        auto end() const { return data.end(); }
     };
     // LoadResult.Error
     struct LoadError {
@@ -201,6 +205,42 @@ namespace kiln::paging {
         bool m_Invalid = false;
         int m_NextId = 0;
         std::map<int, kiln::Function<void()>> m_Callbacks;
+    };
+
+
+    // InvalidatingPagingSourceFactory: a pagingSourceFactory whose Invalidate() invalidates every
+    // source it made. Keep it in a shared_ptr and give the Pager [f] { return (*f)(); }.
+    template<typename Key, typename Value>
+    class InvalidatingPagingSourceFactory {
+    public:
+        using Source = PagingSource<Key, Value>;
+        explicit InvalidatingPagingSourceFactory(kiln::Function<std::shared_ptr<Source>()> factory) : m_Factory(std::move(factory)) {}
+
+        std::shared_ptr<Source> operator()() {
+            std::shared_ptr<Source> source = m_Factory();
+            std::lock_guard lock(m_Mutex);
+            m_Sources.push_back(source);
+            return source;
+        }
+        // Only the sources made so far: one made while invalidating (a new generation) stays.
+        void Invalidate() {
+            std::vector<std::shared_ptr<Source>> previous;
+            {
+                std::lock_guard lock(m_Mutex);
+                previous.swap(m_Sources);
+            }
+            for (const auto& source : previous)
+                if (!source->Invalid()) source->Invalidate();
+        }
+        std::vector<std::shared_ptr<Source>> PagingSources() const {
+            std::lock_guard lock(m_Mutex);
+            return m_Sources;
+        }
+
+    private:
+        kiln::Function<std::shared_ptr<Source>()> m_Factory;
+        mutable std::mutex m_Mutex;
+        std::vector<std::shared_ptr<Source>> m_Sources;
     };
 
 }

@@ -1,7 +1,8 @@
 #pragma once
 
 // PagingData and what flows inside it (paging-common: PagingData, PageEvent, TransformablePage,
-// ViewportHint, HintHandler, PagingDataTransforms' map and filter).
+// ViewportHint, HintHandler, PagingDataTransforms' map, flatMap and filter; separators are in
+// Separators.h).
 
 #include "kiln/paging/LoadState.h"
 
@@ -162,6 +163,23 @@ namespace kiln::paging {
                 }
                 return out;
             }
+            // flatMap: each item to any number of items, each remembering its source item for hints.
+            template<typename F> auto FlatMap(const F& fn) const {
+                using R = typename std::decay_t<std::invoke_result_t<F, const T&>>::value_type;
+                PageEvent<R> out = Shell<R>();
+                for (const T& v : data)
+                    for (auto& r : fn(v)) out.data.push_back(std::move(r));
+                for (const auto& p : pages) {
+                    TransformablePage<R> q{ p.originalPageOffsets, {}, p.hintOriginalPageOffset, std::vector<int>{} };
+                    for (std::size_t i = 0; i < p.data.size(); ++i) {
+                        for (auto& r : fn(p.data[i])) q.data.push_back(std::move(r));
+                        const int index = p.hintOriginalIndices ? (*p.hintOriginalIndices)[i] : int(i);
+                        while (q.hintOriginalIndices->size() < q.data.size()) q.hintOriginalIndices->push_back(index);
+                    }
+                    out.pages.push_back(std::move(q));
+                }
+                return out;
+            }
             // filter: the items the predicate accepts, remembering where each sat for hints.
             template<typename F> PageEvent Filter(const F& predicate) const {
                 PageEvent out = Shell<T>();
@@ -249,6 +267,17 @@ namespace kiln::paging {
                                  [cached, f]() -> std::optional<detail::PageEvent<R>> {
                                      auto e = cached ? cached() : std::nullopt;
                                      return e ? std::optional(e->Map(*f)) : std::nullopt;
+                                 });
+        }
+        // flatMap { }: each item to a list of items (none, one or more).
+        template<typename F> auto FlatMap(F fn) const {
+            using R = typename std::decay_t<std::invoke_result_t<F, const T&>>::value_type;
+            auto f = std::make_shared<F>(std::move(fn));
+            auto cached = m_CachedEvent;
+            return PagingData<R>(rt::Map(m_Flow, [f](const detail::PageEvent<T>& e) { return e.FlatMap(*f); }), m_Ui, m_Hints,
+                                 [cached, f]() -> std::optional<detail::PageEvent<R>> {
+                                     auto e = cached ? cached() : std::nullopt;
+                                     return e ? std::optional(e->FlatMap(*f)) : std::nullopt;
                                  });
         }
         // filter { }: only the items the predicate accepts.

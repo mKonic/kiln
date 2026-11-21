@@ -200,6 +200,13 @@ SavedStateWriter = "SavedValue"
 "RequestExtras.isNotEmpty" = "Empty"
 "NavBackStack.listIterator" = "begin"
 
+# paging: the factory is called (operator()); the presenter's present function is
+# presentPagingDataEvent; LoadResult.Error's throwable is an exception_ptr.
+"InvalidatingPagingSourceFactory.invoke" = "operator"
+"PagingDataPresenter.presentPagingDataEvent" = "PagingDataPresenter(present)"
+"Error.throwable" = "LoadError::error"
+"ItemSnapshotListFlow" = "AsItemSnapshotListFlow"
+
 # media3 Player: getters with the unit in the name, and state read from PlayerState (ExoPlayer's
 # content position is the position: no ads; one period per item).
 PlaybackSuppressionReason = "PlaybackSuppression"
@@ -889,6 +896,15 @@ toSpan = "Android spans (TtsSpan)"
 "NavBackStack.firstStateRecord" = "StateObject plumbing: kiln's rt::StateList tracks reads and writes"
 "NavBackStack.getFirstStateRecord" = "see NavBackStack.firstStateRecord"
 "NavBackStack.prependStateRecord" = "see NavBackStack.firstStateRecord"
+
+# Paging 2's DataSource: JVM-only, its subclasses deprecated for PagingSource (which kiln has).
+DataSource = "Paging 2's legacy source (jvmAndAndroid only; Item/Positional/PageKeyedDataSource are deprecated for PagingSource)"
+InvalidatedCallback = "see DataSource"
+"InvalidatedCallback.onInvalidated" = "see DataSource"
+"Factory.asPagingSourceFactory" = "see DataSource"
+"Factory.create" = "see DataSource"
+"Factory.map" = "see DataSource"
+"Factory.mapByPage" = "see DataSource"
 
 [skipped_patterns]
 '^(Storage|FileStorage|StorageConnection|ReadScope|WriteScope|InterProcessCoordinator|MultiProcessDataStoreFactory|createSingleProcessCoordinator|createMultiProcessCoordinator|writeData|readData)(\..*)?$' = "pluggable storage and multi-process coordination: kiln's DataStore is one process, one file (FileStorage's behaviour built in)"

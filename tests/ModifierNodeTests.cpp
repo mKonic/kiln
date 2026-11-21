@@ -198,7 +198,8 @@ TEST(PlatformServiceLocalsDefaultToTheOwner) {
     // A clip entry round-trips through the owner's clipboard (no host: kept locally as text).
     auto set = rt::Launch(rt::Dispatcher::Main(), clipboard->SetClipEntry(ClipEntry{ { ClipItem{ "hello", std::nullopt, std::nullopt } } }));
     std::optional<ClipEntry> got;
-    auto get = rt::Launch(rt::Dispatcher::Main(), [&]() -> rt::Task<> { got = co_await clipboard->GetClipEntry(); }());
+    // Parameters, not captures: a coroutine lambda's captures die with the temporary closure.
+    auto get = rt::Launch(rt::Dispatcher::Main(), [](std::shared_ptr<Clipboard> c, std::optional<ClipEntry>* out) -> rt::Task<> { *out = co_await c->GetClipEntry(); }(clipboard, &got));
     h.Pump();
     CHECK(got && got->items.size() == 1 && got->items[0].text == std::optional<std::string>("hello"));
     // The legacy toolbar shows the asked items and runs the clicked one.

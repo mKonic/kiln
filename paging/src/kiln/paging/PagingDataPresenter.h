@@ -7,6 +7,7 @@
 
 #include "kiln/runtime/CoroutineScope.h"
 
+#include <concepts>
 #include <deque>
 #include <map>
 
@@ -19,6 +20,9 @@ namespace kiln::paging {
         std::vector<T> items;
 
         int Size() const { return placeholdersBefore + int(items.size()) + placeholdersAfter; }
+        // PlaceholderPaddedList: the loaded items alone.
+        int DataCount() const { return int(items.size()); }
+        const T& GetItem(int dataIndex) const { return items.at(std::size_t(dataIndex)); }
         // The item, or null for a placeholder.
         const T* Get(int index) const {
             if (index < 0 || index >= Size()) throw std::out_of_range("Illegal attempt to access index " + std::to_string(index) + " in ItemSnapshotList of size " + std::to_string(Size()));
@@ -26,6 +30,10 @@ namespace kiln::paging {
             return local >= 0 && local < int(items.size()) ? &items[std::size_t(local)] : nullptr;
         }
     };
+
+    // PlaceholderPaddedList: a list of loaded items with placeholder counts around it.
+    template<typename T>
+    using PlaceholderPaddedList = ItemSnapshotList<T>;
 
     // What changed in the presented list.
     template<typename T>
@@ -37,6 +45,8 @@ namespace kiln::paging {
         int newPlaceholdersBefore = 0, oldPlaceholdersBefore = 0;   // Prepend, DropPrepend; Refresh
         int newPlaceholdersAfter = 0, oldPlaceholdersAfter = 0;     // Append, DropAppend; Refresh
         int newDataCount = 0, oldDataCount = 0;                     // Refresh
+        // Refresh: the whole list before and after (to diff them).
+        std::shared_ptr<const PlaceholderPaddedList<T>> previousList, newList;
     };
 
     namespace detail {
@@ -219,6 +229,7 @@ namespace kiln::paging {
                 if (event.kind != Kind::LoadStateUpdate) {
                     const auto listeners = m_PagesUpdated;
                     for (const auto& [id, fn] : listeners) fn();
+                    m_OnPagesUpdated.TryEmit(true);
                 }
             }));
         }
@@ -257,10 +268,26 @@ namespace kiln::paging {
             return m_NextListener;
         }
         void RemoveOnPagesUpdatedListener(int id) { m_PagesUpdated.erase(id); }
+        // onPagesUpdatedFlow: the same, as a flow (it drops the oldest when not collected fast).
+        rt::Flow<bool> OnPagesUpdatedFlow() const { return m_OnPagesUpdated.AsFlow(); }
+        // addLoadStateListener: called with the current states (when there are any) and after
+        // each change. The id removes it.
+        int AddLoadStateListener(kiln::Function<void(const CombinedLoadStates&)> listener) {
+            const int id = ++m_NextListener;
+            if (const auto& current = m_LoadStates.Value()) listener(*current);
+            m_LoadStateListeners[id] = std::move(listener);
+            return id;
+        }
+        void RemoveLoadStateListener(int id) { m_LoadStateListeners.erase(id); }
 
     private:
         void SetLoadStates(const LoadStates& source, const std::optional<LoadStates>& mediator) {
-            m_LoadStates.SetValue(detail::ComputeNewState(m_LoadStates.Value(), source, mediator));
+            const std::optional<CombinedLoadStates> before = m_LoadStates.Value();
+            const CombinedLoadStates next = detail::ComputeNewState(before, source, mediator);
+            m_LoadStates.SetValue(next);
+            if (before && *before == next) return;
+            const auto listeners = m_LoadStateListeners;
+            for (const auto& [id, fn] : listeners) fn(next);
         }
         void SetUiReceiver(std::shared_ptr<const detail::UiReceiver> ui) {
             m_Ui = std::move(ui);
@@ -276,11 +303,13 @@ namespace kiln::paging {
             change.oldPlaceholdersBefore = m_Store.PlaceholdersBefore();
             change.oldPlaceholdersAfter = m_Store.PlaceholdersAfter();
             change.oldDataCount = m_Store.DataCount();
+            change.previousList = std::make_shared<const PlaceholderPaddedList<T>>(m_Store.Snapshot());
             m_Store = detail::PageStore<T>(std::move(pages), placeholdersBefore, placeholdersAfter);
             m_Hints = std::move(hints);
             change.newPlaceholdersBefore = placeholdersBefore;
             change.newPlaceholdersAfter = placeholdersAfter;
             change.newDataCount = m_Store.DataCount();
+            change.newList = std::make_shared<const PlaceholderPaddedList<T>>(m_Store.Snapshot());
             if (m_Present) m_Present(change);
             if (source) SetLoadStates(*source, mediator);
             // Nothing to read in an empty list: this hint lets the Pager load on.
@@ -294,6 +323,8 @@ namespace kiln::paging {
         bool m_ShouldRetry = false, m_ShouldRefresh = false;
         rt::MutableStateFlow<std::optional<CombinedLoadStates>> m_LoadStates{ std::optional<CombinedLoadStates>{} };
         std::map<int, kiln::Function<void()>> m_PagesUpdated;
+        std::map<int, kiln::Function<void(const CombinedLoadStates&)>> m_LoadStateListeners;
+        rt::MutableSharedFlow<bool> m_OnPagesUpdated{ 0, 64 };
         int m_NextListener = 0;
         bool m_InGetItem = false;
         bool m_LastAccessedIndexUnfulfilled = false;
@@ -494,5 +525,61 @@ namespace kiln::paging {
     }
     template<typename T>
     PagingDataFlow<T> CachedIn(const PagingDataFlow<T>& flow, std::shared_ptr<rt::CoroutineScope> scope) { return CachedIn(flow.flow, std::move(scope)); }
+
+
+    // asItemSnapshotListFlow: the presented list after each change, without a UI (tests, data
+    // work). Each new PagingData starts over; `onLoadError` hears load states with an error.
+    template<typename T>
+    rt::Flow<ItemSnapshotList<T>> AsItemSnapshotListFlow(rt::Flow<PagingData<T>> flow, kiln::Function<void(const CombinedLoadStates&)> onLoadError = {}) {
+        using Event = detail::PageEvent<T>;
+        using Kind = typename Event::Kind;
+        auto errorStates = std::make_shared<std::optional<CombinedLoadStates>>();
+        auto onError = std::make_shared<kiln::Function<void(const CombinedLoadStates&)>>(std::move(onLoadError));
+        return rt::FlatMapLatest(std::move(flow), [errorStates, onError](const PagingData<T>& data) {
+            return rt::Flow<ItemSnapshotList<T>>::Create([data, errorStates, onError](rt::FlowCollector<ItemSnapshotList<T>> emit) -> rt::Task<> {
+                auto store = std::make_shared<std::optional<detail::PageStore<T>>>();
+                auto last = std::make_shared<std::optional<ItemSnapshotList<T>>>();
+                co_await data.Events().Collect(rt::FlowCollector<Event>([store, last, errorStates, onError, emit](Event e) -> rt::Task<> {
+                    if (e.kind == Kind::LoadStateUpdate) {
+                        const LoadStates source = e.sourceLoadStates.value_or(LoadStates::Idle());
+                        if (source.HasError() || (e.mediatorLoadStates && e.mediatorLoadStates->HasError())) {
+                            *errorStates = detail::ComputeNewState(*errorStates, source, e.mediatorLoadStates);
+                            if (*onError) (*onError)(**errorStates);
+                        }
+                    } else if (e.kind == Kind::StaticList) {
+                        *store = detail::PageStore<T>({ detail::TransformablePage<T>::Of(0, e.data) }, e.placeholdersBefore, e.placeholdersAfter);
+                    } else if (e.IsRefresh()) {
+                        if (*store) throw std::logic_error("PageStore should be null on REFRESH. This likely indicates an error in the library.");
+                        *store = detail::PageStore<T>(e.pages, e.placeholdersBefore, e.placeholdersAfter);
+                    } else if (*store) {
+                        (*store)->ProcessEvent(e);
+                    } else if (e.kind == Kind::Insert && !e.pages.empty()) {
+                        // An empty terminal-separator insert may come before the refresh.
+                        throw std::logic_error("PageStore should only be null on REFRESH or empty Inserts. This likely indicates an error in the library.");
+                    }
+                    if (!*store) co_return;
+                    ItemSnapshotList<T> snapshot = (*store)->Snapshot();
+                    if constexpr (std::equality_comparable<T>) {
+                        // distinctUntilChangedBy: only a changed list.
+                        if (*last && (*last)->placeholdersBefore == snapshot.placeholdersBefore && (*last)->placeholdersAfter == snapshot.placeholdersAfter && (*last)->items == snapshot.items)
+                            co_return;
+                    }
+                    *last = snapshot;
+                    co_await emit(std::move(snapshot));
+                }));
+            });
+        });
+    }
+
+
+    // awaitNotLoading: waits until loading settles (idle, or an error) and returns those states;
+    // nothing when the flow ends first. A short debounce skips states that pass at once.
+    inline rt::Task<std::optional<CombinedLoadStates>> AwaitNotLoading(rt::Flow<CombinedLoadStates> flow) {
+        return rt::FirstOrNull(rt::Debounce(std::move(flow), 1), [](const CombinedLoadStates& s) { return s.IsIdle() || s.HasError(); });
+    }
+    // The presenter's load states (absent until the first arrive).
+    inline rt::Task<std::optional<CombinedLoadStates>> AwaitNotLoading(const rt::MutableStateFlow<std::optional<CombinedLoadStates>>& states) {
+        return AwaitNotLoading(rt::MapNotNull(states.AsFlow(), [](const std::optional<CombinedLoadStates>& s) { return s; }));
+    }
 
 }

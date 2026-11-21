@@ -400,3 +400,104 @@ TEST(LazyPagingItemsPresentPagedDataInContent) {
     }
     scope->jobs.clear();
 }
+
+// InvalidatingPagingSourceFactoryTest.
+TEST(InvalidatingPagingSourceFactory_invalidatesWhatItMade) {
+    auto log = std::make_shared<Log>();
+    InvalidatingPagingSourceFactory<int, int> factory([log] { return std::make_shared<TestSource>(log, 10); });
+    for (int i = 0; i < 4; ++i) factory();
+    CHECK_EQ(factory.PagingSources().size(), 4u);
+    // skipInvalidatedPagingSources: one already invalid is not invalidated again.
+    factory.PagingSources()[0]->Invalidate();
+    int calls = 0;
+    for (const auto& s : factory.PagingSources()) s->RegisterInvalidatedCallback([&] { ++calls; });
+    CHECK_EQ(calls, 1);   // the invalid one calls at once
+    factory.Invalidate();
+    CHECK_EQ(calls, 4);
+    CHECK(factory.PagingSources().empty());   // invalidateRemoveFromList
+    // A source made while invalidating (a new generation) is not invalidated in the same pass.
+    std::function<void()> next = [&] { factory()->RegisterInvalidatedCallback([&] { next(); }); };
+    next();
+    factory.Invalidate();
+    CHECK_EQ(factory.PagingSources().size(), 1u);
+    CHECK(!factory.PagingSources()[0]->Invalid());
+}
+
+// PagingDataPresenterTest: addLoadStateListener (current states at once, then each change, until
+// removed), onPagesUpdatedFlow, and a refresh's lists.
+TEST(PagingPresenterListenersAndRefreshLists) {
+    Fixture f({ .pageSize = 10, .prefetchDistance = 5, .initialLoadSize = 20 });
+    std::vector<CombinedLoadStates> heard;
+    std::shared_ptr<const PlaceholderPaddedList<int>> before, after;
+    PagingDataPresenter<int> presenter([&](const PagingDataEvent<int>& e) {
+        if (e.kind == PagingDataEvent<int>::Kind::Refresh) {
+            before = e.previousList;
+            after = e.newList;
+        }
+    });
+    const int id = presenter.AddLoadStateListener([&](const CombinedLoadStates& s) { heard.push_back(s); });
+    CHECK(heard.empty());   // no states yet
+    int updates = 0;
+    rt::Job counting = rt::Launch(rt::Dispatcher::Main(), presenter.OnPagesUpdatedFlow().Collect([&](const bool&) { ++updates; }));
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), rt::CollectLatest<PagingData<int>>(f.pager.Flow(), [&](PagingData<int> d) { return presenter.CollectFrom(std::move(d)); }));
+    Pump();
+    CHECK(!heard.empty() && heard.back().refresh == LoadState::NotLoading(false));
+    CHECK(before && before->Size() == 0 && after && after->DataCount() == 20 && after->placeholdersAfter == 80 && after->GetItem(3) == 3);
+    CHECK(updates >= 1);
+    const std::size_t count = heard.size();
+    int late = 0;
+    presenter.AddLoadStateListener([&](const CombinedLoadStates&) { ++late; });
+    CHECK_EQ(late, 1);   // the current states at once
+    presenter.RemoveLoadStateListener(id);
+    presenter.Get(16);
+    Pump();
+    CHECK_EQ(heard.size(), count);
+    CHECK(late > 1);   // append went loading and back
+    job.Cancel();
+    counting.Cancel();
+    Pump();
+}
+
+// ItemSnapshotListFlowTest: the list after each change, with what a filter leaves.
+TEST(PagingItemSnapshotListFlow) {
+    std::vector<ItemSnapshotList<int>> lists;
+    auto flow = rt::FlowOf<PagingData<int>>(PagingData<int>::From({ 1, 2, 3, 4 }).Filter([](int v) { return v % 2 == 0; }));
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), AsItemSnapshotListFlow(flow).Collect([&](const ItemSnapshotList<int>& l) { lists.push_back(l); }));
+    Pump();
+    CHECK(lists.size() == 1 && lists[0].items == std::vector<int>({ 2, 4 }));
+    // A Pager's data: the refresh, then what a read appends.
+    Fixture f({ .pageSize = 10, .prefetchDistance = 5, .initialLoadSize = 20 });
+    std::vector<ItemSnapshotList<int>> paged;
+    rt::Job job2 = rt::Launch(rt::Dispatcher::Main(), AsItemSnapshotListFlow(f.pager.Flow()).Collect([&](const ItemSnapshotList<int>& l) { paged.push_back(l); }));
+    Pump();
+    CHECK(!paged.empty() && paged.back().DataCount() == 20 && paged.back().placeholdersAfter == 80);
+    job.Cancel();
+    job2.Cancel();
+    Pump();
+}
+
+// awaitNotLoading: returns once the refresh settles.
+namespace {
+    // Parameters, not captures: a coroutine lambda's captures die with the temporary closure.
+    rt::Task<> AwaitInto(const PagingDataPresenter<int>* presenter, std::optional<CombinedLoadStates>* out, bool* done) {
+        *out = co_await AwaitNotLoading(presenter->LoadStateFlow());
+        *done = true;
+    }
+}
+TEST(PagingAwaitNotLoading) {
+    Fixture f({ .pageSize = 10, .prefetchDistance = 5, .initialLoadSize = 20 });
+    f.log->async = true;
+    std::optional<CombinedLoadStates> settled;
+    bool done = false;
+    rt::Job waiting = rt::Launch(rt::Dispatcher::Main(), AwaitInto(&f.presenter, &settled, &done));
+    f.Collect();
+    for (int i = 0; i < 50 && !done; ++i) {
+        rt::Dispatcher::Main().AdvanceTimeBy(std::chrono::milliseconds(5));
+        Pump();
+    }
+    CHECK(done && settled && settled->refresh == LoadState::NotLoading(false));
+    Page<int, int> page{ { 1, 2, 3 } };
+    int sum = 0;
+    for (int v : page) sum += v;
+    CHECK_EQ(sum, 6);
+}
