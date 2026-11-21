@@ -286,3 +286,21 @@ TEST(NavDisplayEntriesResumeOnceSettledAndPoppedOnesStopAtCreated) {
     CHECK(popped->GetLifecycle().CurrentState() == lifecycle::State::Destroyed);
     CHECK(home->GetLifecycle().CurrentState() == lifecycle::State::Resumed);
 }
+
+// NavBackStack is a MutableList of keys.
+TEST(Nav3_BackStackListOperations) {
+    kiln::navigation3::NavBackStack<std::string> stack{ "a", "b", "a" };
+    CHECK(stack.IndexOf("a") == 0 && stack.LastIndexOf("a") == 2 && stack.IndexOf("z") == -1);
+    CHECK(stack.Contains("b") && stack.ContainsAll({ "a", "b" }) && !stack.ContainsAll({ "a", "z" }));
+    stack.AddAll({ "c", "d" });
+    stack.Add(1, "x");
+    CHECK(stack.ToList() == std::vector<std::string>({ "a", "x", "b", "a", "c", "d" }));
+    CHECK(stack.Remove("a") && stack.ToList() == std::vector<std::string>({ "x", "b", "a", "c", "d" }));
+    CHECK(stack.SubList(1, 3) == std::vector<std::string>({ "b", "a" }));
+    CHECK(stack.RemoveAll({ "b", "d" }) && !stack.RemoveAll({ "z" }));
+    CHECK(stack.RetainAll({ "x", "c" }) && stack.ToList() == std::vector<std::string>({ "x", "c" }));
+    stack.Set(0, "y");
+    std::string joined;
+    for (const auto& k : stack) joined += k;
+    CHECK(joined == "yc");
+}

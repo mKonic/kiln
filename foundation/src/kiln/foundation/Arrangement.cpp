@@ -87,7 +87,7 @@ namespace kiln::foundation {
         if (alignBias && freeSpace > 0) {
             int group;
             if (alignIsVertical) group = AlignmentV{ *alignBias }.Align(0, freeSpace);
-            else group = AlignmentH{ *alignBias }.Align(0, freeSpace, rtlMirror ? dir : LayoutDirection::Ltr);
+            else group = AlignmentH{ *alignBias }.Align(0, freeSpace, dir);   // Absolute's too
             const int offset = isRtl ? group - freeSpace : group;
             if (offset != 0) for (int& p : out) p += offset;
         }

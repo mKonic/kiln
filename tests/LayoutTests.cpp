@@ -61,6 +61,20 @@ TEST(ArrangementPositions) {
     CHECK(Arrange(Arrangement::SpacedBy(Dp(50)), { 40, 40 }, 100) == V({ 0, 60 }));
 }
 
+// RowColumnTest: testRow_withAlignedArrangement, testRow_Rtl_withSpacedByAlignedAbsoluteArrangement;
+// Absolute's arrangements are not mirrored, but their alignment reads the layout direction.
+TEST(ArrangementAlignedAndAbsolute) {
+    CHECK(Arrange(Arrangement::Aligned(AlignmentH::End()), { 20, 20 }, 50) == V({ 10, 30 }));
+    CHECK(Arrange(Arrangement::Aligned(AlignmentV::Bottom()), { 20, 20 }, 50) == V({ 10, 30 }));
+    CHECK(Arrange(Arrangement::AbsoluteSpacedBy(Dp(10), AlignmentH::End()), { 20, 20 }, 50, LayoutDirection::Rtl) == V({ 0, 30 }));
+    CHECK(Arrange(Arrangement::AbsoluteSpacedBy(Dp(5)), { 10, 10 }, 100, LayoutDirection::Rtl) == V({ 0, 15 }));
+    CHECK(Arrange(Arrangement::AbsoluteAligned(AlignmentH::End()), { 10, 10 }, 100) == V({ 80, 90 }));
+    CHECK(Arrange(Arrangement::AbsoluteAligned(AlignmentH::End()), { 10, 10 }, 100, LayoutDirection::Rtl) == V({ 0, 10 }));
+    CHECK(Arrange(Arrangement::AbsoluteSpaceEvenly(), { 10, 10 }, 100, LayoutDirection::Rtl) == V({ 27, 63 }));
+    CHECK(Arrange(Arrangement::AbsoluteSpaceBetween(), { 10, 10 }, 100, LayoutDirection::Rtl) == V({ 0, 90 }));
+    CHECK(Arrange(Arrangement::AbsoluteSpaceAround(), { 10, 10 }, 100, LayoutDirection::Rtl) == V({ 20, 70 }));
+}
+
 TEST(RowWeightsDistributeRemainderToFirstChildren) {
     Harness h;
     LayoutNode *a = nullptr, *b = nullptr, *c = nullptr;
@@ -447,4 +461,15 @@ TEST(IntrinsicQueriesInsideIntrinsicRowsDoNotLoop) {
     h.owner.MeasureAndLayout({ 100, 100 });
     CHECK_EQ(outer->Size().width, 40);
     CHECK(outerMeasures >= 1 && outerMeasures <= 3);
+}
+
+// PaddingValues: start / end swap with the direction; absolute values keep left / right.
+TEST(PaddingValuesSides) {
+    const PaddingValues relative{ Dp(1), Dp(2), Dp(3), Dp(4) };
+    CHECK(relative.CalculateLeftPadding(LayoutDirection::Ltr) == Dp(1) && relative.CalculateRightPadding(LayoutDirection::Ltr) == Dp(3));
+    CHECK(relative.CalculateLeftPadding(LayoutDirection::Rtl) == Dp(3) && relative.CalculateRightPadding(LayoutDirection::Rtl) == Dp(1));
+    CHECK(relative.CalculateTopPadding() == Dp(2) && relative.CalculateBottomPadding() == Dp(4));
+    const PaddingValues absolute{ Dp(1), Dp(2), Dp(3), Dp(4), false };
+    CHECK(absolute.CalculateLeftPadding(LayoutDirection::Rtl) == Dp(1) && absolute.CalculateRightPadding(LayoutDirection::Rtl) == Dp(3));
+    CHECK(absolute.CalculateStartPadding(LayoutDirection::Rtl) == Dp(3));
 }

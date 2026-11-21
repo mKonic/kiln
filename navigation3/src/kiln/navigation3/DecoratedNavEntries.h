@@ -176,8 +176,63 @@ namespace kiln::navigation3 {
         }
         void Clear() { m_Keys.Clear(); }
         void Set(std::vector<T> keys) { m_Keys.Update([&](std::vector<T>& v) { v = std::move(keys); }); }
+        // MutableList (NavBackStack is a SnapshotStateList): each change is one state write.
+        void Add(std::size_t index, T key) { m_Keys.Insert(index, std::move(key)); }
+        void Set(std::size_t index, T key) { m_Keys.Update([&](std::vector<T>& v) { v.at(index) = std::move(key); }); }
+        void AddAll(const std::vector<T>& keys) {
+            if (!keys.empty()) m_Keys.Update([&](std::vector<T>& v) { v.insert(v.end(), keys.begin(), keys.end()); });
+        }
+        void AddAll(std::size_t index, const std::vector<T>& keys) {
+            if (!keys.empty()) m_Keys.Update([&](std::vector<T>& v) { v.insert(v.begin() + std::ptrdiff_t(index), keys.begin(), keys.end()); });
+        }
+        bool Contains(const T& key) const { return IndexOf(key) >= 0; }
+        bool ContainsAll(const std::vector<T>& keys) const {
+            for (const auto& k : keys)
+                if (!Contains(k)) return false;
+            return true;
+        }
+        std::ptrdiff_t IndexOf(const T& key) const {
+            const auto& v = m_Keys.Get();
+            for (std::size_t i = 0; i < v.size(); ++i)
+                if (v[i] == key) return std::ptrdiff_t(i);
+            return -1;
+        }
+        std::ptrdiff_t LastIndexOf(const T& key) const {
+            const auto& v = m_Keys.Get();
+            for (std::size_t i = v.size(); i-- > 0;)
+                if (v[i] == key) return std::ptrdiff_t(i);
+            return -1;
+        }
+        // remove(element): the first equal key.
+        bool Remove(const T& key) {
+            const std::ptrdiff_t i = IndexOf(key);
+            if (i < 0) return false;
+            m_Keys.RemoveAt(std::size_t(i));
+            return true;
+        }
+        bool RemoveAll(const std::vector<T>& keys) {
+            return Filter([&](const T& k) { return std::find(keys.begin(), keys.end(), k) == keys.end(); });
+        }
+        bool RetainAll(const std::vector<T>& keys) {
+            return Filter([&](const T& k) { return std::find(keys.begin(), keys.end(), k) != keys.end(); });
+        }
+        std::vector<T> SubList(std::size_t from, std::size_t to) const {
+            const auto& v = m_Keys.Get();
+            return std::vector<T>(v.begin() + std::ptrdiff_t(from), v.begin() + std::ptrdiff_t(to));
+        }
+        // iterator: over the keys as they are now.
+        auto begin() const { return m_Keys.Get().begin(); }
+        auto end() const { return m_Keys.Get().end(); }
 
     private:
+        template<typename Keep> bool Filter(Keep keep) {
+            std::vector<T> kept;
+            for (const auto& k : m_Keys.Get())
+                if (keep(k)) kept.push_back(k);
+            if (kept.size() == m_Keys.Size()) return false;
+            Set(std::move(kept));
+            return true;
+        }
         rt::StateList<T> m_Keys;
     };
 

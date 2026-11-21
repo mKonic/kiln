@@ -174,6 +174,32 @@ SavedStateWriter = "SavedValue"
 "AppCompatDelegate.getDefaultNightMode" = "GetDefaultNightMode"
 "AppCompatDelegate.setLocalNightMode" = "SetDefaultNightMode"   # a kiln app is one activity
 "AppCompatDelegate.getLocalNightMode" = "GetDefaultNightMode"
+# foundation-layout: Arrangement's Absolute object is a prefix; Horizontal / Vertical are one
+# Arrangement type; configs are LayoutConfig (Then / Configure); sides combine with operator+.
+"Absolute.Left" = "AbsoluteLeft"
+"Absolute.Right" = "AbsoluteRight"
+"Absolute.aligned" = "AbsoluteAligned"
+"Arrangement.aligned" = "Aligned"
+"Horizontal.arrange" = "Arrange"
+"Vertical.arrange" = "Arrange"
+"Horizontal.spacing" = "Spacing"
+"Vertical.spacing" = "Spacing"
+"FlexBoxConfig.configure" = "Configure"
+"FlexBoxConfig.then" = "Then"
+"FlexConfig.configure" = "Configure"
+"FlexConfig.then" = "Then"
+"WindowInsetsSides.plus" = "operator"
+"Absolute.calculateLeftPadding" = "CalculateLeftPadding"
+"Absolute.calculateRightPadding" = "CalculateRightPadding"
+"Absolute.calculateTopPadding" = "CalculateTopPadding"
+"Absolute.calculateBottomPadding" = "CalculateBottomPadding"
+
+# navigation3: filters are functions; addEntryProvider is the metadata-function entry.
+"Filter.filterRequest" = "DeepLinkFilter"
+"EntryProviderScope.addEntryProvider" = "EntryWithMetadata"
+"RequestExtras.isNotEmpty" = "Empty"
+"NavBackStack.listIterator" = "begin"
+
 # media3 Player: getters with the unit in the name, and state read from PlayerState (ExoPlayer's
 # content position is the position: no ads; one period per item).
 PlaybackSuppressionReason = "PlaybackSuppression"
@@ -858,6 +884,11 @@ resolveAsTypeface = "Android Typeface objects"
 Resolver = "FontFamily.Resolver: the text backend resolves fonts"
 StaticLayoutFactory = "Android StaticLayout internals"
 toSpan = "Android spans (TtsSpan)"
+
+# SnapshotStateList's StateObject plumbing (state records): kiln's StateList records writes itself.
+"NavBackStack.firstStateRecord" = "StateObject plumbing: kiln's rt::StateList tracks reads and writes"
+"NavBackStack.getFirstStateRecord" = "see NavBackStack.firstStateRecord"
+"NavBackStack.prependStateRecord" = "see NavBackStack.firstStateRecord"
 
 [skipped_patterns]
 '^(Storage|FileStorage|StorageConnection|ReadScope|WriteScope|InterProcessCoordinator|MultiProcessDataStoreFactory|createSingleProcessCoordinator|createMultiProcessCoordinator|writeData|readData)(\..*)?$' = "pluggable storage and multi-process coordination: kiln's DataStore is one process, one file (FileStorage's behaviour built in)"

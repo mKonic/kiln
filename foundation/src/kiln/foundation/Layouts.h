@@ -67,6 +67,11 @@ namespace kiln::foundation {
         // calculateStartPadding / calculateEndPadding: the left/right sides for absolute padding.
         Dp CalculateStartPadding(LayoutDirection dir) const { return rtlAware || dir == LayoutDirection::Ltr ? start : end; }
         Dp CalculateEndPadding(LayoutDirection dir) const { return rtlAware || dir == LayoutDirection::Ltr ? end : start; }
+        // calculateLeftPadding / calculateRightPadding: start and end swap in RTL unless absolute.
+        Dp CalculateLeftPadding(LayoutDirection dir) const { return rtlAware && dir == LayoutDirection::Rtl ? end : start; }
+        Dp CalculateRightPadding(LayoutDirection dir) const { return rtlAware && dir == LayoutDirection::Rtl ? start : end; }
+        Dp CalculateTopPadding() const { return top; }
+        Dp CalculateBottomPadding() const { return bottom; }
     };
     Modifier Padding(Modifier m, PaddingValues p);
     inline Modifier Padding(Modifier m, Dp all) { return Padding(std::move(m), { all, all, all, all }); }

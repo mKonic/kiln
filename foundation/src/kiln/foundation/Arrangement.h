@@ -55,6 +55,17 @@ namespace kiln::foundation {
         static Arrangement AbsoluteLeft() { return { Kind::AbsLeft }; }
         static Arrangement AbsoluteRight() { return { Kind::AbsRight }; }
         static Arrangement AbsoluteCenter() { return { Kind::AbsCenter }; }
+        static Arrangement AbsoluteSpaceBetween() { return { Kind::AbsSpaceBetween }; }
+        static Arrangement AbsoluteSpaceEvenly() { return { Kind::AbsSpaceEvenly }; }
+        static Arrangement AbsoluteSpaceAround() { return { Kind::AbsSpaceAround }; }
+        // Absolute.spacedBy: not mirrored in RTL; without an alignment the group stays at the left.
+        static Arrangement AbsoluteSpacedBy(Dp s) { Arrangement a{ Kind::Spaced, s }; a.rtlMirror = false; return a; }
+        static Arrangement AbsoluteSpacedBy(Dp s, AlignmentH a) { Arrangement r = AbsoluteSpacedBy(s); r.alignBias = a.bias; return r; }
+        static Arrangement AbsoluteSpacedBy(Dp s, AlignmentV a) { return SpacedBy(s, a); }
+        // aligned: the children side by side, the group placed by the alignment.
+        static Arrangement Aligned(AlignmentH a) { return SpacedBy(Dp(0), a); }
+        static Arrangement Aligned(AlignmentV a) { return SpacedBy(Dp(0), a); }
+        static Arrangement AbsoluteAligned(AlignmentH a) { return AbsoluteSpacedBy(Dp(0), a); }
     };
 
 }
