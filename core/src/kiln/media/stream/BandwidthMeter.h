@@ -69,6 +69,15 @@ namespace kiln::media::stream {
     // Util.getCountryCode: the network's country (TelephonyManager), else the locale's, upper case.
     std::string GetCountryCode();
 
+    // TransferListener: told about each transfer a data source makes.
+    class TransferListener {
+    public:
+        virtual ~TransferListener() = default;
+        virtual void OnTransferStart(bool isNetwork, bool mightNotUseFullNetworkSpeed = false) = 0;
+        virtual void OnBytesTransferred(bool isNetwork, int bytesTransferred, bool mightNotUseFullNetworkSpeed = false) = 0;
+        virtual void OnTransferEnd(bool isNetwork, bool mightNotUseFullNetworkSpeed = false) = 0;
+    };
+
     // BandwidthMeter: what adaptive track selection asks of an estimator.
     class BandwidthMeter {
     public:
@@ -76,11 +85,13 @@ namespace kiln::media::stream {
         // Bits per second.
         virtual std::int64_t GetBitrateEstimate() = 0;
         virtual std::int64_t GetTimeToFirstByteEstimateUs() { return kTimeUnset; }
+        // What the data sources report their transfers to (none: they are not measured).
+        virtual TransferListener* GetTransferListener() { return nullptr; }
     };
 
     // DefaultBandwidthMeter: the median of recent network transfers' throughput (weighted by the
     // square root of their size), starting from an estimate for the network type and country.
-    class DefaultBandwidthMeter final : public BandwidthMeter {
+    class DefaultBandwidthMeter final : public BandwidthMeter, public TransferListener {
     public:
         static constexpr std::int64_t DEFAULT_INITIAL_BITRATE_ESTIMATE = 1'000'000;
         static constexpr int DEFAULT_SLIDING_WINDOW_MAX_WEIGHT = 2000;
@@ -131,9 +142,10 @@ namespace kiln::media::stream {
 
         // TransferListener: a transfer from the network (isNetwork) whose speed counts unless it
         // might not use the network's full speed.
-        void OnTransferStart(bool isNetwork, bool mightNotUseFullNetworkSpeed = false);
-        void OnBytesTransferred(bool isNetwork, int bytesTransferred, bool mightNotUseFullNetworkSpeed = false);
-        void OnTransferEnd(bool isNetwork, bool mightNotUseFullNetworkSpeed = false);
+        void OnTransferStart(bool isNetwork, bool mightNotUseFullNetworkSpeed = false) override;
+        void OnBytesTransferred(bool isNetwork, int bytesTransferred, bool mightNotUseFullNetworkSpeed = false) override;
+        void OnTransferEnd(bool isNetwork, bool mightNotUseFullNetworkSpeed = false) override;
+        TransferListener* GetTransferListener() override { return this; }
 
     private:
         explicit DefaultBandwidthMeter(Builder& builder);

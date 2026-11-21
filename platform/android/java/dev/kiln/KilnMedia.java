@@ -14,6 +14,8 @@ import android.graphics.drawable.Icon;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
+import android.media.MediaCodecInfo;
+import android.media.MediaCodecList;
 import android.media.MediaDescription;
 import android.media.MediaMetadata;
 import android.media.Rating;
@@ -522,6 +524,102 @@ final class KilnMedia {
         } catch (Exception e) {
             Log.w("kiln", "media session: cannot load artwork " + uri + ": " + e);
             return null;
+        }
+    }
+
+    // --- decoder support (MediaCodecUtil / MediaCodecInfo.isFormatSupported) -----------------
+    private static MediaCodecInfo[] sDecoders;
+
+    // 2: a decoder plays the format (C.FORMAT_HANDLED); 1: a decoder takes the type but not these
+    // properties (FORMAT_EXCEEDS_CAPABILITIES); 0: none takes the type. -1 for unknown values.
+    static synchronized int decoderSupport(String mime, String codecs, int width, int height, float frameRate, int channels, int sampleRate) {
+        if (sDecoders == null) sDecoders = new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos();
+        int best = 0;
+        for (MediaCodecInfo info : sDecoders) {
+            if (info.isEncoder()) continue;
+            String type = null;
+            for (String t : info.getSupportedTypes()) if (t.equalsIgnoreCase(mime)) type = t;
+            if (type == null) continue;
+            best = 1;
+            MediaCodecInfo.CodecCapabilities caps;
+            try {
+                caps = info.getCapabilitiesForType(type);
+            } catch (IllegalArgumentException e) {
+                continue;
+            }
+            if (formatSupported(caps, mime, codecs, width, height, frameRate, channels, sampleRate)) return 2;
+        }
+        return best;
+    }
+
+    private static boolean formatSupported(MediaCodecInfo.CodecCapabilities caps, String mime, String codecs, int width, int height, float frameRate,
+                                           int channels, int sampleRate) {
+        MediaCodecInfo.VideoCapabilities video = caps.getVideoCapabilities();
+        if (video != null && width > 0 && height > 0) {
+            // isVideoSizeAndRateSupportedV21: the size and rate, either way round.
+            boolean sized = frameRate > 0
+                ? video.areSizeAndRateSupported(width, height, frameRate) || video.areSizeAndRateSupported(height, width, frameRate)
+                : video.isSizeSupported(width, height) || video.isSizeSupported(height, width);
+            if (!sized) return false;
+        }
+        MediaCodecInfo.AudioCapabilities audio = caps.getAudioCapabilities();
+        if (audio != null) {
+            if (sampleRate > 0 && !audio.isSampleRateSupported(sampleRate)) return false;
+            if (channels > 0 && audio.getMaxInputChannelCount() < channels) return false;
+        }
+        // isCodecProfileAndLevelSupported for H.264 (avc1.PPCCLL): a profile the decoder has, at
+        // the level or above.
+        if ("video/avc".equalsIgnoreCase(mime) && codecs != null && codecs.length() >= 11 && (codecs.startsWith("avc1.") || codecs.startsWith("avc3."))) {
+            int profile, level;
+            try {
+                profile = avcProfile(Integer.parseInt(codecs.substring(5, 7), 16));
+                level = avcLevel(Integer.parseInt(codecs.substring(9, 11), 16));
+            } catch (NumberFormatException e) {
+                return true;
+            }
+            if (profile == 0 || level == 0) return true;
+            for (MediaCodecInfo.CodecProfileLevel pl : caps.profileLevels)
+                if (pl.profile == profile && pl.level >= level) return true;
+            return caps.profileLevels.length == 0;
+        }
+        return true;
+    }
+
+    private static int avcProfile(int profileIdc) {
+        switch (profileIdc) {
+            case 66: return MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline;
+            case 77: return MediaCodecInfo.CodecProfileLevel.AVCProfileMain;
+            case 88: return MediaCodecInfo.CodecProfileLevel.AVCProfileExtended;
+            case 100: return MediaCodecInfo.CodecProfileLevel.AVCProfileHigh;
+            case 110: return MediaCodecInfo.CodecProfileLevel.AVCProfileHigh10;
+            case 122: return MediaCodecInfo.CodecProfileLevel.AVCProfileHigh422;
+            case 244: return MediaCodecInfo.CodecProfileLevel.AVCProfileHigh444;
+            default: return 0;
+        }
+    }
+
+    private static int avcLevel(int levelIdc) {
+        switch (levelIdc) {
+            case 10: return MediaCodecInfo.CodecProfileLevel.AVCLevel1;
+            case 11: return MediaCodecInfo.CodecProfileLevel.AVCLevel11;
+            case 12: return MediaCodecInfo.CodecProfileLevel.AVCLevel12;
+            case 13: return MediaCodecInfo.CodecProfileLevel.AVCLevel13;
+            case 20: return MediaCodecInfo.CodecProfileLevel.AVCLevel2;
+            case 21: return MediaCodecInfo.CodecProfileLevel.AVCLevel21;
+            case 22: return MediaCodecInfo.CodecProfileLevel.AVCLevel22;
+            case 30: return MediaCodecInfo.CodecProfileLevel.AVCLevel3;
+            case 31: return MediaCodecInfo.CodecProfileLevel.AVCLevel31;
+            case 32: return MediaCodecInfo.CodecProfileLevel.AVCLevel32;
+            case 40: return MediaCodecInfo.CodecProfileLevel.AVCLevel4;
+            case 41: return MediaCodecInfo.CodecProfileLevel.AVCLevel41;
+            case 42: return MediaCodecInfo.CodecProfileLevel.AVCLevel42;
+            case 50: return MediaCodecInfo.CodecProfileLevel.AVCLevel5;
+            case 51: return MediaCodecInfo.CodecProfileLevel.AVCLevel51;
+            case 52: return MediaCodecInfo.CodecProfileLevel.AVCLevel52;
+            case 60: return MediaCodecInfo.CodecProfileLevel.AVCLevel6;
+            case 61: return MediaCodecInfo.CodecProfileLevel.AVCLevel61;
+            case 62: return MediaCodecInfo.CodecProfileLevel.AVCLevel62;
+            default: return 0;
         }
     }
 }

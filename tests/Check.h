@@ -35,6 +35,8 @@ namespace kiln::test {
     std::printf("  FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); } } while (0)
 #define CHECK_EQ(a, b) do { ++::kiln::test::Checks(); auto _a = (a); auto _b = (b); if (!(_a == _b)) { \
     ++::kiln::test::Failures(); std::printf("  FAIL %s:%d: %s == %s\n", __FILE__, __LINE__, #a, #b); } } while (0)
+#define CHECK_THROWS(expr) do { ++::kiln::test::Checks(); bool _threw = false; try { (void)(expr); } catch (...) { _threw = true; } \
+    if (!_threw) { ++::kiln::test::Failures(); std::printf("  FAIL %s:%d: %s throws\n", __FILE__, __LINE__, #expr); } } while (0)
 #define CHECK_NEAR(a, b, eps) do { ++::kiln::test::Checks(); const double _a = double(a), _b = double(b); \
     if (!(std::fabs(_a - _b) <= double(eps))) { ++::kiln::test::Failures(); \
     std::printf("  FAIL %s:%d: %s (%g) near %s (%g)\n", __FILE__, __LINE__, #a, _a, #b, _b); } } while (0)
