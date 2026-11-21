@@ -526,7 +526,7 @@ namespace kiln::constraintlayout {
         c->put("style", styleArray);
         UpdateHelpersHashCode(16);
         for (const LayoutReference* e : elements) UpdateHelpersHashCode(StringHash(e->id));
-        UpdateHelpersHashCode(StringHash(chainStyle.name) * 31 + (chainStyle.bias ? FloatHash(*chainStyle.bias) : 0));
+        UpdateHelpersHashCode(int(std::uint32_t(StringHash(chainStyle.name)) * 31u + std::uint32_t(chainStyle.bias ? FloatHash(*chainStyle.bias) : 0)));   // Java int arithmetic wraps
         return ref;
     }
 
@@ -554,7 +554,7 @@ namespace kiln::constraintlayout {
         c->put("style", styleArray);
         UpdateHelpersHashCode(17);
         for (const LayoutReference* e : elements) UpdateHelpersHashCode(StringHash(e->id));
-        UpdateHelpersHashCode(StringHash(chainStyle.name) * 31 + (chainStyle.bias ? FloatHash(*chainStyle.bias) : 0));
+        UpdateHelpersHashCode(int(std::uint32_t(StringHash(chainStyle.name)) * 31u + std::uint32_t(chainStyle.bias ? FloatHash(*chainStyle.bias) : 0)));   // Java int arithmetic wraps
         return ref;
     }
 
