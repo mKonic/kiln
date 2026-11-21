@@ -1401,3 +1401,48 @@ TEST(ClLayout_testToggleVisibilityWithFillConstraintsWidth_underLookahead) {
     CheckToggle(t, toggleVisibility, 100);
     CHECK(true);
 }
+
+TEST(ClLayout_testAnimateChanges_withInlineDsl) {
+    test::ComposeUiTest t;
+    const Px px{ t.Density() };
+    const int durationMs = 200, rootSizePx = 100, boxSizePx = 20;
+    const ui::IntOffset expectedEndPosition{ rootSizePx - boxSizePx, rootSizePx - boxSizePx };
+    ui::IntOffset box0Position{};
+    rt::State<bool> atTopLeftCorner(true);
+    Content(t, [&] {
+        ConstraintLayout(
+            SizeMod({}, px(float(rootSizePx)), px(float(rootSizePx))),
+            [&](ConstraintLayoutScope& s) {
+                auto boxRef = s.CreateRef();
+                Box(foundation::OnGloballyPositioned(foundation::Background(s.ConstrainAs({}, boxRef,
+                                                                                          [&](ConstrainScope& c) {
+                                                                                              c.width = Dimension::Value(px(float(boxSizePx)));
+                                                                                              c.height = Dimension::Value(px(float(boxSizePx)));
+                                                                                              if (atTopLeftCorner.Get()) {
+                                                                                                  c.top.LinkTo(c.parent.top);
+                                                                                                  c.start.LinkTo(c.parent.start);
+                                                                                              } else {
+                                                                                                  c.bottom.LinkTo(c.parent.bottom);
+                                                                                                  c.end.LinkTo(c.parent.end);
+                                                                                              }
+                                                                                          }),
+                                                                            ui::Color::Red()),
+                                                     [&](const ui::LayoutCoordinates& lc) {
+                                                         const ui::Offset p = lc.PositionInParent();
+                                                         box0Position = { RoundToInt(p.x), RoundToInt(p.y) };
+                                                     }));
+            },
+            AnimateChanges{ anim::Tween(durationMs) });
+    });
+    t.WaitForIdle();
+    CHECK((ui::IntOffset{ 0, 0 }) == box0Position);
+    t.MainClock().autoAdvance = false;
+    atTopLeftCorner.Set(false);
+    t.MainClock().AdvanceTimeBy(durationMs / 2);
+    t.WaitForIdle();
+    CHECK(box0Position.x > 0 && box0Position.y > 0);
+    CHECK(box0Position.x < expectedEndPosition.x && box0Position.y < expectedEndPosition.y);
+    t.MainClock().autoAdvance = true;
+    t.WaitForIdle();
+    CHECK(expectedEndPosition == box0Position);
+}

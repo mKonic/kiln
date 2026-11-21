@@ -63,6 +63,13 @@ namespace kiln::rt {
         };
         // co_await channel.Next() -> std::optional<T>
         Receive Next() { return { this }; }
+        // tryReceive: the next buffered value without waiting, or nullopt.
+        std::optional<T> TryReceive() {
+            if (m_Buffer.empty()) return std::nullopt;
+            T v = std::move(m_Buffer.front());
+            m_Buffer.pop_front();
+            return v;
+        }
 
     private:
         void ResumeReceiver() {

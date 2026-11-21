@@ -15,6 +15,7 @@
 #include <kiln/foundation/Popup.h>
 #include <kiln/foundation/Flow.h>
 #include <kiln/constraintlayout/ConstraintLayout.h>
+#include <kiln/constraintlayout/MotionLayout.h>
 #include <kiln/foundation/VideoSurface.h>
 #include <kiln/media/MediaSession.h>
 #include <kiln/ui/AppLocales.h>
@@ -791,6 +792,49 @@ namespace {
         });
     }
 
+    // MotionLayout: drag the square across; it arcs, turns and changes colour on the way, and
+    // settles at either end when released.
+    void MotionLayoutDemo() {
+        namespace cl = kiln::constraintlayout;
+        auto& c = *kiln::rt::Composition::Current();
+        auto& scene = c.Remember<std::shared_ptr<cl::MotionScene>>([] {
+            return cl::MakeMotionScene([](cl::MotionSceneScope& s) {
+                auto box = s.CreateRefFor("box");
+                auto at = [&](bool end) {
+                    return s.ConstraintSet([&, end](cl::ConstraintSetScope& cs) {
+                        cs.Constrain(box, [end](cl::ConstrainScope& cc) {
+                            cc.width = cl::Dimension::Value(56_dp);
+                            cc.height = cl::Dimension::Value(56_dp);
+                            if (end) {
+                                cc.end.LinkTo(cc.parent.end, 16_dp);
+                                cc.top.LinkTo(cc.parent.top, 16_dp);
+                            } else {
+                                cc.start.LinkTo(cc.parent.start, 16_dp);
+                                cc.bottom.LinkTo(cc.parent.bottom, 16_dp);
+                            }
+                            cl::MotionSceneScope::CustomColor(cc, "background", end ? kPrimary : kVariant);
+                        });
+                    });
+                };
+                auto start = at(false), end = at(true);
+                s.DefaultTransition(start, end, [&](cl::TransitionScope& t) {
+                    t.motionArc = cl::Arc::StartHorizontal();
+                    t.KeyAttributes({ box }, [](cl::KeyAttributesScope& k) {
+                        k.Frame(50, [](cl::KeyAttributeScope& f) {
+                            f.rotationZ = 135.0f;
+                            f.scaleX = 1.3f;
+                            f.scaleY = 1.3f;
+                        });
+                    });
+                    t.onSwipe.emplace(cl::OnSwipe{ box, cl::SwipeSide::End(), cl::SwipeDirection::End() });
+                });
+            });
+        });
+        cl::MotionLayout(scene, 0.0f, SizeMod(FillMax(Modifier{}, Axis::Horizontal), Dp::Unspecified(), 160_dp), [](cl::MotionLayoutScope& m) {
+            Box(Background(kiln::foundation::LayoutId(Modifier{}, "box"), m.CustomColor("box", "background"), CornerShape::Rounded(12_dp)));
+        });
+    }
+
     void Gallery() {
         auto& c = *kiln::rt::Composition::Current();
         auto& seconds = RememberState(0);
@@ -837,6 +881,7 @@ namespace {
         }
         if (section == "constraintlayout") {
             ConstraintLayoutDemo();
+            MotionLayoutDemo();
             return;
         }
         if (section == "transform") {
@@ -1452,6 +1497,7 @@ namespace {
                 });
             }
             ConstraintLayoutDemo();
+            MotionLayoutDemo();
             // A lazy horizontal grid: two rows, every fifth cell spanning both.
             {
                 auto& gridState = RememberLazyGridState();

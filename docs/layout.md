@@ -253,8 +253,95 @@ auto set = MakeConstraintSet(R"({
 })");
 ```
 
-`MakeConstraintSet(description, base)` extends `base`. `animateChanges` and MotionLayout are
-not part of kiln.
+`MakeConstraintSet(description, base)` extends `base`.
+
+### Animating changes
+
+Given `AnimateChanges{ spec }`, ConstraintLayout animates to its new constraints whenever they
+change, instead of jumping. This works with the inline DSL or with a `ConstraintSet`. The
+listener is called after each animation ends:
+
+```cpp
+auto& expanded = RememberState(false);
+ConstraintLayout(
+    FillMax(Modifier{}, Axis::Both),
+    [&](ConstraintLayoutScope& s) {
+        auto box = s.CreateRef();
+        Box(Background(s.ConstrainAs(Modifier{}, box, [&](ConstrainScope& c) {
+                           c.width = Dimension::Value(expanded.Get() ? 200_dp : 48_dp);
+                           c.height = Dimension::Value(48_dp);
+                           c.CenterTo(c.parent);
+                       }),
+                       Color::Blue()));
+    },
+    AnimateChanges{ anim::Tween(300) });
+```
+
+## MotionLayout
+
+`MotionLayout` (`kiln/constraintlayout/MotionLayout.h`) animates its children between two
+constraint sets at a `progress` from 0 to 1. Each child follows a path, with optional arcs,
+keyframes, easing and stagger. The children are matched by `LayoutId`.
+
+A `MotionScene` names its constraint sets and the transitions between them. It is written with
+`MotionSceneScope`, or in JSON5 with `MakeMotionScene(json)`, which uses Compose's MotionScene
+format:
+
+```cpp
+auto scene = MakeMotionScene([](MotionSceneScope& s) {
+    auto box = s.CreateRefFor("box");
+    auto start = s.ConstraintSet([&](ConstraintSetScope& cs) {
+        cs.Constrain(box, [](ConstrainScope& c) {
+            c.width = Dimension::Value(64_dp);
+            c.height = Dimension::Value(64_dp);
+            c.top.LinkTo(c.parent.top, 16_dp);
+            c.start.LinkTo(c.parent.start, 16_dp);
+            MotionSceneScope::CustomColor(c, "background", Color::Red());
+        });
+    });
+    auto end = s.ConstraintSet([&](ConstraintSetScope& cs) {
+        cs.Constrain(box, [](ConstrainScope& c) {
+            c.width = Dimension::Value(128_dp);
+            c.height = Dimension::Value(128_dp);
+            c.bottom.LinkTo(c.parent.bottom, 16_dp);
+            c.end.LinkTo(c.parent.end, 16_dp);
+            MotionSceneScope::CustomColor(c, "background", Color::Blue());
+        });
+    });
+    s.DefaultTransition(start, end, [&](TransitionScope& t) {
+        t.motionArc = Arc::StartVertical();
+        t.KeyAttributes({ box }, [](KeyAttributesScope& k) {
+            k.Frame(50, [](KeyAttributeScope& f) { f.rotationZ = 90; });
+        });
+        t.onSwipe.emplace(OnSwipe{ box, SwipeSide::End(), SwipeDirection::Down() });
+    });
+});
+auto& progress = RememberState(0.0f);
+MotionLayout(scene, progress.Get(), FillMax(Modifier{}, Axis::Both), [](MotionLayoutScope& m) {
+    Box(Background(LayoutId(Modifier{}, "box"), m.CustomColor("box", "background")));
+});
+```
+
+The content can read each child's custom values (colours and numbers) at the current progress
+from the scope. An `onSwipe` lets the user drive the progress by dragging. When the drag is
+released, the progress settles by velocity or by a spring, according to the transition's
+touch-up rule.
+
+Other ways to run it:
+
+- **Two constraint sets.** Pass them directly, optionally with a `MakeTransition`.
+- **Named set.** Pass the name of a set and an animation spec. MotionLayout animates to the
+  named set whenever the name changes.
+- **Debug overlay.** `MotionLayoutOptions` holds `DebugFlags`, which draws each child's start
+  and end bounds, its path and its key positions.
+
+By default, MotionLayout measures its children again whenever its content recomposes. Pass an
+`InvalidationStrategy` to change that. It can name the state whose changes should trigger a
+remeasure, or rate-limit remeasures when the incoming size changes.
+
+`MotionCarousel` puts consecutive items into a scene's `slot0`, `slot1`, … children.
+Swiping horizontally runs the scene's `forward` or `backward` transition and moves the items
+along by one slot.
 
 ## Window insets
 

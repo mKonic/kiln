@@ -12,6 +12,7 @@
 // solver's State, as upstream does. Not ported: animateChanges (it runs on MotionLayout),
 // MotionLayout itself, and the Studio live-edit registry.
 
+#include "kiln/animation/Spec.h"
 #include "kiln/constraintlayout/core/parser/CLParser.h"
 #include "kiln/constraintlayout/core/widgets/Optimizer.h"
 #include "kiln/foundation/Compose.h"
@@ -26,6 +27,7 @@
 
 namespace kiln::constraintlayout::core::state {
     class State;
+    class Transition;
 }
 
 namespace kiln::constraintlayout {
@@ -299,6 +301,8 @@ namespace kiln::constraintlayout {
         void ClearConstraints();
         void ResetDimensions();
         void ResetTransforms();
+        // The JSON5 object the scope writes (MotionSceneScope adds custom and motion values).
+        core::CLObject* ContainerObject() const { return m_Container; }
 
     private:
         void Write(const char* name, const Dimension& d);
@@ -459,6 +463,9 @@ namespace kiln::constraintlayout {
         Modifier ConstrainAs(Modifier modifier, const ConstrainedLayoutReference& ref, ConstrainBlock block);
         void Reset() override;
 
+        // internal: the content animates its changes (ConstrainAs then runs its block at once).
+        bool isAnimateChanges = false;
+
     private:
         int m_ChildId = 0;
     };
@@ -485,6 +492,8 @@ namespace kiln::constraintlayout {
         // Replaces a variable of a JSON constraint set.
         virtual void Override(const std::string& /*name*/, float /*value*/) {}
         virtual bool Equals(const ConstraintSet& other) const { return this == &other; }
+        // MotionLayout: a JSON set's custom values for one end of a transition.
+        virtual void ApplyTo(core::state::Transition& /*transition*/, int /*type*/) {}
     };
 
     // ConstraintSet { }: from the DSL, optionally extending another made the same way.
@@ -500,9 +509,21 @@ namespace kiln::constraintlayout {
     // ConstraintLayout with the inline DSL.
     void ConstraintLayout(const Modifier& modifier, kiln::Function<void(ConstraintLayoutScope&)> content,
                           int optimizationLevel = core::Optimizer::OPTIMIZATION_STANDARD, rt::Key key = {});
+
+    // animateChangesSpec and finishedAnimationListener: when the constraints change, the layout
+    // animates to them (through MotionLayout) with `spec`; the listener hears each animation
+    // finish. A null spec lays out as usual.
+    struct AnimateChanges {
+        anim::SpecPtr spec;
+        kiln::Function<void()> finishedAnimationListener;
+    };
+    void ConstraintLayout(const Modifier& modifier, kiln::Function<void(ConstraintLayoutScope&)> content, AnimateChanges animateChanges,
+                          int optimizationLevel = core::Optimizer::OPTIMIZATION_STANDARD, rt::Key key = {});
     // ConstraintLayout with a ConstraintSet; children are matched by LayoutId.
     void ConstraintLayout(std::shared_ptr<ConstraintSet> constraintSet, const Modifier& modifier, kiln::Function<void()> content,
                           int optimizationLevel = core::Optimizer::OPTIMIZATION_STANDARD, rt::Key key = {});
+    void ConstraintLayout(std::shared_ptr<ConstraintSet> constraintSet, const Modifier& modifier, kiln::Function<void()> content,
+                          AnimateChanges animateChanges, int optimizationLevel = core::Optimizer::OPTIMIZATION_STANDARD, rt::Key key = {});
 
     // A child's ConstraintLayout tag (Modifier.layoutId with a tag): State.setTag, for a
     // constraint set's tag-based variables.

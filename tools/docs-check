@@ -65,6 +65,7 @@ def prelude_headers():
                 continue
             out.append(rel)
     out.append('kiln/constraintlayout/ConstraintLayout.h')   # its core/ is the solver, not API
+    out.append('kiln/constraintlayout/MotionLayout.h')
     return out
 
 
