@@ -51,7 +51,7 @@ namespace kiln::media::stream {
 
     // A group of renditions the player may switch between (a TrackGroup).
     struct StreamGroup {
-        std::string id;   // "main", "audio:<name>" (HLS) / "<period>.<set>" (DASH)
+        std::string id;   // "main", "audio:<name>", "subtitle:<name>" (HLS) / "<period>.<set>" (DASH)
         TrackType type = TrackType::Unknown;
         std::vector<Format> formats;
         // HLS: the variants (the primary timestamp source). Their segments may carry audio too:

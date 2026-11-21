@@ -110,6 +110,10 @@ namespace kiln::media {
         // read and parsed in the background, its cues at the position.
         TrackSelectionParameters trackSelection;
         int selectedText = -1;                   // in the current item's subtitleConfigurations
+        // Or a text track of the media's own (an adaptive stream's): the engine loads its cues.
+        std::string streamTextGroup;
+        int streamTextTrack = -1;
+        std::string engineTextGroups;            // the engine's text groups last seen (re-select when they change)
         std::uint64_t textGeneration = 0;
         rt::Job textLoad, cueTimer;
         MergingCuesResolver cueResolver;
@@ -205,25 +209,50 @@ namespace kiln::media {
             cueTimer.Cancel();
             cueResolver.Clear();
             selectedText = -1;
+            streamTextGroup.clear();
+            streamTextTrack = -1;
         }
         // The current item's text track, chosen afresh (a new item, or new parameters), and read.
         void LoadText() {
             ClearText();
             if (!loadId || current >= Count()) return;
             const auto& subtitles = items[std::size_t(current)].subtitleConfigurations;
+            // DefaultTrackSelector ranks every text track together: the side-loaded subtitles,
+            // then the media's own (an adaptive stream's renditions).
+            std::vector<MediaItem::SubtitleConfiguration> candidates = subtitles;
             std::vector<bool> supported;
             for (const auto& s : subtitles) supported.push_back(SubtitleParserFor(s) != nullptr);
-            const auto captioning = trackSelection.usePreferredTextLanguagesAndRoleFlagsFromCaptioningManager ? CaptioningPreferredLanguage() : std::nullopt;
-            if (trackSelection.disabledTrackTypes.contains(TrackType::Text)) {
-                selectedText = -1;
-            } else if (auto o = OverrideForType(trackSelection, TrackType::Text)) {
-                // An override: that subtitle (when it can be read), or none.
-                selectedText = -1;
-                for (std::size_t i = 0; i < subtitles.size(); ++i)
-                    if (o->groupId == "s" + std::to_string(i) && o->track == 0 && supported[i]) selectedText = int(i);
-            } else {
-                selectedText = SelectTextTrack(subtitles, supported, trackSelection, captioning, SelectedAudioLanguage());
+            std::vector<std::pair<std::string, int>> mediaText;   // group, track
+            for (const auto& g : engineState.tracks.groups) {
+                if (g.type != TrackType::Text) continue;
+                for (std::size_t i = 0; i < g.formats.size(); ++i) {
+                    const Format& f = g.formats[i];
+                    candidates.push_back({ .mimeType = f.sampleMimeType, .language = f.language, .label = f.label, .id = f.id,
+                                           .selectionFlags = f.selectionFlags, .roleFlags = f.roleFlags });
+                    supported.push_back(i < g.trackSupported.size() && g.trackSupported[i]);
+                    mediaText.emplace_back(g.id, int(i));
+                }
             }
+            const auto captioning = trackSelection.usePreferredTextLanguagesAndRoleFlagsFromCaptioningManager ? CaptioningPreferredLanguage() : std::nullopt;
+            int chosen = -1;
+            if (trackSelection.disabledTrackTypes.contains(TrackType::Text)) {
+                chosen = -1;
+            } else if (auto o = OverrideForType(trackSelection, TrackType::Text)) {
+                // An override: that track (when it can be read), or none.
+                for (std::size_t i = 0; i < subtitles.size(); ++i)
+                    if (o->groupId == "s" + std::to_string(i) && o->track == 0 && supported[i]) chosen = int(i);
+                for (std::size_t i = 0; i < mediaText.size(); ++i)
+                    if (o->groupId == mediaText[i].first && o->track == mediaText[i].second && supported[subtitles.size() + i]) chosen = int(subtitles.size() + i);
+            } else {
+                chosen = SelectTextTrack(candidates, supported, trackSelection, captioning, SelectedAudioLanguage());
+            }
+            if (chosen >= int(subtitles.size())) {
+                streamTextGroup = mediaText[std::size_t(chosen) - subtitles.size()].first;
+                streamTextTrack = mediaText[std::size_t(chosen) - subtitles.size()].second;
+            } else {
+                selectedText = chosen;
+            }
+            if (engine) engine->SetTextTrack(streamTextGroup, streamTextTrack);
             if (selectedText < 0) return;
             const auto subtitle = subtitles[std::size_t(selectedText)];
             const std::uint64_t generation = textGeneration;
@@ -255,6 +284,9 @@ namespace kiln::media {
         Tracks CurrentTracks() const {
             Tracks t = engineState.tracks;
             if (current >= Count()) return {};
+            for (auto& g : t.groups)
+                if (g.type == TrackType::Text)
+                    for (std::size_t i = 0; i < g.trackSelected.size(); ++i) g.trackSelected[i] = g.id == streamTextGroup && int(i) == streamTextTrack;
             const auto& subtitles = items[std::size_t(current)].subtitleConfigurations;
             for (std::size_t i = 0; i < subtitles.size(); ++i) {
                 const auto& s = subtitles[i];
@@ -291,8 +323,9 @@ namespace kiln::media {
         void UpdateCues() {
             cueTimer.Cancel();
             CueGroup next;
-            if (selectedText >= 0 && current < Count() && !cueResolver.Empty()) {
-                const std::int64_t us = MediaPositionMs() * 1000;
+            if ((selectedText >= 0 || !streamTextGroup.empty()) && current < Count() && !cueResolver.Empty()) {
+                // The media's own cues are timed on the period's timeline.
+                const std::int64_t us = (MediaPositionMs() + (streamTextGroup.empty() ? 0 : engineState.positionInFirstPeriodMs)) * 1000;
                 next.cues = cueResolver.GetCuesAtTimeUs(us);
                 const std::int64_t previous = cueResolver.GetPreviousCueChangeTimeUs(us);
                 next.presentationTimeUs = previous == kTimeUnset ? 0 : previous;
@@ -374,8 +407,15 @@ namespace kiln::media {
             const PlaybackState before = CurrentPlaybackState();
             const auto audioLanguage = SelectedAudioLanguage();
             engineState = s;
-            // The text track follows the audio's language (DefaultTrackSelector picks them together).
-            if (SelectedAudioLanguage() != audioLanguage) LoadText();
+            // The text track follows the audio's language (DefaultTrackSelector picks them together),
+            // and is chosen again once the media's own text tracks are known.
+            std::string textGroups;
+            for (const auto& g : s.tracks.groups)
+                if (g.type == TrackType::Text) textGroups += g.id + "/" + std::to_string(g.formats.size()) + ";";
+            if (SelectedAudioLanguage() != audioLanguage || textGroups != engineTextGroups) {
+                engineTextGroups = textGroups;
+                LoadText();
+            }
             const MediaItem& m = items[std::size_t(current)];
             const auto& clip = m.clippingConfiguration;
             positionMs = std::max<std::int64_t>(s.positionMs - clip.startPositionMs, 0);
@@ -722,6 +762,15 @@ namespace kiln::media {
         m_Shared->engine->onLooped = [main, weak](std::uint64_t id) {
             main->PostFromAnyThread([weak, id] {
                 if (auto shared = weak.lock()) shared->OnLooped(id);
+            });
+        };
+        m_Shared->engine->onCues = [main, weak](std::vector<CuesWithTiming> cues, bool reset, std::uint64_t id) {
+            main->PostFromAnyThread([weak, cues = std::move(cues), reset, id]() mutable {
+                auto shared = weak.lock();
+                if (!shared || id != shared->loadId || shared->loadId == 0 || shared->streamTextGroup.empty()) return;
+                if (reset) shared->cueResolver.Clear();
+                for (auto& c : cues) shared->cueResolver.AddCues(std::move(c), 0);
+                shared->Publish();
             });
         };
         m_Shared->engine->onRenderedFirstFrame = [main, weak](std::uint64_t id) {

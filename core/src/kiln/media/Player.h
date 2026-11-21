@@ -31,6 +31,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace kiln::media {
 
@@ -127,6 +128,9 @@ namespace kiln::media {
         // getAvailableCommands (Util.getAvailableCommands over ExoPlayer's permanent ones).
         Commands availableCommands;
         bool isCurrentMediaItemSeekable = false;   // its duration is known (no live streams here)
+        // Timeline.Window.getPositionInFirstPeriodMs: where the window starts in its period (an
+        // adaptive stream's live window moves along it); positions are in the window.
+        std::int64_t positionInFirstPeriodMs = 0;
         // getDeviceInfo / getDeviceVolume / isDeviceMuted (with device volume control on).
         DeviceInfo deviceInfo;
         int deviceVolume = 0;
@@ -174,10 +178,16 @@ namespace kiln::media {
         virtual void SetPlaybackParameters(PlaybackParameters) {}
         // New track preferences for the current load (it reports its Tracks with what plays).
         virtual void SetTrackSelectionParameters(TrackSelectionParameters) {}
+        // The text track of the media's own (one of its Text groups) the player chose; "" none.
+        // Its cues come through onCues, timed on the period's timeline.
+        virtual void SetTextTrack(std::string /*groupId*/, int /*track*/) {}
         // The state of the load it belongs to; looped: repeat started the item again.
         kiln::Function<void(const PlayerState&, std::uint64_t loadId)> onState;
         kiln::Function<void(std::uint64_t loadId)> onLooped;
         kiln::Function<void(std::uint64_t loadId)> onRenderedFirstFrame;
+        // Cues of the chosen text track as they load; reset: forget the ones before (a seek, a
+        // new track).
+        kiln::Function<void(std::vector<CuesWithTiming> cues, bool reset, std::uint64_t loadId)> onCues;
     };
     // The platform's engines (Android installs one; tests install their own).
     void SetPlayerEngineFactory(kiln::Function<std::unique_ptr<PlayerEngine>()> factory);

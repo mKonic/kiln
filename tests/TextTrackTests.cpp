@@ -263,6 +263,94 @@ TEST(PlayerShowsSideLoadedSubtitlesAtThePosition) {
     d.SetVirtualTime(wasVirtual);
 }
 
+// kiln: the media's own text tracks (an adaptive stream's subtitle renditions) compete with the
+// side-loaded ones; the engine loads the chosen one's cues, timed on the period's timeline.
+TEST(PlayerShowsTheMediasOwnTextTracks) {
+    auto& d = rt::Dispatcher::Main();
+    const bool wasVirtual = d.VirtualTime();
+    d.SetVirtualTime(true);
+    struct Engine : PlayerEngine {
+        EngineLoad load;
+        std::string textGroup;
+        int textTrack = -2, textCalls = 0;
+        void Load(EngineLoad l) override { load = l; }
+        void SetPlayWhenReady(bool) override {}
+        void SeekTo(std::int64_t) override {}
+        void SetRepeat(bool) override {}
+        void SetVolume(float) override {}
+        void SetSurface(ui::PlatformSurface) override {}
+        void SetTextTrack(std::string group, int track) override {
+            textGroup = std::move(group);
+            textTrack = track;
+            ++textCalls;
+        }
+        void Report(std::int64_t positionMs, std::int64_t windowInPeriodMs) {
+            PlayerState s;
+            s.state = PlaybackState::Ready;
+            s.durationMs = 60'000;
+            s.positionMs = positionMs;
+            s.positionInFirstPeriodMs = windowInPeriodMs;
+            Tracks::Group text;
+            text.id = "subtitle:English";
+            text.type = TrackType::Text;
+            text.formats = { { .language = "en", .sampleMimeType = "text/vtt", .selectionFlags = kSelectionFlagDefault },
+                             { .language = "fr", .sampleMimeType = "text/vtt" } };
+            text.trackSupported = { true, true };
+            text.trackSelected = { false, false };
+            s.tracks.groups.push_back(text);
+            onState(s, load.loadId);
+        }
+    };
+    Engine* engine = nullptr;
+    SetPlayerEngineFactory([&] {
+        auto e = std::make_unique<Engine>();
+        engine = e.get();
+        return std::unique_ptr<PlayerEngine>(std::move(e));
+    });
+    {
+        Player p;
+        p.SetMediaItem(MediaItem::FromUri("https://example.com/live.m3u8"));
+        p.Prepare();
+        CHECK_EQ(engine->textTrack, -1);   // nothing to choose from yet
+        // A live window 100 s into the period; the default English rendition is chosen.
+        engine->Report(5'000, 100'000);
+        d.RunPending();
+        CHECK_EQ(engine->textGroup, std::string("subtitle:English"));
+        CHECK_EQ(engine->textTrack, 0);
+        bool selected = false;
+        for (const auto& g : p.State().tracks.groups)
+            if (g.id == "subtitle:English") selected = g.trackSelected[0] && !g.trackSelected[1];
+        CHECK(selected);
+        // Its cues, timed on the period's timeline, show at window position + 100 s.
+        engine->onCues({ CuesWithTiming(CuesOf({ "Bonjour" }), 104'000'000, 2'000'000) }, true, engine->load.loadId);
+        d.RunPending();
+        CHECK(Texts(p.State().currentCues.cues) == "Bonjour");
+        engine->Report(7'000, 100'000);
+        d.RunPending();
+        CHECK(p.State().currentCues.cues.empty());
+        // A reset (a seek) forgets the cues before.
+        engine->Report(5'000, 100'000);
+        engine->onCues({}, true, engine->load.loadId);
+        d.RunPending();
+        CHECK(p.State().currentCues.cues.empty());
+        // Preferring French: the other track of the group.
+        p.SetTrackSelectionParameters({ .preferredTextLanguages = { "fr" } });
+        d.RunPending();
+        CHECK_EQ(engine->textTrack, 1);
+        // An override picks the track whatever the preferences say.
+        p.SetTrackSelectionParameters(TrackSelectionParameters{}.SetOverrideForType({ .type = TrackType::Text, .groupId = "subtitle:English", .trackIndices = { 0 } }));
+        d.RunPending();
+        CHECK_EQ(engine->textTrack, 0);
+        p.SetTrackSelectionParameters({ .disabledTrackTypes = { TrackType::Text } });
+        d.RunPending();
+        CHECK_EQ(engine->textTrack, -1);
+        CHECK(engine->textGroup.empty());
+    }
+    d.RunPending();
+    SetPlayerEngineFactory({});
+    d.SetVirtualTime(wasVirtual);
+}
+
 TEST(AudioTrackSelectionAsDefaultTrackSelector) {
     // DefaultTrackSelectorTest's AUDIO_FORMAT: AAC, stereo, 44.1 kHz, 128 kb/s; the system in en-US.
     const Format audio{ .sampleMimeType = "audio/mp4a-latm", .bitrate = 128000, .channelCount = 2, .sampleRate = 44100 };

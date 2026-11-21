@@ -124,6 +124,46 @@ TEST(SegmentProbe_parseSidx) {
     CHECK_THROWS(ParseSidx(box, 0));
 }
 
+namespace {
+    Bytes Box(const char* type, const Bytes& body) {
+        const std::size_t size = 8 + body.size();
+        Bytes b = { std::uint8_t(size >> 24), std::uint8_t(size >> 16), std::uint8_t(size >> 8), std::uint8_t(size), std::uint8_t(type[0]),
+                    std::uint8_t(type[1]), std::uint8_t(type[2]), std::uint8_t(type[3]) };
+        b.insert(b.end(), body.begin(), body.end());
+        return b;
+    }
+    Bytes Cat(std::initializer_list<Bytes> parts) {
+        Bytes out;
+        for (const auto& p : parts) out.insert(out.end(), p.begin(), p.end());
+        return out;
+    }
+    Bytes Trak(std::uint8_t id, std::uint32_t timescale) {
+        Bytes tkhd(80, 0);
+        tkhd[15] = id;   // version 0: track_ID after creation and modification times
+        Bytes mdhd(24, 0);
+        mdhd[12] = std::uint8_t(timescale >> 24);
+        mdhd[13] = std::uint8_t(timescale >> 16);
+        mdhd[14] = std::uint8_t(timescale >> 8);
+        mdhd[15] = std::uint8_t(timescale);
+        return Box("trak", Cat({ Box("tkhd", tkhd), Box("mdia", Box("mdhd", mdhd)) }));
+    }
+}
+
+TEST(SegmentProbe_firstFragmentDecodeTimeUs) {
+    const Bytes init = Cat({ Box("ftyp", Bytes(8, 0)), Box("moov", Cat({ Box("mvhd", Bytes(100, 0)), Trak(1, 90000), Trak(2, 48000) })) });
+    // tfdt version 1: 900000 at 90 kHz is 10 s.
+    const Bytes tfhd = { 0, 0, 0, 0, 0, 0, 0, 1 };
+    const Bytes tfdt = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0x0d, 0xbb, 0xa0 };
+    const Bytes segment = Cat({ Box("styp", Bytes(8, 0)), Box("moof", Cat({ Box("mfhd", Bytes(8, 0)), Box("traf", Cat({ Box("tfhd", tfhd), Box("tfdt", tfdt) })) })),
+                                Box("mdat", Bytes(16, 0)) });
+    CHECK(FirstFragmentDecodeTimeUs(init, segment) == std::optional<std::int64_t>(10'000'000));
+    // Track 2 (48 kHz, tfdt version 0 of 96000): 2 s.
+    const Bytes audio = Box("moof", Box("traf", Cat({ Box("tfhd", Bytes{ 0, 0, 0, 0, 0, 0, 0, 2 }), Box("tfdt", Bytes{ 0, 0, 0, 0, 0, 1, 0x77, 0x00 }) })));
+    CHECK(FirstFragmentDecodeTimeUs(init, audio) == std::optional<std::int64_t>(2'000'000));
+    CHECK(!FirstFragmentDecodeTimeUs(Bytes{}, segment).has_value());   // no timescale
+    CHECK(!FirstFragmentDecodeTimeUs(init, Box("mdat", Bytes(4, 0))).has_value());
+}
+
 TEST(SegmentProbe_aes128CbcDecrypt) {
     const Bytes key = { 0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c };
     const Bytes iv = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };

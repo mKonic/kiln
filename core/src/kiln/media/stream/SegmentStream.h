@@ -60,6 +60,12 @@ namespace kiln::media::stream {
         std::int64_t MinPresentationUs() const { return m_MinPresentationUs; }
 
         int Track() const { return m_Track; }
+        int Discontinuity() const { return m_Discontinuity; }
+        // The discontinuity's timestamp adjuster (HLS), for timestamps read from the bytes (WebVTT's
+        // X-TIMESTAMP-MAP).
+        const std::shared_ptr<TimestampAdjuster>& Adjuster() const { return m_Adjuster; }
+        // Every byte is in (reads past the end return 0).
+        bool IsComplete() const;
         const Format& GetFormat() const { return m_Format; }
         SegmentContainer Container() const { return m_Container; }
         std::int64_t StartUs() const { return m_StartUs; }

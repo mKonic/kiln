@@ -6,6 +6,8 @@
 #include <map>
 #include <string_view>
 
+#include <kiln/Function.h>
+
 namespace kiln::media::stream {
 
     namespace {
@@ -237,6 +239,74 @@ namespace kiln::media::stream {
             at += std::size_t(size);
         }
         return std::nullopt;
+    }
+
+    namespace {
+        // The boxes directly inside [data, data + size): type -> body (first of each type).
+        void ForEachBox(std::span<const std::uint8_t> data, const kiln::Function<bool(std::string_view type, std::span<const std::uint8_t> body)>& f) {
+            std::size_t at = 0;
+            while (at + 8 <= data.size()) {
+                std::uint64_t size = ReadU32(&data[at]);
+                std::size_t header = 8;
+                if (size == 1) {
+                    if (at + 16 > data.size()) return;
+                    size = ReadU64(&data[at + 8]);
+                    header = 16;
+                } else if (size == 0) {
+                    size = data.size() - at;
+                }
+                if (size < header || at + size > data.size()) return;
+                if (!f(std::string_view(reinterpret_cast<const char*>(&data[at + 4]), 4), data.subspan(at + header, std::size_t(size) - header))) return;
+                at += std::size_t(size);
+            }
+        }
+    }
+
+    std::optional<std::int64_t> FirstFragmentDecodeTimeUs(std::span<const std::uint8_t> init, std::span<const std::uint8_t> segment) {
+        // Track ids and their timescales (moov/trak: tkhd, mdia/mdhd).
+        std::map<std::uint32_t, std::uint32_t> timescales;
+        auto scan = [&](std::span<const std::uint8_t> bytes) {
+            ForEachBox(bytes, [&](std::string_view type, std::span<const std::uint8_t> moov) {
+                if (type != "moov") return true;
+                ForEachBox(moov, [&](std::string_view t, std::span<const std::uint8_t> trak) {
+                    if (t != "trak") return true;
+                    std::uint32_t id = 0, timescale = 0;
+                    ForEachBox(trak, [&](std::string_view b, std::span<const std::uint8_t> body) {
+                        if (b == "tkhd" && body.size() >= 24) id = ReadU32(&body[body[0] == 1 ? 20 : 12]);
+                        if (b == "mdia")
+                            ForEachBox(body, [&](std::string_view m, std::span<const std::uint8_t> mdhd) {
+                                if (m == "mdhd" && mdhd.size() >= 24) timescale = ReadU32(&mdhd[mdhd[0] == 1 ? 20 : 12]);
+                                return true;
+                            });
+                        return true;
+                    });
+                    if (id && timescale) timescales[id] = timescale;
+                    return true;
+                });
+                return false;
+            });
+        };
+        scan(init);
+        if (timescales.empty()) scan(segment);   // an initialization in the segment itself
+        std::optional<std::int64_t> result;
+        ForEachBox(segment, [&](std::string_view type, std::span<const std::uint8_t> moof) {
+            if (type != "moof") return true;
+            ForEachBox(moof, [&](std::string_view t, std::span<const std::uint8_t> traf) {
+                if (t != "traf") return true;
+                std::uint32_t id = 0;
+                std::optional<std::uint64_t> decodeTime;
+                ForEachBox(traf, [&](std::string_view b, std::span<const std::uint8_t> body) {
+                    if (b == "tfhd" && body.size() >= 8) id = ReadU32(&body[4]);
+                    if (b == "tfdt" && body.size() >= 8) decodeTime = body[0] == 1 && body.size() >= 12 ? ReadU64(&body[4]) : ReadU32(&body[4]);
+                    return true;
+                });
+                auto it = timescales.find(id);
+                if (decodeTime && it != timescales.end()) result = ScaleLargeTimestamp(std::int64_t(*decodeTime), kMicrosPerSecond, it->second);
+                return false;
+            });
+            return false;
+        });
+        return result;
     }
 
     // --- AES-128 (FIPS-197), decryption only -----------------------------------------------------

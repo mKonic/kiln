@@ -46,7 +46,11 @@ namespace kiln::media::stream {
           m_MinPresentationUs(minPresentationUs), m_LoadedEndUs(first.startUs), m_ReaderPositions(std::size_t(std::max(readers, 1)), 0),
           m_ReaderLast(std::size_t(std::max(readers, 1)), 0), m_NonBlocking(std::size_t(std::max(readers, 1)), false),
           m_Opening(std::size_t(std::max(readers, 1)), false), m_Waiting(std::size_t(std::max(readers, 1)), false) {
-        if (m_Container == SegmentContainer::WebM && m_DashTimeOffsetUs != kTimeUnset) m_TimeOffsetUs = m_DashTimeOffsetUs;
+        // WebVTT: cue times are on the period's timeline in DASH; HLS maps them by the segment's
+        // X-TIMESTAMP-MAP (left to the reader).
+        if (m_Container == SegmentContainer::WebVtt) {
+            if (m_DashTimeOffsetUs != kTimeUnset) m_TimeOffsetUs = m_DashTimeOffsetUs;
+        } else if (m_Container == SegmentContainer::WebM && m_DashTimeOffsetUs != kTimeUnset) m_TimeOffsetUs = m_DashTimeOffsetUs;
         else if (m_Container != SegmentContainer::Ts && m_Container != SegmentContainer::PackedAudio) m_TimeOffsetUs = m_StartUs;
         else if (m_DashTimeOffsetUs != kTimeUnset) m_TimeOffsetUs = m_StartUs;   // DASH TS: counted from its first PTS
     }
@@ -106,6 +110,11 @@ namespace kiln::media::stream {
         const std::size_t keepFrom = std::min(current, m_Parts.size()) - 1;
         for (std::size_t i = 0; i < keepFrom; ++i)
             if (!m_Parts[i].init) std::vector<std::uint8_t>().swap(m_Parts[i].bytes);
+    }
+
+    bool StreamPiece::IsComplete() const {
+        std::lock_guard lock(m_Mutex);
+        return m_Complete;
     }
 
     std::int64_t StreamPiece::Size() const {
@@ -468,7 +477,8 @@ namespace kiln::media::stream {
         }
 
         const MediaSegment& segment = segments[next];
-        const bool packed = timeline.container == SegmentContainer::PackedAudio;
+        // Packed audio and WebVTT: a piece per segment (upstream makes an extractor per chunk).
+        const bool packed = timeline.container == SegmentContainer::PackedAudio || timeline.container == SegmentContainer::WebVtt;
         const bool newPiece = !piece || track != piece->Track() || segment.discontinuity != piece->m_Discontinuity || !SameInit(segment.init, piece->m_Init)
                            || segment.timeOffsetUs != piece->m_DashTimeOffsetUs || packed || segment.gap || minPresentationUs != kTimeUnset;
         std::shared_ptr<StreamPiece> target = piece;
@@ -485,7 +495,20 @@ namespace kiln::media::stream {
             if (!segment.gap) {
                 if (newPiece && segment.init) target->Append(Fetch(*segment.init), segment.startUs, true);
                 std::vector<std::uint8_t> bytes = Fetch(segment);
-                if (newPiece && target->m_Adjuster && (timeline.container == SegmentContainer::Ts || packed)) {
+                // fMP4 in HLS: the primary's first fragment starts the discontinuity's timestamps
+                // (its tfdt at the segment's start), which WebVTT's X-TIMESTAMP-MAP refers to. The
+                // samples themselves are placed by the segment's start.
+                if (newPiece && target->m_Adjuster && timeline.container == SegmentContainer::Mp4 && m_Group.primary && !target->m_Adjuster->IsInitialized()) {
+                    std::vector<std::uint8_t> init;
+                    {
+                        std::lock_guard pl(target->m_Mutex);
+                        for (const auto& part : target->m_Parts)
+                            if (part.init) init.insert(init.end(), part.bytes.begin(), part.bytes.end());
+                    }
+                    if (std::optional<std::int64_t> decodeUs = FirstFragmentDecodeTimeUs(init, bytes))
+                        if (target->m_Adjuster->TrySharedInitialize(true, segment.startUs)) target->m_Adjuster->AdjustSampleTimestamp(*decodeUs);
+                }
+                if (newPiece && target->m_Adjuster && (timeline.container == SegmentContainer::Ts || timeline.container == SegmentContainer::PackedAudio)) {
                     // The timestamps of TS and packed audio, from the bytes (HlsMediaChunk).
                     std::shared_ptr<TimestampAdjuster> adjuster = target->m_Adjuster;
                     while (!adjuster->SharedInitializeOrWait(m_Group.primary, segment.startUs, 100)) {
@@ -495,7 +518,7 @@ namespace kiln::media::stream {
                     std::int64_t offsetUs = segment.startUs;
                     if (timeline.container == SegmentContainer::Ts) {
                         if (std::optional<std::int64_t> base = FirstTsTimestampBase(bytes)) offsetUs = adjuster->AdjustTsTimestamp(*base);
-                    } else {
+                    } else {   // packed audio
                         const std::int64_t id3 = PeekId3PrivTimestamp(bytes);
                         if (id3 != kTimeUnset) offsetUs = adjuster->AdjustTsTimestamp(id3);
                         bytes.erase(bytes.begin(), bytes.begin() + std::ptrdiff_t(Id3TagsLength(bytes)));

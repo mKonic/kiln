@@ -8,6 +8,8 @@
 
 #include "kiln/jvm/Jvm.h"
 #include "kiln/media/Player.h"
+#include "kiln/media/Webvtt.h"
+#include "kiln/media/stream/SegmentProbe.h"
 #include "kiln/media/stream/AdaptiveSource.h"
 #include "kiln/media/stream/BandwidthMeter.h"
 #include "kiln/media/stream/SegmentStream.h"
@@ -41,6 +43,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -358,12 +361,18 @@ namespace kiln::android {
                     const std::int64_t offsetUs = piece->TimeOffsetUs().value_or(piece->StartUs());
                     for (;;) {
                         if (!AwaitRoom()) break;
+                        // The end is no sample track: a time may be negative (MPEG4Extractor shifts by
+                        // the edit list, so a gapless track's priming samples come before 0).
+                        if (AMediaExtractor_getSampleTrackIndex(e.extractor) < 0) break;
                         const std::int64_t sampleUs = AMediaExtractor_getSampleTime(e.extractor);
-                        if (sampleUs < 0) break;
                         Item sample;
-                        sample.data.resize(std::size_t(std::max<ssize_t>(AMediaExtractor_getSampleSize(e.extractor), 0)));
+                        const ssize_t sampleSize = AMediaExtractor_getSampleSize(e.extractor);
+                        sample.data.resize(std::size_t(std::max<ssize_t>(sampleSize, 0)));
                         const ssize_t n = AMediaExtractor_readSampleData(e.extractor, sample.data.data(), sample.data.size());
-                        if (n < 0) break;
+                        if (n < 0) {
+                            __android_log_print(ANDROID_LOG_WARN, "kiln", "media: cannot read a %s sample at %lld (size %zd)", m_Video ? "video" : "audio", (long long)sampleUs, sampleSize);
+                            break;
+                        }
                         sample.data.resize(std::size_t(n));
                         sample.timeUs = sampleUs + offsetUs;
                         Push(std::move(sample));
@@ -478,6 +487,13 @@ namespace kiln::android {
                     m_TrackSelectionChanged = true;
                 });
             }
+            void SetTextTrack(std::string groupId, int track) override {
+                Command([&] {
+                    m_TextGroupWanted = std::move(groupId);
+                    m_TextTrackWanted = track;
+                    m_TextChanged = true;
+                });
+            }
             // AAudio's usage and content type have AudioAttributes' values; used when the stream
             // next opens.
             void SetAudioAttributes(media::AudioAttributes a) override {
@@ -523,7 +539,7 @@ namespace kiln::android {
                     // and its buffered position moves while paused).
                     bool busy = m_Prepared && (m_Playing || !m_FirstFrameRendered || NeedsDecoding() || StreamsBusy());
                     if (busy) m_Cv.wait_for(lock, std::chrono::milliseconds(10));
-                    else m_Cv.wait(lock, [this] { return m_Quit || m_UriChanged || m_SeekUs || m_PlayWhenReady != m_PlayingWanted || m_AppliedSurface != m_SurfaceGeneration || m_RepeatWanted != m_Repeat || m_VolumeWanted != m_Volume || m_ParamsWanted != m_Params || m_TrackSelectionChanged; });
+                    else m_Cv.wait(lock, [this] { return m_Quit || m_UriChanged || m_SeekUs || m_PlayWhenReady != m_PlayingWanted || m_AppliedSurface != m_SurfaceGeneration || m_RepeatWanted != m_Repeat || m_VolumeWanted != m_Volume || m_ParamsWanted != m_Params || m_TrackSelectionChanged || m_TextChanged; });
                     if (m_Quit) break;
                     // Take the commands.
                     std::optional<media::EngineLoad> load;
@@ -537,6 +553,9 @@ namespace kiln::android {
                     std::optional<media::TrackSelectionParameters> trackSelection;
                     if (m_TrackSelectionChanged) trackSelection = m_TrackSelectionWanted;
                     m_TrackSelectionChanged = false;
+                    std::optional<std::pair<std::string, int>> text;
+                    if (m_TextChanged) text = std::make_pair(m_TextGroupWanted, m_TextTrackWanted);
+                    m_TextChanged = false;
                     ANativeWindow* window = nullptr;
                     bool surfaceChanged = m_AppliedSurface != m_SurfaceGeneration;
                     std::uint64_t generation = m_SurfaceGeneration;
@@ -554,6 +573,8 @@ namespace kiln::android {
                         // From the item's start (a clipped start, or where playback resumes).
                         m_Uri = load->uri;
                         m_MimeType = load->mimeType;
+                        m_TextGroup.clear();   // the player chooses the new item's text track
+                        m_TextTrack = -1;
                         m_TrackSelection = load->trackSelection;
                         Open(load->uri, m_StartUs);
                     }
@@ -570,6 +591,7 @@ namespace kiln::android {
                     if (seek && m_Prepared) Seek(m_WindowStartUs + std::min(*seek, m_DurationUs > 0 ? m_DurationUs - m_WindowStartUs : *seek));
                     if (parametersChanged) ApplyParameters(parameters);
                     if (trackSelection) ApplyTrackSelection(std::move(*trackSelection));
+                    if (text) ApplyTextTrack(text->first, text->second);
                     m_PlayingWanted = play;
                     if (m_Prepared) {
                         SetPlaying(play && m_State.state != media::PlaybackState::Ended);
@@ -604,6 +626,8 @@ namespace kiln::android {
                 m_Source.reset();
                 m_VideoStream.reset();
                 m_AudioStream.reset();
+                m_TextStream.reset();
+                m_TextPiece.reset();
                 m_Adaptive.reset();
                 m_WindowStartUs = 0;
                 m_Rebuffering = false;
@@ -780,11 +804,18 @@ namespace kiln::android {
             // HlsMediaSource / DashMediaSource preparing: the manifest, the track groups, the
             // loaders from the start position (a live stream's default one when none is given),
             // then the tracks of their first pieces.
-            void OpenAdaptive(const std::string& uri, std::int64_t startUs) {
+            // `source`: the manifest already loaded (new track preferences), playing on from
+            // `periodPositionUs`.
+            void OpenAdaptive(const std::string& uri, std::int64_t startUs, std::shared_ptr<media::stream::AdaptiveSource> source = nullptr,
+                              std::optional<std::int64_t> periodPositionUs = std::nullopt) {
                 using namespace media::stream;
                 try {
-                    auto fetcher = std::make_shared<SegmentFetcher>(net::GetHttpEngine(), &BandwidthMeter());
-                    m_Adaptive = AdaptiveSource::Open(uri, m_MimeType, std::move(fetcher));
+                    if (source) {
+                        m_Adaptive = std::move(source);
+                    } else {
+                        auto fetcher = std::make_shared<SegmentFetcher>(net::GetHttpEngine(), &BandwidthMeter());
+                        m_Adaptive = AdaptiveSource::Open(uri, m_MimeType, std::move(fetcher));
+                    }
                 } catch (const HttpStatusError& e) {
                     return Fail(e.what(), media::PlaybackException::IoBadHttpStatus);
                 } catch (const ParserException& e) {
@@ -797,7 +828,8 @@ namespace kiln::android {
                 m_TargetLiveOffsetUs = w.targetLiveOffsetUs;
                 m_DurationUs = w.dynamic || w.durationUs == kTimeUnset ? -1 : w.startUs + w.durationUs;
                 m_State.durationMs = w.durationUs == kTimeUnset ? -1 : w.durationUs / 1000;
-                const std::int64_t positionUs = w.startUs + (w.dynamic && startUs <= 0 ? w.defaultPositionUs : std::max<std::int64_t>(startUs, 0));
+                const std::int64_t positionUs =
+                    periodPositionUs ? *periodPositionUs : w.startUs + (w.dynamic && startUs <= 0 ? w.defaultPositionUs : std::max<std::int64_t>(startUs, 0));
                 m_StreamSelection = SelectStreamGroups();
                 const StreamSelection& sel = m_StreamSelection;
                 ReportStreamTracks();
@@ -860,6 +892,8 @@ namespace kiln::android {
                 if (!m_Video && !m_Audio) return Fail("no audio or video in " + uri, media::PlaybackException::ParsingContainerUnsupported);
                 m_Network = true;
                 FinishOpen(positionUs);
+                // Reopened for new track preferences: the text track goes on.
+                if (!m_TextGroup.empty() && m_Prepared) ApplyTextTrack(m_TextGroup, m_TextTrack);
             }
 
             // DefaultTrackSelector over the stream's groups: the first video group (adaptive over
@@ -985,7 +1019,8 @@ namespace kiln::android {
                     out.id = g.id;
                     out.type = g.type;
                     out.formats = g.formats;
-                    for (const auto& f : g.formats) out.trackSupported.push_back(DecoderSupport(f) == 2);
+                    for (const auto& f : g.formats)
+                        out.trackSupported.push_back(g.type == media::TrackType::Text ? TextSupported(f) : DecoderSupport(f) == 2);
                     out.trackSelected.assign(g.formats.size(), false);
                     const bool videoHere = int(i) == sel.videoGroup && g.type == media::TrackType::Video;
                     const bool audioHere = int(i) == sel.audioGroup && g.type == media::TrackType::Audio;
@@ -1134,6 +1169,104 @@ namespace kiln::android {
                 return false;
             }
 
+            // --- a stream's text (HlsMediaPeriod's subtitle wrappers, DASH text adaptation sets) ---
+            // WebVTT segments (MP4-wrapped WebVTT and TTML have no parser here).
+            static bool TextSupported(const media::Format& f) {
+                return f.sampleMimeType == "text/vtt" && f.containerMimeType.find("mp4") == std::string::npos;
+            }
+            // The player's text track: its own loader, from where playback is.
+            void ApplyTextTrack(const std::string& group, int track) {
+                m_TextStream.reset();
+                m_TextPiece.reset();
+                m_TextDelivered.clear();
+                m_TextGroup = group;
+                m_TextTrack = track;
+                if (onCues) onCues({}, true, m_LoadId);
+                if (!m_Adaptive || group.empty()) return;
+                const auto& groups = m_Adaptive->Groups();
+                for (std::size_t i = 0; i < groups.size(); ++i) {
+                    if (groups[i].id != group || groups[i].type != media::TrackType::Text) continue;
+                    if (track < 0 || track >= int(groups[i].formats.size()) || !TextSupported(groups[i].formats[std::size_t(track)])) return;
+                    media::stream::SegmentStream::Config config;
+                    config.group = int(i);
+                    config.tracks = { track };
+                    m_TextStream = std::make_shared<media::stream::SegmentStream>(m_Adaptive, config);
+                    m_TextStream->Start(m_Prepared ? ClockUs() : m_WindowStartUs);
+                    return;
+                }
+            }
+            // Loaded WebVTT segments, parsed and placed on the period's timeline, to the player.
+            void ProcessText() {
+                if (!m_TextStream || !onCues) return;
+                for (int guard = 0; guard < 16; ++guard) {
+                    if (!m_TextPiece) {
+                        m_TextPiece = m_TextStream->FirstPiece();
+                        m_TextPieceDone = false;
+                        if (!m_TextPiece) return;
+                    }
+                    if (!m_TextPieceDone) {
+                        if (!m_TextPiece->IsComplete()) return;
+                        std::optional<std::vector<media::CuesWithTiming>> cues = ParseText(*m_TextPiece);
+                        if (!cues) return;   // its timestamp source has not started yet
+                        std::vector<media::CuesWithTiming> fresh;
+                        for (auto& c : *cues) {
+                            // A cue repeated in the next segment (HLS lets segments overlap) shows once.
+                            std::string key = std::to_string(c.startTimeUs) + "/" + std::to_string(c.endTimeUs);
+                            for (const auto& cue : c.cues) key += "/" + cue.text.Text();
+                            if (m_TextDelivered.insert(std::move(key)).second) fresh.push_back(std::move(c));
+                        }
+                        if (!fresh.empty()) onCues(std::move(fresh), false, m_LoadId);
+                        m_TextPieceDone = true;
+                    }
+                    if (!m_TextPiece->Ended() || m_TextPiece->IsLast()) return;
+                    m_TextPiece = m_TextPiece->Next();
+                    m_TextPieceDone = false;
+                }
+            }
+            // HLS WebvttExtractor: the first cue's time, moved by X-TIMESTAMP-MAP onto the MPEG-TS
+            // timeline, through the discontinuity's timestamp adjuster; DASH: the period's offset.
+            std::optional<std::vector<media::CuesWithTiming>> ParseText(media::stream::StreamPiece& piece) {
+                std::vector<media::CuesWithTiming> cues;
+                const std::int64_t size = piece.Size();
+                if (size <= 0 || piece.Container() != media::stream::SegmentContainer::WebVtt) return cues;
+                std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+                if (piece.ReadAt(0, 0, bytes.data(), bytes.size()) != size) return cues;
+                try {
+                    cues = media::WebvttParser().ParseAll(bytes);
+                } catch (const std::exception&) {
+                    return std::vector<media::CuesWithTiming>{};   // a segment that can't be parsed shows nothing
+                }
+                if (cues.empty()) return cues;
+                std::int64_t offsetUs = 0;
+                if (const auto& adjuster = piece.Adjuster()) {
+                    if (!adjuster->IsInitialized()) return std::nullopt;
+                    std::int64_t vttTimestampUs = 0, tsTimestampUs = 0;
+                    const std::string text(bytes.begin(), bytes.end());
+                    for (std::size_t at = 0, end; at < text.size(); at = end + 1) {
+                        end = text.find('\n', at);
+                        if (end == std::string::npos) end = text.size();
+                        std::string line = text.substr(at, end - at);
+                        if (!line.empty() && line.back() == '\r') line.pop_back();
+                        if (at > 0 && line.empty()) break;   // the header ends
+                        if (!line.starts_with("X-TIMESTAMP-MAP")) continue;
+                        const std::size_t local = line.find("LOCAL:"), mpegts = line.find("MPEGTS:");
+                        if (local == std::string::npos || mpegts == std::string::npos) return std::vector<media::CuesWithTiming>{};
+                        const std::size_t localEnd = line.find(',', local);
+                        vttTimestampUs = media::webvtt::ParseTimestampUs(line.substr(local + 6, localEnd == std::string::npos ? std::string::npos : localEnd - local - 6));
+                        tsTimestampUs = media::stream::TimestampAdjuster::PtsToUs(std::stoll(line.substr(mpegts + 7)));
+                    }
+                    std::int64_t firstCueUs = cues.front().startTimeUs;
+                    for (const auto& c : cues) firstCueUs = std::min(firstCueUs, c.startTimeUs);
+                    const std::int64_t sampleTimeUs =
+                        adjuster->AdjustTsTimestamp(media::stream::TimestampAdjuster::UsToWrappedPts(firstCueUs + tsTimestampUs - vttTimestampUs));
+                    offsetUs = sampleTimeUs - firstCueUs;
+                } else {
+                    offsetUs = piece.TimeOffsetUs().value_or(piece.StartUs());
+                }
+                for (auto& c : cues) c = media::CuesWithTiming(std::move(c.cues), c.startTimeUs + offsetUs, c.durationUs);
+                return cues;
+            }
+
             bool StreamsBusy() const {
                 if (!m_Adaptive) return false;
                 if (m_State.state == media::PlaybackState::Buffering) return true;
@@ -1262,9 +1395,16 @@ namespace kiln::android {
                 m_TrackSelection = std::move(p);
                 if (!m_Prepared) return;
                 if (m_Adaptive) {
+                    // New groups or tracks: the streams start again where playback is, with the
+                    // manifest already loaded.
                     const StreamSelection selection = SelectStreamGroups();
                     if (selection == m_StreamSelection) return;
-                    Open(m_Uri, std::max<std::int64_t>(ClockUs() - m_WindowStartUs, 0));
+                    const std::int64_t now = ClockUs();
+                    std::shared_ptr<media::stream::AdaptiveSource> source = m_Adaptive;
+                    Close();
+                    m_State = {};
+                    m_State.playWhenReady = m_PlayingWanted;
+                    OpenAdaptive(m_Uri, 0, std::move(source), now);
                     return;
                 }
                 const auto [video, audio] = SelectTracks();
@@ -1321,6 +1461,12 @@ namespace kiln::android {
                 if (m_Adaptive) m_Adaptive->Adjusters().Reset();
                 if (m_VideoStream) m_VideoStream->Start(us);
                 if (m_AudioStream && m_AudioStream != m_VideoStream) m_AudioStream->Start(us);
+                if (m_TextStream) {
+                    m_TextStream->Start(us);
+                    m_TextPiece.reset();
+                    m_TextDelivered.clear();
+                    if (onCues) onCues({}, true, m_LoadId);
+                }
                 for (Track* t : { m_Video.get(), m_Audio.get() }) {
                     if (!t) continue;
                     if (t->stream) {
@@ -1415,7 +1561,9 @@ namespace kiln::android {
                         t.inputDone = true;
                         return;
                     }
-                    AMediaCodec_queueInputBuffer(t.codec, size_t(idx), 0, size_t(size), std::uint64_t(AMediaExtractor_getSampleTime(t.extractor)), 0);
+                    // A negative time (gapless priming before the edit list's start) cannot be a
+                    // buffer's time: it decodes at 0.
+                    AMediaCodec_queueInputBuffer(t.codec, size_t(idx), 0, size_t(size), std::uint64_t(std::max<std::int64_t>(AMediaExtractor_getSampleTime(t.extractor), 0)), 0);
                     AMediaExtractor_advance(t.extractor);
                 }
             }
@@ -1662,9 +1810,10 @@ namespace kiln::android {
                     if (const std::string error = StreamError(); !error.empty())
                         return Fail(error, error.starts_with("HTTP ") ? media::PlaybackException::IoBadHttpStatus : media::PlaybackException::IoNetworkConnectionFailed);
                     const std::int64_t now = ClockUs();
-                    for (const auto& s : { m_VideoStream, m_AudioStream })
+                    for (const auto& s : { m_VideoStream, m_AudioStream, m_TextStream })
                         if (s) s->SetPlaybackPosition(now, m_Params.speed);
                     RefreshWindow();
+                    ProcessText();
                 }
                 if (m_Video) FeedInput(*m_Video);
                 if (m_Audio) FeedInput(*m_Audio);
@@ -1711,6 +1860,7 @@ namespace kiln::android {
                 s.playWhenReady = m_PlayingWanted;
                 s.isPlaying = m_Playing;
                 if (m_Prepared && m_Adaptive) {
+                    s.positionInFirstPeriodMs = m_WindowStartUs / 1000;
                     std::int64_t us = ClockUs();
                     if (m_DurationUs > 0) us = std::min(us, m_DurationUs);
                     s.positionMs = std::max<std::int64_t>(us - m_WindowStartUs, 0) / 1000;
@@ -1803,6 +1953,15 @@ namespace kiln::android {
             StreamSelection m_StreamSelection;
             int m_VideoGroup = -1;
             std::vector<int> m_VideoTracks;
+            // The text track (wanted: shared, m_Mutex): its loader, the piece being read, and the
+            // cues already given (a cue repeated across segments goes once).
+            std::string m_TextGroupWanted, m_TextGroup;
+            int m_TextTrackWanted = -1, m_TextTrack = -1;
+            bool m_TextChanged = false;
+            std::shared_ptr<media::stream::SegmentStream> m_TextStream;
+            std::shared_ptr<media::stream::StreamPiece> m_TextPiece;
+            bool m_TextPieceDone = false;
+            std::set<std::string> m_TextDelivered;
             std::vector<media::Format> m_Formats;   // the media's tracks
             std::vector<media::TrackType> m_Types;
             int m_SelectedVideo = -1, m_SelectedAudio = -1;

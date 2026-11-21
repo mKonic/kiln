@@ -40,6 +40,11 @@ namespace kiln::media::stream {
     // its file. nullopt when there is none; throws ParserException for an indirect reference.
     std::optional<ChunkIndex> ParseSidx(std::span<const std::uint8_t> data, std::int64_t inputPosition);
 
+    // The first fragment's decode time in microseconds (its traf's tfdt, in the timescale of that
+    // track's mdhd in the initialization segment), or nullopt. What media3's fragmented MP4
+    // extractor timestamps an HLS chunk by; the platform's extractor ignores tfdt.
+    std::optional<std::int64_t> FirstFragmentDecodeTimeUs(std::span<const std::uint8_t> init, std::span<const std::uint8_t> segment);
+
     // AES-128-CBC decryption with PKCS#7 padding removed (Aes128DataSource's
     // "AES/CBC/PKCS7Padding"). Throws ParserException for a key or IV that is not 16 bytes, data
     // that is not whole blocks, or bad padding.

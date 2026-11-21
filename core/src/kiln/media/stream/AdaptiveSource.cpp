@@ -300,6 +300,22 @@ namespace kiln::media::stream {
                     m_Groups.push_back(std::move(g));
                     m_GroupUrls.push_back(std::move(urls));
                 }
+                // buildAndPrepareSubtitleSampleStreamWrappers: subtitle renditions grouped by name.
+                grouped.clear();
+                for (const auto& r : mv.subtitles) {
+                    if (r.url.empty() || !grouped.insert(r.name).second) continue;
+                    StreamGroup g;
+                    g.id = "subtitle:" + r.name;
+                    g.type = TrackType::Text;
+                    std::vector<std::string> urls;
+                    for (const auto& other : mv.subtitles)
+                        if (!other.url.empty() && other.name == r.name) {
+                            g.formats.push_back(other.format);
+                            urls.push_back(other.url);
+                        }
+                    m_Groups.push_back(std::move(g));
+                    m_GroupUrls.push_back(std::move(urls));
+                }
             }
 
             static Format DeriveVideoFormat(const Format& variant) {
@@ -649,7 +665,7 @@ namespace kiln::media::stream {
                 std::map<int, std::vector<int>> members;
                 for (std::size_t i = 0; i < sets.size(); ++i) {
                     if (property(sets[i], kTrickMode)) continue;
-                    if (sets[i].type != TrackType::Video && sets[i].type != TrackType::Audio) continue;
+                    if (sets[i].type != TrackType::Video && sets[i].type != TrackType::Audio && sets[i].type != TrackType::Text) continue;
                     members[find(int(i))].push_back(int(i));
                 }
                 // In manifest order of each group's first set.
