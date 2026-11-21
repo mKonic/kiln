@@ -4,6 +4,7 @@
 // DefaultHlsPlaylistTracker, HlsChunkSource, DashMediaSource and DefaultDashChunkSource.
 #include "Check.h"
 
+#include "kiln/media/smoothstreaming/SsInitSegment.h"
 #include "kiln/media/stream/AdaptiveSource.h"
 #include "kiln/media/stream/SegmentProbe.h"
 #include "kiln/media/stream/SegmentStream.h"
@@ -177,6 +178,13 @@ TEST(AdaptiveStream_inferProtocol) {
     CHECK(AdaptiveSource::InferProtocol("https://a/b", "application/x-mpegURL") == AdaptiveSource::Protocol::Hls);
     CHECK(AdaptiveSource::InferProtocol("https://a/b", "application/dash+xml") == AdaptiveSource::Protocol::Dash);
     CHECK(!AdaptiveSource::InferProtocol("https://a/b.mp4", "").has_value());
+    // Util.inferContentType: .ism / .isml, with a /Manifest suffix that may ask for HLS or DASH.
+    CHECK(AdaptiveSource::InferProtocol("https://a/v.ism", "") == AdaptiveSource::Protocol::SmoothStreaming);
+    CHECK(AdaptiveSource::InferProtocol("https://a/v.isml/Manifest", "") == AdaptiveSource::Protocol::SmoothStreaming);
+    CHECK(AdaptiveSource::InferProtocol("https://a/v.ism/manifest?token=1", "") == AdaptiveSource::Protocol::SmoothStreaming);
+    CHECK(AdaptiveSource::InferProtocol("https://a/v.ism/Manifest(format=mpd-time-csf)", "") == AdaptiveSource::Protocol::Dash);
+    CHECK(AdaptiveSource::InferProtocol("https://a/v.isml/Manifest(format=m3u8-aapl)", "") == AdaptiveSource::Protocol::Hls);
+    CHECK(AdaptiveSource::InferProtocol("https://a/b", "application/vnd.ms-sstr+xml") == AdaptiveSource::Protocol::SmoothStreaming);
     CHECK(InferHlsContainer("https://a/s.ts?t=1") == SegmentContainer::Ts);
     CHECK(InferHlsContainer("https://a/s.aac") == SegmentContainer::PackedAudio);
     CHECK(InferHlsContainer("https://a/s.m4s") == SegmentContainer::Mp4);
@@ -568,4 +576,172 @@ TEST(AdaptiveStream_dash_live_configurationFromItemAndServiceDescription) {
     CHECK(w.liveConfiguration->minPlaybackSpeed == 0.96f && w.liveConfiguration->maxPlaybackSpeed == 1.1f);
     f.nowMs += 4000;
     CHECK_EQ(overridden->Window().liveConfiguration->targetOffsetMs, std::int64_t(6000));
+}
+
+namespace {
+    // A box: size, type, body.
+    Bytes Box(const char* type, const Bytes& body) {
+        Bytes out(8);
+        const std::uint32_t size = std::uint32_t(body.size() + 8);
+        out[0] = std::uint8_t(size >> 24), out[1] = std::uint8_t(size >> 16), out[2] = std::uint8_t(size >> 8), out[3] = std::uint8_t(size);
+        std::memcpy(&out[4], type, 4);
+        out.insert(out.end(), body.begin(), body.end());
+        return out;
+    }
+    Bytes Cat(std::initializer_list<Bytes> parts) {
+        Bytes out;
+        for (const auto& p : parts) out.insert(out.end(), p.begin(), p.end());
+        return out;
+    }
+    // A SmoothStreaming fragment: moof (mfhd, traf with tfhd for trackId) and an mdat.
+    Bytes SsFragment(std::uint32_t trackId, std::uint8_t fill) {
+        const Bytes tfhd = Box("tfhd", { 0, 0, 0, 0, std::uint8_t(trackId >> 24), std::uint8_t(trackId >> 16), std::uint8_t(trackId >> 8), std::uint8_t(trackId) });
+        return Cat({ Box("moof", Cat({ Box("mfhd", { 0, 0, 0, 0, 0, 0, 0, 1 }), Box("traf", tfhd) })), Box("mdat", Bytes(4, fill)) });
+    }
+    // The body of the first box of type found depth-first within containers.
+    std::optional<Bytes> FindBox(const Bytes& bytes, const std::string& path) {
+        Bytes current = bytes;
+        std::size_t from = 0;
+        std::string rest = path;
+        while (!rest.empty()) {
+            const std::string type = rest.substr(0, 4);
+            rest = rest.size() > 5 ? rest.substr(5) : "";
+            bool found = false;
+            std::size_t at = from;
+            while (at + 8 <= current.size()) {
+                const std::uint32_t size = std::uint32_t(current[at]) << 24 | std::uint32_t(current[at + 1]) << 16 | std::uint32_t(current[at + 2]) << 8 | current[at + 3];
+                if (size < 8 || at + size > current.size()) return std::nullopt;
+                if (std::memcmp(&current[at + 4], type.data(), 4) == 0) {
+                    current = Bytes(current.begin() + std::ptrdiff_t(at + 8), current.begin() + std::ptrdiff_t(at + size));
+                    found = true;
+                    break;
+                }
+                at += size;
+            }
+            if (!found) return std::nullopt;
+            from = 0;
+            // Containers with a fixed header before their children.
+            if (type == "stsd") from = 8;
+            else if (type == "avc1") from = 78;
+            else if (type == "mp4a") from = 28;
+        }
+        return current;
+    }
+
+    constexpr const char* kSsVod = R"ISM(<?xml version="1.0"?>
+<SmoothStreamingMedia MajorVersion="2" MinorVersion="2" Duration="80000000">
+  <StreamIndex Type="video" Url="QualityLevels({bitrate})/Fragments(video={start time})">
+    <QualityLevel Index="0" Bitrate="400000" FourCC="H264" MaxWidth="640" MaxHeight="360" CodecPrivateData="00000001674D401EE8802802DD80B501010140000003004000000C83C60C4480000000000168EBEF20"/>
+    <QualityLevel Index="1" Bitrate="1200000" FourCC="H264" MaxWidth="1280" MaxHeight="720" CodecPrivateData="000000016764001FACD9405005BB011000000300100000030320F1831960000000000168EBECB22C"/>
+    <c t="0" d="40000000"/>
+    <c d="40000000"/>
+  </StreamIndex>
+  <StreamIndex Type="audio" Url="QualityLevels({bitrate})/Fragments(audio={start time})" Language="eng">
+    <QualityLevel Index="0" Bitrate="128000" FourCC="AACL" SamplingRate="44100" Channels="2" CodecPrivateData="1210"/>
+    <c t="0" d="40000000" r="2"/>
+  </StreamIndex>
+  <StreamIndex Type="text" Subtype="CAPT" Url="QualityLevels({bitrate})/Fragments(text={start time})">
+    <QualityLevel Index="0" Bitrate="1000" FourCC="TTML"/>
+    <c t="0" d="40000000"/>
+  </StreamIndex>
+</SmoothStreamingMedia>)ISM";
+}
+
+// SsMediaPeriod / DefaultSsChunkSource: a group per stream element, chunks from the template, and
+// a movie box written for the QualityLevel; the fragments' tfhd track ids are set to its track.
+TEST(AdaptiveStream_ss_vod) {
+    HlsFixture f;
+    f.http->Set("https://s/v.ism/Manifest", kSsVod);
+    for (int i = 0; i < 2; ++i) f.http->Set("https://s/v.ism/QualityLevels(1200000)/Fragments(video=" + std::to_string(i * 40'000'000) + ")", SsFragment(7, std::uint8_t('a' + i)));
+    auto source = f.Open("https://s/v.ism/Manifest");
+    CHECK(source->GetProtocol() == AdaptiveSource::Protocol::SmoothStreaming);
+    const auto& groups = source->Groups();
+    CHECK_EQ(groups.size(), std::size_t(3));
+    CHECK(groups[0].id == "0" && groups[0].type == TrackType::Video && groups[0].primary && groups[0].formats.size() == 2);
+    CHECK(groups[1].type == TrackType::Audio && groups[1].formats[0].language == "eng");
+    CHECK(groups[2].type == TrackType::Text && groups[2].formats[0].roleFlags == kRoleFlagCaption);
+    const StreamWindow w = source->Window();
+    CHECK(!w.dynamic && w.startUs == 0 && w.durationUs == 8'000'000 && !w.liveConfiguration);
+
+    const SegmentTimeline video = source->Segments(0, 1);
+    CHECK(video.ended && video.container == SegmentContainer::Mp4);
+    CHECK_EQ(video.segments.size(), std::size_t(2));
+    CHECK_EQ(video.segments[1].url, std::string("https://s/v.ism/QualityLevels(1200000)/Fragments(video=40000000)"));
+    CHECK(video.segments[1].startUs == 4'000'000 && video.segments[1].durationUs == 4'000'000);
+    CHECK(video.segments[0].init && video.segments[0].init->data && video.segments[0].fragmentTrackId == 1);
+    // The movie box: avcC from the SPS (High, level 3.1) with 4-byte NAL lengths; trex for track 1.
+    const Bytes& init = *video.segments[0].init->data;
+    auto avcC = FindBox(init, "moov/trak/mdia/minf/stbl/stsd/avc1/avcC");
+    CHECK(avcC && avcC->size() > 8 && (*avcC)[1] == 0x64 && (*avcC)[3] == 0x1f && ((*avcC)[4] & 3) == 3 && ((*avcC)[5] & 0x1f) == 1);
+    auto tkhd = FindBox(init, "moov/trak/tkhd");
+    CHECK(tkhd && (*tkhd)[15] == 1);   // track_ID
+    auto trex = FindBox(init, "moov/mvex/trex");
+    CHECK(trex && (*trex)[7] == 1);
+    // Audio: esds with the AudioSpecificConfig; the text track (TTML) gets no movie box.
+    const SegmentTimeline audio = source->Segments(1, 0);
+    CHECK_EQ(audio.segments.size(), std::size_t(2));
+    auto esds = FindBox(*audio.segments[0].init->data, "moov/trak/mdia/minf/stbl/stsd/mp4a/esds");
+    CHECK(esds.has_value());
+    const Bytes asc = { 0x12, 0x10 };
+    CHECK(esds && std::search(esds->begin(), esds->end(), asc.begin(), asc.end()) != esds->end());
+    CHECK(!source->Segments(2, 0).segments[0].init);
+
+    // Read through a piece: the movie box, then the fragments with track id 1.
+    SegmentStream::Config config;
+    config.group = 0;
+    config.tracks = { 1 };
+    SegmentStream stream(source, config);
+    stream.Start(0);
+    CHECK(WaitFor([&] { return stream.IsEnded(); }));
+    const Bytes bytes = ReadAll(*stream.FirstPiece());
+    CHECK(bytes.size() == init.size() + 2 * SsFragment(1, 'a').size());
+    CHECK(std::equal(init.begin(), init.end(), bytes.begin()));
+    const Bytes rest(bytes.begin() + std::ptrdiff_t(init.size()), bytes.end());
+    CHECK(rest == Cat({ SsFragment(1, 'a'), SsFragment(1, 'b') }));
+}
+
+TEST(AdaptiveStream_ss_live_windowAndRefresh) {
+    HlsFixture f;
+    auto manifest = [](int first) {
+        std::string chunks;
+        for (int i = first; i < first + 5; ++i) chunks += "<c t=\"" + std::to_string(std::int64_t(i) * 20'000'000) + "\" d=\"20000000\"/>";
+        return std::string(R"(<SmoothStreamingMedia MajorVersion="2" MinorVersion="2" Duration="0" IsLive="TRUE" DVRWindowLength="0">)") +
+               R"ISM(<StreamIndex Type="audio" Url="Q({bitrate})/F(a={start time})"><QualityLevel Index="0" Bitrate="64000" FourCC="AACL" SamplingRate="48000" Channels="2"/>)ISM" + chunks +
+               "</StreamIndex></SmoothStreamingMedia>";
+    };
+    f.http->Set("https://s/live.isml/manifest", manifest(100));
+    auto source = f.Open("https://s/live.isml/manifest");
+    StreamWindow w = source->Window();
+    CHECK(w.dynamic && w.liveConfiguration && w.windowStartTimeMs == kTimeUnset);
+    CHECK(w.startUs == 200'000'000 && w.durationUs == 10'000'000);
+    CHECK_EQ(w.defaultPositionUs, std::int64_t(5'000'000));   // within 30 s of the start: the middle (min 5 s)
+    SegmentTimeline t = source->Segments(0, 0);
+    CHECK(!t.ended && t.segments.front().sequence == 0 && t.segments.back().sequence == 4);
+    // 5 s later the manifest loads again; the chunk numbers go on across it.
+    f.http->Set("https://s/live.isml/manifest", manifest(102));
+    f.nowMs += 5000;
+    t = source->Segments(0, 0);
+    CHECK(t.segments.front().sequence == 2 && t.segments.back().sequence == 6);
+    CHECK_EQ(t.segments.front().startUs, std::int64_t(204'000'000));
+}
+
+TEST(AdaptiveStream_ss_fragmentTrackIds) {
+    Bytes fragments = Cat({ Box("styp", { 'i', 's', 'o', '6' }), SsFragment(9, 1), SsFragment(3, 2) });
+    ss::SetFragmentTrackIds(fragments, 1);
+    CHECK(fragments == Cat({ Box("styp", { 'i', 's', 'o', '6' }), SsFragment(1, 1), SsFragment(1, 2) }));
+    // Formats no sample entry describes get no movie box.
+    Format ttml;
+    ttml.sampleMimeType = MimeTypes::APPLICATION_TTML;
+    CHECK(!ss::BuildInitSegment(ttml, TrackType::Text, 10'000'000, 1));
+    Format ac3;
+    ac3.sampleMimeType = MimeTypes::AUDIO_AC3;
+    ac3.sampleRate = 48000;
+    ac3.channelCount = 6;
+    ac3.bitrate = 384'000;
+    auto dac3 = FindBox(*ss::BuildInitSegment(ac3, TrackType::Audio, 10'000'000, 1), "moov/trak/mdia/minf/stbl/stsd");
+    CHECK(dac3.has_value());
+    // dac3: fscod 0, bsid 8, bsmod 0, acmod 7 (3/2), lfeon 1, bit_rate_code 14 (384 kbps).
+    const std::uint32_t v = 0u << 22 | 8u << 17 | 7u << 11 | 1u << 10 | 14u << 5;
+    const Bytes dac3Body = { std::uint8_t(v >> 16), std::uint8_t(v >> 8), std::uint8_t(v) };
+    CHECK(std::search(dac3->begin(), dac3->end(), dac3Body.begin(), dac3Body.end()) != dac3->end());
 }

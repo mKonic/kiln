@@ -52,6 +52,9 @@ namespace kiln::media {
         std::vector<Label> labels;
         int tileCountHorizontal = -1, tileCountVertical = -1;
         std::optional<stream::DrmInitData> drmInitData;
+        // Codec initialization data (SmoothStreaming's CodecPrivateData: H.264 SPS and PPS, an
+        // AAC AudioSpecificConfig).
+        std::vector<std::vector<std::uint8_t>> initializationData;
         void SetBitrates(int average, int peak) {
             averageBitrate = average;
             peakBitrate = peak;

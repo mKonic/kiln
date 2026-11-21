@@ -2,10 +2,13 @@
 
 #include "kiln/media/dash/DashManifest.h"
 #include "kiln/media/hls/HlsPlaylist.h"
+#include "kiln/media/smoothstreaming/SsInitSegment.h"
+#include "kiln/media/smoothstreaming/SsManifest.h"
 #include "kiln/media/stream/SegmentProbe.h"
 
 #include <algorithm>
 #include <chrono>
+#include <regex>
 #include <set>
 #include <string_view>
 
@@ -126,9 +129,34 @@ namespace kiln::media::stream {
         const std::string mime = Lower(mimeType);
         if (mime == "application/x-mpegurl" || mime == "application/vnd.apple.mpegurl") return Protocol::Hls;
         if (mime == "application/dash+xml") return Protocol::Dash;
-        const std::string path = PathOf(uri);
-        if (EndsWith(path, ".m3u8") || EndsWith(path, ".m3u")) return Protocol::Hls;
-        if (EndsWith(path, ".mpd")) return Protocol::Dash;
+        if (mime == "application/vnd.ms-sstr+xml") return Protocol::SmoothStreaming;
+        // The URI's path (Uri.getPath): after the authority, without the query or fragment.
+        std::string_view path = uri;
+        if (auto q = path.find_first_of("?#"); q != std::string_view::npos) path = path.substr(0, q);
+        if (auto scheme = path.find("://"); scheme != std::string_view::npos) {
+            const auto slash = path.find('/', scheme + 3);
+            path = slash == std::string_view::npos ? std::string_view() : path.substr(slash);
+        }
+        const std::string lower = Lower(path);
+        const std::string last = lower.substr(lower.rfind('/') == std::string::npos ? 0 : lower.rfind('/') + 1);
+        if (auto dot = last.rfind('.'); dot != std::string::npos) {
+            const std::string extension = last.substr(dot + 1);
+            if (extension == "m3u8" || extension == "m3u") return Protocol::Hls;
+            if (extension == "mpd") return Protocol::Dash;
+            if (extension == "ism" || extension == "isml") return Protocol::SmoothStreaming;
+        }
+        // ISM_PATH_PATTERN: (?:.*\.)?isml?(?:/(manifest(.*))?)?
+        static const std::regex ism(R"((?:.*\.)?isml?(?:/(manifest(.*))?)?)", std::regex::icase);
+        std::smatch match;
+        const std::string whole(path);
+        if (std::regex_match(whole, match, ism)) {
+            if (match[2].matched) {
+                const std::string extensions = match[2].str();
+                if (extensions.find("format=mpd-time-csf") != std::string::npos) return Protocol::Dash;
+                if (extensions.find("format=m3u8-aapl") != std::string::npos) return Protocol::Hls;
+            }
+            return Protocol::SmoothStreaming;
+        }
         return std::nullopt;
     }
 
@@ -899,6 +927,161 @@ namespace kiln::media::stream {
         };
     }
 
+    // --- SmoothStreaming ------------------------------------------------------------------------
+    namespace {
+        using ss::SsManifest;
+
+        // SsMediaSource / SsMediaPeriod / DefaultSsChunkSource: a group per stream element, a
+        // chunk per segment with a movie box written from its QualityLevel.
+        class SsSource final : public AdaptiveSource {
+        public:
+            SsSource(std::shared_ptr<SegmentFetcher> fetcher, std::function<std::int64_t()> now)
+                : AdaptiveSource(Protocol::SmoothStreaming, std::move(fetcher), std::move(now)) {}
+
+            void Load(const std::string& uri, const std::string& content) {
+                m_Uri = uri;
+                m_Manifest = std::make_shared<SsManifest>(ss::SsManifestParser().Parse(uri, content));
+                m_LoadStartMs = NowElapsedMs();
+                m_ChunkOffsets.assign(m_Manifest->streamElements.size(), 0);
+                bool havePrimary = false;
+                for (std::size_t i = 0; i < m_Manifest->streamElements.size(); ++i) {
+                    const SsManifest::StreamElement& e = m_Manifest->streamElements[i];
+                    StreamGroup g;
+                    g.id = std::to_string(i);   // SsMediaPeriod's TrackGroup ids
+                    g.type = e.type;
+                    g.formats = e.formats;
+                    if (g.formats.empty()) continue;
+                    if (g.type == TrackType::Video && !havePrimary) g.primary = havePrimary = true;
+                    m_GroupElements.push_back(int(i));
+                    m_Groups.push_back(std::move(g));
+                }
+                if (m_Groups.empty()) throw ParserException("no streams in " + uri);
+                if (!havePrimary) m_Groups.front().primary = true;
+                m_Inits.resize(m_Groups.size());
+                for (std::size_t g = 0; g < m_Groups.size(); ++g) {
+                    const SsManifest::StreamElement& e = m_Manifest->streamElements[std::size_t(m_GroupElements[g])];
+                    for (const Format& f : e.formats) {
+                        std::shared_ptr<const MediaSegment> init;
+                        if (auto bytes = ss::BuildInitSegment(f, e.type, e.timescale, kTrackId)) {
+                            auto segment = std::make_shared<MediaSegment>();
+                            segment->url = "kiln-ss-init:" + std::to_string(g) + "/" + f.id;
+                            segment->data = std::make_shared<const std::vector<std::uint8_t>>(std::move(*bytes));
+                            init = std::move(segment);
+                        }
+                        m_Inits[g].push_back(std::move(init));
+                    }
+                }
+            }
+
+            // SsMediaSource.processManifest.
+            StreamWindow Window() override {
+                std::lock_guard lock(m_Mutex);
+                const SsManifest& m = *m_Manifest;
+                std::int64_t startUs = INT64_MAX, endUs = INT64_MIN;
+                for (const auto& e : m.streamElements) {
+                    if (e.chunkCount <= 0) continue;
+                    startUs = std::min(startUs, e.GetStartTimeUs(0));
+                    endUs = std::max(endUs, e.GetStartTimeUs(e.chunkCount - 1) + e.GetChunkDurationUs(e.chunkCount - 1));
+                }
+                StreamWindow w;
+                if (m.isLive) {
+                    w.dynamic = true;
+                    w.liveConfiguration = m_LiveConfiguration;   // the item's (useLiveConfiguration)
+                }
+                if (startUs == INT64_MAX) {
+                    w.startUs = 0;
+                    w.durationUs = 0;
+                    return w;
+                }
+                if (m.isLive) {
+                    if (m.dvrWindowLengthUs != kTimeUnset && m.dvrWindowLengthUs > 0) startUs = std::max(startUs, endUs - m.dvrWindowLengthUs);
+                    const std::int64_t durationUs = endUs - startUs;
+                    std::int64_t defaultUs = durationUs - kLivePresentationDelayMs * 1000;
+                    if (defaultUs < kMinLiveStartPositionUs) defaultUs = std::min(kMinLiveStartPositionUs, durationUs / 2);
+                    w.startUs = startUs;
+                    w.durationUs = durationUs;
+                    w.defaultPositionUs = defaultUs;
+                } else {
+                    w.startUs = startUs;
+                    w.durationUs = m.durationUs != kTimeUnset ? m.durationUs : endUs - startUs;
+                }
+                return w;
+            }
+
+            SegmentTimeline Segments(int group, int track) override {
+                MaybeRefreshManifest();
+                std::lock_guard lock(m_Mutex);
+                const int elementIndex = m_GroupElements.at(std::size_t(group));
+                const SsManifest::StreamElement& e = m_Manifest->streamElements.at(std::size_t(elementIndex));
+                SegmentTimeline timeline;
+                timeline.ended = !m_Manifest->isLive;
+                timeline.container = SegmentContainer::Mp4;
+                const std::shared_ptr<const MediaSegment>& init = m_Inits.at(std::size_t(group)).at(std::size_t(track));
+                for (int i = 0; i < e.chunkCount; ++i) {
+                    MediaSegment s;
+                    s.url = e.BuildRequestUri(track, i);
+                    s.startUs = e.GetStartTimeUs(i);
+                    s.durationUs = e.GetChunkDurationUs(i);
+                    s.sequence = std::int64_t(i) + m_ChunkOffsets.at(std::size_t(elementIndex));
+                    s.init = init;
+                    s.fragmentTrackId = init ? kTrackId : 0;
+                    timeline.segments.push_back(std::move(s));
+                }
+                return timeline;
+            }
+
+            std::int64_t RetryIntervalUs(int, int) override {
+                std::lock_guard lock(m_Mutex);
+                return m_Manifest->isLive ? 1'000'000 : 5'000'000;
+            }
+
+        private:
+            // A live manifest loads again 5 s after the last load started
+            // (MINIMUM_MANIFEST_REFRESH_PERIOD_MS); each element's chunk count moves on as
+            // DefaultSsChunkSource.updateManifest counts it.
+            void MaybeRefreshManifest() {
+                {
+                    std::lock_guard lock(m_Mutex);
+                    if (!m_Manifest->isLive || NowElapsedMs() < m_LoadStartMs + kMinManifestRefreshPeriodMs) return;
+                    m_LoadStartMs = NowElapsedMs();
+                }
+                try {
+                    std::string answered;
+                    const std::string content = BytesToString(m_Fetcher->Get(m_Uri, 0, kLengthUnset, nullptr, &answered));
+                    auto manifest = std::make_shared<SsManifest>(ss::SsManifestParser().Parse(answered, content));
+                    std::lock_guard lock(m_Mutex);
+                    if (manifest->streamElements.size() != m_Manifest->streamElements.size()) return;
+                    for (std::size_t i = 0; i < manifest->streamElements.size(); ++i) {
+                        const auto& current = m_Manifest->streamElements[i];
+                        const auto& next = manifest->streamElements[i];
+                        if (current.chunkCount == 0 || next.chunkCount == 0) {
+                            m_ChunkOffsets[i] += current.chunkCount;
+                        } else {
+                            const std::int64_t currentEndUs = current.GetStartTimeUs(current.chunkCount - 1) + current.GetChunkDurationUs(current.chunkCount - 1);
+                            const std::int64_t nextStartUs = next.GetStartTimeUs(0);
+                            m_ChunkOffsets[i] += currentEndUs <= nextStartUs ? current.chunkCount : current.GetChunkIndex(nextStartUs);
+                        }
+                    }
+                    m_Manifest = std::move(manifest);
+                } catch (...) {
+                    // Kept: the old manifest goes on; the next refresh tries again.
+                }
+            }
+
+            static constexpr std::uint32_t kTrackId = 1;
+            static constexpr std::int64_t kLivePresentationDelayMs = 30'000;   // DEFAULT_LIVE_PRESENTATION_DELAY_MS
+            static constexpr std::int64_t kMinLiveStartPositionUs = 5'000'000;  // MIN_LIVE_DEFAULT_START_POSITION_US
+            static constexpr std::int64_t kMinManifestRefreshPeriodMs = 5000;
+            std::string m_Uri;
+            mutable std::mutex m_Mutex;
+            std::shared_ptr<const SsManifest> m_Manifest;
+            std::int64_t m_LoadStartMs = 0;
+            std::vector<int> m_GroupElements;
+            std::vector<std::int64_t> m_ChunkOffsets;
+            std::vector<std::vector<std::shared_ptr<const MediaSegment>>> m_Inits;
+        };
+    }
+
     std::shared_ptr<AdaptiveSource> AdaptiveSource::Open(const std::string& uri, const std::string& mimeType, std::shared_ptr<SegmentFetcher> fetcher,
                                                          std::function<std::int64_t()> nowUnixTimeMs) {
         std::string answered;
@@ -908,10 +1091,16 @@ namespace kiln::media::stream {
             const std::string head = content.substr(0, 512);
             if (head.find("#EXTM3U") != std::string::npos) protocol = Protocol::Hls;
             else if (head.find("<MPD") != std::string::npos) protocol = Protocol::Dash;
-            else throw ParserException("not an HLS or DASH manifest: " + uri);
+            else if (head.find("<SmoothStreamingMedia") != std::string::npos) protocol = Protocol::SmoothStreaming;
+            else throw ParserException("not an HLS, DASH or SmoothStreaming manifest: " + uri);
         }
         if (*protocol == Protocol::Hls) {
             auto source = std::make_shared<HlsSource>(std::move(fetcher), std::move(nowUnixTimeMs));
+            source->Load(answered, content);
+            return source;
+        }
+        if (*protocol == Protocol::SmoothStreaming) {
+            auto source = std::make_shared<SsSource>(std::move(fetcher), std::move(nowUnixTimeMs));
             source->Load(answered, content);
             return source;
         }

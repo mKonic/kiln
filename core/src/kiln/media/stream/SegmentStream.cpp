@@ -1,6 +1,7 @@
 #include "kiln/media/stream/SegmentStream.h"
 
 #include "kiln/media/stream/SegmentProbe.h"
+#include "kiln/media/smoothstreaming/SsInitSegment.h"
 
 #include <algorithm>
 #include <chrono>
@@ -12,7 +13,7 @@ namespace kiln::media::stream {
         bool SameInit(const std::shared_ptr<const MediaSegment>& a, const std::shared_ptr<const MediaSegment>& b) {
             if (a == b) return true;
             if (!a || !b) return false;
-            return a->url == b->url && a->offset == b->offset && a->length == b->length && a->keyUrl == b->keyUrl;
+            return a->url == b->url && a->offset == b->offset && a->length == b->length && a->keyUrl == b->keyUrl && a->data == b->data;
         }
         // DefaultLoadErrorHandlingPolicy.getExclusionInfo: statuses that exclude a track for a minute.
         bool ExcludesTrack(int status) { return status == 403 || status == 404 || status == 410 || status == 416 || status == 500 || status == 503; }
@@ -355,6 +356,7 @@ namespace kiln::media::stream {
     }
 
     std::vector<std::uint8_t> SegmentStream::Fetch(const MediaSegment& segment) {
+        if (segment.data) return *segment.data;
         std::vector<std::uint8_t> bytes = m_Source->Fetcher().Get(segment.url, segment.offset, segment.length, m_Call.get());
         if (!segment.keyUrl.empty()) {
             const std::vector<std::uint8_t> key = m_Source->Key(segment.keyUrl, m_Call.get());
@@ -526,6 +528,7 @@ namespace kiln::media::stream {
                     target->SetTimeOffset(offsetUs);
                 }
                 if (timeline.container == SegmentContainer::Mp4) NeutralizeSegmentIndices(bytes);
+                if (segment.fragmentTrackId) ss::SetFragmentTrackIds(bytes, segment.fragmentTrackId);
                 target->Append(std::move(bytes), segment.EndUs(), false);
             }
             // A piece per packed audio segment (upstream makes an extractor per chunk); a gap's

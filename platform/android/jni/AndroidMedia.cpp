@@ -144,8 +144,11 @@ namespace kiln::android {
         // RendererCapabilities' format support from the platform's decoders
         // (KilnMedia.decoderSupport): 2 handled (with media::kDecoderHardwareAccelerated when the
         // decoder is), 1 the type but not these properties, 0 no decoder. Unknown types count as
-        // handled (the decoder decides). Level(): the support without the flag.
+        // handled (the decoder decides). Level(): the support without the flag. Protected content
+        // has no DRM session to decrypt it (DrmSessionManager.DRM_UNSUPPORTED:
+        // FORMAT_UNSUPPORTED_DRM).
         int DecoderSupport(const media::Format& f) {
+            if (f.drmInitData) return 0;
             if (f.sampleMimeType.empty()) return 2;
             const std::string key = f.sampleMimeType + "|" + f.codecs + "|" + std::to_string(f.width) + "x" + std::to_string(f.height) + "@" +
                                     std::to_string(f.frameRate) + "|" + std::to_string(f.channelCount) + "|" + std::to_string(f.sampleRate);

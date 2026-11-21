@@ -40,6 +40,10 @@ namespace kiln::media::stream {
         // offset). kTimeUnset for HLS, where the timestamp adjusters decide.
         std::int64_t timeOffsetUs = kTimeUnset;
         std::shared_ptr<const MediaSegment> init;        // its initialization segment, if any
+        // SmoothStreaming: the bytes themselves (the movie box written from the manifest), and the
+        // track id the fragments' tfhd boxes are given to match it (0: left alone).
+        std::shared_ptr<const std::vector<std::uint8_t>> data;
+        std::uint32_t fragmentTrackId = 0;
         std::int64_t EndUs() const { return startUs + durationUs; }
     };
 
@@ -106,9 +110,10 @@ namespace kiln::media::stream {
 
     class AdaptiveSource {
     public:
-        // The stream's protocol from the item's MIME type, else the URI's extension, else the
+        // The stream's protocol from the item's MIME type, else the URI (Util.inferContentType:
+        // its extension, an .ism / .isml path with its /Manifest(format=...) suffix), else the
         // manifest's first bytes.
-        enum class Protocol { Hls, Dash };
+        enum class Protocol { Hls, Dash, SmoothStreaming };
         static std::optional<Protocol> InferProtocol(const std::string& uri, const std::string& mimeType);
         // Loads the manifest (and HLS's first media playlist). Throws net::HttpError,
         // HttpStatusError or ParserException.
