@@ -546,11 +546,10 @@ ViewTreeSavedStateRegistryOwner = "Android View tree"
 ProcessLifecycleInitializer = "an androidx.startup initializer; kiln attaches ProcessLifecycleOwner itself as an activity is created"
 # AppCompatDelegate: the night mode is ui::SetDefaultNightMode (renamed above); the rest is the
 # delegate an AppCompatActivity forwards its View-system calls through.
-# media3 not played by kiln's engine: ads (IMA), DRM (MediaDrm), live streams (they need HLS /
-# DASH: capability gap G2); extras and tags are Java object payloads (key app data by mediaId).
+# media3 not played by kiln's engine: ads (IMA), DRM (MediaDrm); extras and tags are Java object
+# payloads (key app data by mediaId).
 AdsConfiguration = "ads are not played (no IMA extension)"
 DrmConfiguration = "DRM-protected media is not played (no MediaDrm sessions)"
-LiveConfiguration = "live streams need HLS / DASH, not ported yet (capability gap G2)"
 TimelineChangeReason = "kiln reports the playlist as state; there is no onTimelineChanged"
 "Player.isPlayingAd" = "no ads"
 "Player.getCurrentAdGroupIndex" = "no ads"

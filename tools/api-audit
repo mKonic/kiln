@@ -203,7 +203,13 @@ def main():
                 if key in skipped or short.lower() in skipped or any(p.search(f"{short}.{member}") for p in patterns):
                     continue
                 kiln_name = renamed.get(short.lower(), short).split("::")[-1].split(".")[-1].split("(")[0]
-                cids = counterpart_ids(headers, kiln_name, cache) if short != "Builder" else None
+                cids = None
+                # A nested class's kiln type often carries its outer name (Player.Listener is
+                # PlayerListener): that one first, before any other type with the short name.
+                if "." in cls and short.lower() not in renamed and short != "Builder":
+                    cids = counterpart_ids(headers, cls.split(".")[-2] + short, cache)
+                if cids is None and short != "Builder":
+                    cids = counterpart_ids(headers, kiln_name, cache)
                 # Foo.Builder's setters are Foo's fields in kiln (aggregates, designated initializers).
                 if cids is None and "." in cls:
                     outer = cls.split(".")[-2]
