@@ -55,6 +55,9 @@ namespace kiln::media {
         // Codec initialization data (SmoothStreaming's CodecPrivateData: H.264 SPS and PPS, an
         // AAC AudioSpecificConfig).
         std::vector<std::vector<std::uint8_t>> initializationData;
+        // The pixel aspect ratio, and raw audio's C.ENCODING_PCM_* (-1: not raw).
+        float pixelWidthHeightRatio = 1;
+        int pcmEncoding = -1;
         void SetBitrates(int average, int peak) {
             averageBitrate = average;
             peakBitrate = peak;
