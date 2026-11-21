@@ -12,6 +12,7 @@
 
 #include "kiln/paging/PagingData.h"
 #include "kiln/paging/PagingSource.h"
+#include "kiln/paging/RemoteMediator.h"
 
 #include <cstdlib>
 #include <map>
@@ -170,9 +171,11 @@ namespace kiln::paging {
             using Self = std::shared_ptr<PageFetcherSnapshot>;
 
             PageFetcherSnapshot(std::optional<K> initialKey, std::shared_ptr<PagingSource<K, V>> source, const PagingConfig& config,
-                                rt::MutableStateFlow<int> retry, int initialLoadSize, kiln::Function<void()> jumpCallback)
+                                rt::MutableStateFlow<int> retry, int initialLoadSize, kiln::Function<void()> jumpCallback,
+                                std::shared_ptr<RemoteMediatorAccessor<K, V>> remote = nullptr, std::optional<PagingState<K, V>> cachedInitialState = std::nullopt)
                 : m_InitialKey(std::move(initialKey)), m_Source(std::move(source)), m_Config(config), m_Retry(std::move(retry)),
-                  m_InitialLoadSize(initialLoadSize), m_JumpCallback(std::move(jumpCallback)), m_State(config) {
+                  m_InitialLoadSize(initialLoadSize), m_JumpCallback(std::move(jumpCallback)), m_Remote(std::move(remote)),
+                  m_CachedInitialState(std::move(cachedInitialState)), m_State(config) {
                 if (config.jumpThreshold != kCountUndefined && !m_Source->JumpingSupported()) {
                     throw std::invalid_argument("PagingConfig.jumpThreshold was set, but the associated PagingSource has not marked "
                                                 "support for jumps by overriding PagingSource.jumpingSupported to true.");
@@ -255,6 +258,9 @@ namespace kiln::paging {
             void Send(PageEvent<V> event) { m_Events->TrySend(std::move(event)); }
 
             static rt::Task<> InitialLoad(Self self) {
+                // The mediator's refresh goes through only when allowed (the first generation, or
+                // a refresh asked for); the source's states are set by then.
+                if (self->m_Remote) self->m_Remote->RequestRefreshIfAllowed(self->m_CachedInitialState ? *self->m_CachedInitialState : self->m_State.CurrentPagingState(std::nullopt));
                 co_await self->DoInitialLoad();
                 if (!self->m_State.sourceLoadStates.refresh.IsError()) self->StartConsumingHints();
             }
@@ -265,6 +271,8 @@ namespace kiln::paging {
                 co_await self->m_Retry.Collect(rt::FlowCollector<int>([self, first](int) -> rt::Task<> {
                     if (std::exchange(*first, false)) co_return;   // the value from before this generation
                     const LoadStates states = self->m_State.sourceLoadStates;
+                    // The mediator retries what failed there.
+                    if (self->m_Remote) self->m_Remote->RetryFailed(self->CurrentPagingState());
                     for (const LoadType type : { LoadType::Refresh, LoadType::Prepend, LoadType::Append }) {
                         if (!states.Get(type).IsError()) continue;
                         if (type == LoadType::Refresh) {
@@ -343,6 +351,12 @@ namespace kiln::paging {
                     if (!page->prevKey) st.sourceLoadStates.prepend = LoadState::NotLoading(true);
                     if (!page->nextKey) st.sourceLoadStates.append = LoadState::NotLoading(true);
                     if (applied) Send(st.ToPageEvent(*page, LoadType::Refresh));
+                    // The source ends here: the mediator loads at those ends.
+                    if (m_Remote && (!page->prevKey || !page->nextKey)) {
+                        const PagingState<K, V> state = CurrentPagingState();
+                        if (!page->prevKey) m_Remote->RequestLoad(LoadType::Prepend, state);
+                        if (!page->nextKey) m_Remote->RequestLoad(LoadType::Append, state);
+                    }
                 } else if (auto* error = std::get_if<LoadError>(&result)) {
                     SetError(LoadType::Refresh, LoadState::Error(error->error));
                 } else {
@@ -411,6 +425,7 @@ namespace kiln::paging {
                         st.sourceLoadStates = st.sourceLoadStates.Modify(type, LoadState::NotLoading(endOfPaginationReached));
                     }
                     Send(st.ToPageEvent(page, type));
+                    if (m_Remote && !nextKey) m_Remote->RequestLoad(type, CurrentPagingState());
                 }
             }
 
@@ -447,6 +462,8 @@ namespace kiln::paging {
             rt::MutableStateFlow<int> m_Retry;
             int m_InitialLoadSize;
             kiln::Function<void()> m_JumpCallback;
+            std::shared_ptr<RemoteMediatorAccessor<K, V>> m_Remote;
+            std::optional<PagingState<K, V>> m_CachedInitialState;
             HintHandler m_Hints;
             SnapshotState<K, V> m_State;
             std::shared_ptr<rt::Channel<PageEvent<V>>> m_Events = std::make_shared<rt::Channel<PageEvent<V>>>(std::size_t(1) << 20);
@@ -461,8 +478,11 @@ namespace kiln::paging {
             using Source = PagingSource<K, V>;
             using Snapshot = PageFetcherSnapshot<K, V>;
 
-            PageFetcher(kiln::Function<std::shared_ptr<Source>()> factory, std::optional<K> initialKey, const PagingConfig& config)
-                : m_Factory(std::move(factory)), m_InitialKey(std::move(initialKey)), m_Config(config) {}
+            using Accessor = RemoteMediatorAccessor<K, V>;
+
+            PageFetcher(kiln::Function<std::shared_ptr<Source>()> factory, std::optional<K> initialKey, const PagingConfig& config,
+                        std::shared_ptr<RemoteMediator<K, V>> mediator = nullptr)
+                : m_Factory(std::move(factory)), m_InitialKey(std::move(initialKey)), m_Config(config), m_Mediator(std::move(mediator)) {}
 
             rt::Flow<PagingData<V>> Flow() {
                 return rt::Flow<PagingData<V>>::Create([self = this->shared_from_this()](rt::FlowCollector<PagingData<V>> emit) -> rt::Task<> {
@@ -471,9 +491,12 @@ namespace kiln::paging {
                         std::shared_ptr<std::optional<Generation>> g;
                         ~CloseLast() { if (*g) (*g)->snapshot->Close(); }
                     } closeLast{ generation };
-                    co_await self->Handle(Request{ LoadType::Refresh, RefreshType::Initial, {} }, generation, emit);
-                    co_await self->m_Requests.Collect(rt::FlowCollector<Sent>([self, generation, emit](Sent sent) -> rt::Task<> {
-                        if (sent.request) co_await self->Handle(*sent.request, generation, emit);
+                    // One accessor a collection: its loads stop when the collection does.
+                    auto accessor = self->m_Mediator ? std::make_shared<Accessor>(self->m_Mediator) : nullptr;
+                    const bool remoteRefresh = accessor && co_await accessor->Initialize() == InitializeAction::LaunchInitialRefresh;
+                    co_await self->Handle(Request{ LoadType::Refresh, RefreshType::Initial, {}, remoteRefresh }, generation, accessor, emit);
+                    co_await self->m_Requests.Collect(rt::FlowCollector<Sent>([self, generation, accessor, emit](Sent sent) -> rt::Task<> {
+                        if (sent.request) co_await self->Handle(*sent.request, generation, accessor, emit);
                     }));
                 });
             }
@@ -482,9 +505,10 @@ namespace kiln::paging {
                 if (type == LoadType::Refresh) throw std::invalid_argument("Load only applies to APPEND or PREPEND");
                 SendRequest({ type, RefreshType::Initial, {} });
             }
-            void RefreshAll() { SendRequest({ LoadType::Refresh, RefreshType::All, {} }); }
-            void Refresh() { SendRequest({ LoadType::Refresh, RefreshType::Anchor, {} }); }
-            void RefreshItem(kiln::Function<bool(const V&)> isItem) { SendRequest({ LoadType::Refresh, RefreshType::Item, std::move(isItem) }); }
+            // A refresh asked for refreshes the mediator too; an invalidation does not.
+            void RefreshAll() { SendRequest({ LoadType::Refresh, RefreshType::All, {}, true }); }
+            void Refresh() { SendRequest({ LoadType::Refresh, RefreshType::Anchor, {}, true }); }
+            void RefreshItem(kiln::Function<bool(const V&)> isItem) { SendRequest({ LoadType::Refresh, RefreshType::Item, std::move(isItem), true }); }
             void Retry() { m_Retry.SetValue(m_Retry.Value() + 1); }
 
         private:
@@ -493,6 +517,7 @@ namespace kiln::paging {
                 LoadType type = LoadType::Refresh;
                 RefreshType refresh = RefreshType::Initial;
                 kiln::Function<bool(const V&)> isItem;
+                bool triggerRemoteRefresh = false;
             };
             // ConflatedEventBus: the latest request, told apart by its number.
             struct Sent {
@@ -506,20 +531,21 @@ namespace kiln::paging {
             };
 
             void SendRequest(Request request) { m_Requests.SetValue(Sent{ m_Requests.Value().number + 1, std::move(request) }); }
-            void Invalidate() { SendRequest({ LoadType::Refresh, RefreshType::Anchor, {} }); }
+            void Invalidate() { SendRequest({ LoadType::Refresh, RefreshType::Anchor, {}, false }); }
 
-            rt::Task<> Handle(Request request, std::shared_ptr<std::optional<Generation>> generation, rt::FlowCollector<PagingData<V>> emit) {
+            rt::Task<> Handle(Request request, std::shared_ptr<std::optional<Generation>> generation, std::shared_ptr<Accessor> accessor, rt::FlowCollector<PagingData<V>> emit) {
                 auto self = this->shared_from_this();
                 if (request.type != LoadType::Refresh) {
                     if (!*generation) throw std::logic_error("Append or Prepend request should be sent after a Refresh.");
                     (*generation)->snapshot->ForceSetHint(request.type);
                     co_return;   // the same generation: nothing new to emit
                 }
+                if (request.triggerRemoteRefresh && accessor) accessor->AllowRefresh();
                 std::weak_ptr<PageFetcher> weak = self;
                 kiln::Function<void()> jump = [weak] { if (auto f = weak.lock()) f->Refresh(); };
                 std::shared_ptr<Snapshot> snapshot;
                 if (!*generation) {
-                    snapshot = std::make_shared<Snapshot>(m_InitialKey, NewPagingSource(nullptr), m_Config, m_Retry, m_Config.initialLoadSize, std::move(jump));
+                    snapshot = std::make_shared<Snapshot>(m_InitialKey, NewPagingSource(nullptr), m_Config, m_Retry, m_Config.initialLoadSize, std::move(jump), accessor);
                     *generation = Generation{ snapshot, std::nullopt };
                 } else {
                     const Generation current = **generation;
@@ -549,7 +575,7 @@ namespace kiln::paging {
                         refreshKey = source->GetRefreshKey(state);
                     }
                     current.snapshot->Close();
-                    snapshot = std::make_shared<Snapshot>(std::move(refreshKey), std::move(source), m_Config, m_Retry, refreshSize, std::move(jump));
+                    snapshot = std::make_shared<Snapshot>(std::move(refreshKey), std::move(source), m_Config, m_Retry, refreshSize, std::move(jump), accessor, state);
                     *generation = Generation{ snapshot, std::move(state) };
                 }
                 auto ui = std::make_shared<UiReceiver>();
@@ -557,7 +583,7 @@ namespace kiln::paging {
                 ui->refresh = [weak] { if (auto f = weak.lock()) f->Refresh(); };
                 auto hints = std::make_shared<HintReceiver>();
                 hints->processHint = [snapshot](const ViewportHint& hint) { snapshot->ProcessHint(hint); };
-                co_await emit(PagingData<V>(snapshot->PageEventFlow(), std::move(ui), std::move(hints)));
+                co_await emit(PagingData<V>(InjectRemoteEvents<K, V>(snapshot->PageEventFlow(), accessor), std::move(ui), std::move(hints)));
             }
 
             std::shared_ptr<Source> NewPagingSource(const std::shared_ptr<Source>& current) {
@@ -579,16 +605,19 @@ namespace kiln::paging {
             rt::MutableStateFlow<Sent> m_Requests{ Sent{} };
             rt::MutableStateFlow<int> m_Retry{ 0 };
             int m_InvalidatedCallback = 0;
+            std::shared_ptr<RemoteMediator<K, V>> m_Mediator;
         };
     }
 
-    // Pager(config, initialKey) { pagingSourceFactory }: the factory returns a new source each
-    // time (after an invalidation the old one is not used again).
+    // Pager(config, initialKey, remoteMediator) { pagingSourceFactory }: the factory returns a new
+    // source each time (after an invalidation the old one is not used again). With a
+    // RemoteMediator, the source reads local storage that the mediator fills from the network.
     template<typename Key, typename Value>
     class Pager {
     public:
-        Pager(PagingConfig config, kiln::Function<std::shared_ptr<PagingSource<Key, Value>>()> pagingSourceFactory, std::optional<Key> initialKey = {})
-            : m_Fetcher(std::make_shared<detail::PageFetcher<Key, Value>>(std::move(pagingSourceFactory), std::move(initialKey), config.Resolved())) {}
+        Pager(PagingConfig config, kiln::Function<std::shared_ptr<PagingSource<Key, Value>>()> pagingSourceFactory, std::optional<Key> initialKey = {},
+              std::shared_ptr<RemoteMediator<Key, Value>> remoteMediator = nullptr)
+            : m_Fetcher(std::make_shared<detail::PageFetcher<Key, Value>>(std::move(pagingSourceFactory), std::move(initialKey), config.Resolved(), std::move(remoteMediator))) {}
 
         // A PagingData per generation. Collecting starts the first load; share it with CachedIn.
         rt::Flow<PagingData<Value>> Flow() const { return m_Fetcher->Flow(); }

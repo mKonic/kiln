@@ -254,8 +254,79 @@ void Notes() {
 * Call `Invalidate()` on the source when its data changed; the pager makes a new one with
   `GetRefreshKey` and the list keeps its place. With a database, invalidate from
   `Invalidations(tables)`.
-* `PagingData<T>::Map` and `Filter` change the items of a flow's data, and
+* `PagingData<T>::Map`, `FlatMap` and `Filter` change the items of a flow's data, and
   `PagingData<T>::From(vector)` presents a list that is already in memory.
+* `InvalidatingPagingSourceFactory` makes the sources and invalidates all of them at once,
+  for data you know changed.
+
+### Separators, headers and footers
+
+`InsertSeparators` (`kiln/paging/Separators.h`) asks for a separator between each pair of
+items, with null at the ends, and returns one or nothing. A header or footer is the separator
+at an end. It shows once that end has been reached, so it doesn't jump around while pages
+load. The items can turn into a different type, such as a variant of items and separators:
+
+<!-- prelude: #include <kiln/paging/Separators.h> -->
+<!-- prelude: struct Note { int id; std::string title; }; -->
+```cpp
+using NoteRow = std::variant<Note, std::string>;   // a note, or a letter heading
+
+kiln::paging::PagingData<NoteRow> WithHeadings(const kiln::paging::PagingData<Note>& notes) {
+    return kiln::paging::InsertSeparators<NoteRow>(notes, [](const Note* before, const Note* after) -> std::optional<NoteRow> {
+        if (!after) return std::nullopt;   // nothing after the last note
+        if (!before || before->title.front() != after->title.front()) return NoteRow(std::string(1, after->title.front()));
+        return std::nullopt;
+    });
+}
+```
+
+`InsertHeaderItem` and `InsertFooterItem` add one item at an end. With a remote mediator,
+`TerminalSeparatorType::SourceComplete` shows them as soon as local storage runs out, instead
+of waiting for the network to run out too.
+
+### Network and local storage
+
+A `RemoteMediator` fills local storage from the network while the `PagingSource` reads local
+storage. The pager calls it when the source runs out at an end (`Append` or `Prepend`), and
+to start over (`Refresh`: when the pager first loads, and when `Refresh()` is called):
+
+<!-- prelude: #include <kiln/paging/Pager.h> -->
+<!-- prelude: struct Note { int id; std::string title; }; -->
+<!-- prelude: class NoteSource : public kiln::paging::PagingSource<int, Note> { public: kiln::rt::Task<kiln::paging::LoadResult<int, Note>> Load(kiln::paging::LoadParams<int>) override { co_return kiln::paging::Page<int, Note>{}; } std::optional<int> GetRefreshKey(const kiln::paging::PagingState<int, Note>&) override { return std::nullopt; } }; -->
+<!-- prelude: kiln::rt::Task<std::vector<Note>> FetchNotesAfter(std::optional<int> lastId); -->
+<!-- prelude: void StoreNotes(const std::vector<Note>& notes, bool replace); -->
+```cpp
+class NoteMediator : public kiln::paging::RemoteMediator<int, Note> {
+public:
+    kiln::rt::Task<kiln::paging::MediatorResult> Load(kiln::paging::LoadType type, kiln::paging::PagingState<int, Note> state) override {
+        if (type == kiln::paging::LoadType::Prepend) co_return kiln::paging::MediatorResult::Succeeded(true);   // newest first: nothing before
+        std::optional<int> after;
+        if (type == kiln::paging::LoadType::Append) {
+            const Note* last = state.LastItemOrNull();
+            if (!last) co_return kiln::paging::MediatorResult::Succeeded(true);
+            after = last->id;
+        }
+        try {
+            std::vector<Note> notes = co_await FetchNotesAfter(after);
+            StoreNotes(notes, type == kiln::paging::LoadType::Refresh);   // invalidates the source
+            co_return kiln::paging::MediatorResult::Succeeded(notes.empty());
+        } catch (const std::exception&) {
+            co_return kiln::paging::MediatorResult::Failed(std::current_exception());
+        }
+    }
+};
+
+kiln::paging::Pager<int, Note> MakePager() {
+    return kiln::paging::Pager<int, Note>({ .pageSize = 30 }, [] { return std::make_shared<NoteSource>(); }, std::nullopt, std::make_shared<NoteMediator>());
+}
+```
+
+* Storing the results must invalidate the source, so the new rows show. With a database,
+  `Invalidations(tables)` does that.
+* `Initialize()` returns `InitializeAction::SkipInitialRefresh` to show what is stored without
+  refreshing first, for example while the cache is fresh.
+* `items.LoadState().mediator` has the mediator's own states; `refresh`, `append` and `prepend`
+  combine them with the source's. `Retry()` retries what failed in either.
 
 ## HTTP
 

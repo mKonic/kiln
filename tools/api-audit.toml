@@ -46,7 +46,9 @@ modules = [
     "work/work-runtime",
     "glance/glance",
     "glance/glance-appwidget",
-    "sqlite/sqlite",
+    # SupportSQLite* (and SimpleSQLiteQuery) wrap the platform's android.database.sqlite; kiln uses
+    # the bundled driver (sqlite::Connection) everywhere, as androidx's KMP sqlite does.
+    "sqlite/sqlite | ^(?!Support|SimpleSQLiteQuery)",
     "room3/room3-runtime",
     "core/core | ^(Notification\\w*Compat|NotificationChannel\\w*Compat|Person|AlarmManagerCompat|ShareCompat|RemoteInput|FileProvider|ShortcutInfoCompat|ShortcutManagerCompat|LocusIdCompat|IconCompat|LocaleListCompat|HapticFeedbackConstantsCompat)(\\.|$)",
     "core/core-splashscreen",
@@ -206,6 +208,16 @@ SavedStateWriter = "SavedValue"
 "PagingDataPresenter.presentPagingDataEvent" = "PagingDataPresenter(present)"
 "Error.throwable" = "LoadError::error"
 "ItemSnapshotListFlow" = "AsItemSnapshotListFlow"
+
+# sqlite: data types are DataType; execSQL is Execute; throwSQLiteException throws sqlite::Error;
+# the bundled driver is Connection::Open.
+"SQLite.SQLITE_DATA_BLOB" = "DataType"
+"SQLite.SQLITE_DATA_FLOAT" = "DataType"
+"SQLite.SQLITE_DATA_TEXT" = "DataType"
+"SQLite.execSQL" = "Execute"
+"SQLite.throwSQLiteException" = "Error"
+"SQLiteStatement.bindBoolean" = "BindBool"
+SQLiteDriver = "Connection::Open"
 
 # media3 Player: getters with the unit in the name, and state read from PlayerState (ExoPlayer's
 # content position is the position: no ads; one period per item).
@@ -905,6 +917,8 @@ InvalidatedCallback = "see DataSource"
 "Factory.create" = "see DataSource"
 "Factory.map" = "see DataSource"
 "Factory.mapByPage" = "see DataSource"
+
+"SQLiteDriver.hasConnectionPool" = "the bundled driver has no pool of its own; sqlite::Database keeps the connections"
 
 [skipped_patterns]
 '^(Storage|FileStorage|StorageConnection|ReadScope|WriteScope|InterProcessCoordinator|MultiProcessDataStoreFactory|createSingleProcessCoordinator|createMultiProcessCoordinator|writeData|readData)(\..*)?$' = "pluggable storage and multi-process coordination: kiln's DataStore is one process, one file (FileStorage's behaviour built in)"
