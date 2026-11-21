@@ -2021,6 +2021,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
             else getContext().startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK), bundle);
             return true;
         } catch (android.content.ActivityNotFoundException | SecurityException e) {
+            android.util.Log.w("kiln", "startActivity: " + e);
             return false;
         }
     }

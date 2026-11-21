@@ -131,3 +131,123 @@ TEST(CustomTabsIntentCarriesTheRestOfTheBuilder) {
     CHECK(throws(dup));
     SetPlatformLocaleList({ "en-US" });
 }
+
+// CustomTabsClient over a fake host: binding, connection, sessions, calls as the browser gets
+// them, callbacks on the main thread, engagement signals, and a tab tied to its session.
+#include "kiln/ui/CustomTabsClient.h"
+#include "kiln/runtime/Task.h"
+
+TEST(CustomTabsClientSessionsAndCallbacks) {
+    std::vector<std::pair<std::string, Bundle>> calls;
+    bool unsupported = false;
+    SetCustomTabsHost({
+        .bind = [](const std::string& p, bool) { return p == "com.browser" ? 7 : 0; },
+        .unbind = [](int) {},
+        .packageName = [](const std::vector<std::string>& p, bool) -> std::optional<std::string> { return p.empty() ? std::nullopt : std::optional(p.front()); },
+        .warmup = [](int c, std::int64_t) { return c == 7; },
+        .newSession = [](int, std::optional<int> id) { return id ? 100 + *id : 42; },
+        .extraCommand = [](int, const std::string&, const Bundle&) -> std::optional<Bundle> { return std::nullopt; },
+        .sessionCall = [&](int, const std::string& method, const Bundle& args) {
+            calls.emplace_back(method, args);
+            Bundle r;
+            if (unsupported && method.starts_with("isEngagement")) r.Put("unsupported", true);
+            else r.Put("result", std::int32_t(method == "postMessage" ? customtabs::kResultSuccess : 1));
+            return r;
+        },
+    });
+    CHECK(GetCustomTabsPackageName({ "com.browser" }) == std::optional<std::string>("com.browser"));
+    std::shared_ptr<CustomTabsClient> client;
+    const int binding = BindCustomTabsService("com.browser", { .onConnected = [&](std::shared_ptr<CustomTabsClient> c) { client = c; } });
+    CHECK(binding == 7 && BindCustomTabsService("com.none", {}) == 0);
+    DispatchCustomTabsConnection(binding, true);
+    rt::Dispatcher::Main().RunPending();
+    CHECK(client && client->Warmup(0));
+
+    std::vector<int> events;
+    std::string posted;
+    auto session = client->NewSession({ .onNavigationEvent = [&](int e, const Bundle&) { events.push_back(e); },
+                                        .extraCallbackWithResult = [](const std::string& name, const Bundle&) -> std::optional<Bundle> {
+                                            Bundle b;
+                                            b.Put("echo", name);
+                                            return b;
+                                        },
+                                        .onPostMessage = [&](const std::string& m, const Bundle&) { posted = m; } });
+    CHECK(session && session->Id() == 42 && session->PackageName() == "com.browser");
+    Bundle other;
+    other.Put(customtabs::kKeyUrl, BundleUri{ "https://example.com/b" });
+    CHECK(session->MayLaunchUrl("https://example.com/a", {}, { other }));
+    CHECK(calls.back().first == "mayLaunchUrl" && *calls.back().second.GetString("url") == "https://example.com/a" &&
+          std::get<BundleList>(*calls.back().second.Get("others")).bundles.size() == 1);
+    CHECK(session->PostMessage("hi") == customtabs::kResultSuccess);
+    CHECK(!session->ValidateRelationship(3, "https://example.com"));   // out of range: not sent
+    CHECK(calls.back().first == "postMessage");
+    CHECK(session->SetToolbarItem(2, { {}, "ic_x" }, "X") && calls.back().first == "updateVisuals");
+    CHECK(session->IsEngagementSignalsApiAvailable());
+    unsupported = true;
+    bool threw = false;
+    try { session->IsEngagementSignalsApiAvailable(); } catch (const std::logic_error&) { threw = true; }
+    CHECK(threw);
+
+    Bundle nav;
+    nav.Put("event", std::int32_t(customtabs::kNavigationFinished));
+    DispatchCustomTabsCallback(42, "onNavigationEvent", nav);
+    Bundle msg;
+    msg.Put("message", std::string("from page"));
+    DispatchCustomTabsCallback(42, "onPostMessage", msg);
+    CHECK(events.empty());   // on the main thread
+    rt::Dispatcher::Main().RunPending();
+    CHECK(events == std::vector<int>{ customtabs::kNavigationFinished } && posted == "from page");
+    auto r = DispatchCustomTabsCallbackWithResult(42, "ask", {});
+    CHECK(r && *r->GetString("echo") == "ask");
+
+    int scrolled = -1;
+    unsupported = false;
+    CHECK(session->SetEngagementSignalsCallback({ .onGreatestScrollPercentageIncreased = [&](int p, const Bundle&) { scrolled = p; } }));
+    const int engagementId = std::get<std::int32_t>(*calls.back().second.Get("engagement"));
+    Bundle scroll;
+    scroll.Put("value", std::int32_t(40));
+    DispatchEngagementSignal(engagementId, "onGreatestScrollPercentageIncreased", scroll);
+    rt::Dispatcher::Main().RunPending();
+    CHECK(scrolled == 40);
+
+    // A tab for the session goes to its browser with its binder; a session id rides along.
+    auto withId = client->NewSession({}, 5);
+    CHECK(withId && withId->Id() == 105 && withId->SessionId() == std::optional<int>(5));
+    CustomTabsOptions o;
+    o.session = withId;
+    const Intent i = CustomTabsIntent("https://example.com", o);
+    CHECK(i.packageName == "com.browser");
+    CHECK(*i.extras.Get("android.support.customtabs.extra.SESSION") == BundleValue(BundleCustomTabsSession{ 105 }));
+    CHECK(*i.extras.Get("android.support.customtabs.extra.SESSION_ID") == BundleValue(BundleCustomTabsSessionId{ 5 }));
+    CustomTabsOptions pending;
+    pending.pendingSessionId = 9;
+    const Intent p = CustomTabsIntent("https://example.com", pending);
+    CHECK(std::holds_alternative<BundleNullBinder>(*p.extras.Get("android.support.customtabs.extra.SESSION")) &&
+          *p.extras.Get("android.support.customtabs.extra.SESSION_ID") == BundleValue(BundleCustomTabsSessionId{ 9 }));
+    UnbindCustomTabsService(binding);
+    SetCustomTabsHost({});
+}
+
+// setAlwaysUseBrowserUI, pending sessions attached later, feature categories.
+TEST(CustomTabsBrowserUiPendingSessionsAndFeatures) {
+    CustomTabsOptions o;
+    o.alwaysUseBrowserUI = true;
+    const Intent i = CustomTabsIntent("https://example.com", o);
+    CHECK(ShouldAlwaysUseBrowserUI(i) && (i.flags & 0x10000000) != 0);
+    CHECK(!ShouldAlwaysUseBrowserUI(CustomTabsIntent("https://example.com")));
+    std::optional<int> attachedWith;
+    SetCustomTabsHost({
+        .bind = [](const std::string&, bool) { return 3; },
+        .packageHasCategory = [](const std::string& p, const std::string& c) { return p == "com.browser" && c == "androidx.browser.customtabs.category.EphemeralBrowsing"; },
+        .newSession = [&](int, std::optional<int> id) { attachedWith = id; return 50; },
+    });
+    CHECK(IsEphemeralBrowsingSupported("com.browser") && !IsSetNetworkSupported("com.browser") && !IsAuthTabSupported("com.other"));
+    CustomTabsPendingSession pending = NewPendingSession({}, 12);
+    CustomTabsOptions early;
+    early.pendingSessionId = pending.id;   // the tab opens before the browser connects
+    CHECK(*CustomTabsIntent("https://example.com", early).extras.Get("android.support.customtabs.extra.SESSION_ID") == BundleValue(BundleCustomTabsSessionId{ 12 }));
+    CustomTabsClient client(3, "com.browser");
+    auto session = client.AttachSession(std::move(pending));
+    CHECK(session && attachedWith == std::optional<int>(12));
+    SetCustomTabsHost({});
+}

@@ -12,11 +12,14 @@
 #include "kiln/ui/Geometry.h"
 
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace kiln::ui {
+
+    class CustomTabsSession;
 
     // CustomTabColorSchemeParams: the colours for one colour scheme.
     struct CustomTabColorSchemeParams {
@@ -36,6 +39,9 @@ namespace kiln::ui {
         inline constexpr int kCloseButtonPositionDefault = 0, kCloseButtonPositionStart = 1, kCloseButtonPositionEnd = 2;
         inline constexpr int kContentTargetTypeImage = 1, kContentTargetTypeLink = 2;
         inline constexpr int kMaxToolbarCornerRadiusDp = 16;
+        inline constexpr int kMaxToolbarItems = 5;   // getMaxToolbarItems
+        // CustomTabsFeatures.
+        inline constexpr const char* kFeatureEngagementSignals = "ENGAGEMENT_SIGNALS";
     }
 
     // An icon: encoded image bytes (PNG, JPEG, WebP) or a drawable resource's name.
@@ -99,11 +105,21 @@ namespace kiln::ui {
         std::string translateLocale;
         // setShareIdentityEnabled: the browser learns which app opened the tab (API 34).
         bool shareIdentity = false;
+        // setSession: the tab belongs to the session (its browser, its callbacks); or
+        // setPendingSession: a session made later with this id (CustomTabsClient::NewSession).
+        std::shared_ptr<CustomTabsSession> session;
+        std::optional<int> pendingSessionId;
+        // setAlwaysUseBrowserUI: the user chose the browser over Custom Tabs; opens it in its own
+        // task (a browser that honours the extra skips the tab).
+        bool alwaysUseBrowserUI = false;
     };
 
     // CustomTabsIntent.Builder(...).build().intent with the URL as its data. Throws
     // std::invalid_argument for a value out of range, as the builder's setters do.
     Intent CustomTabsIntent(const std::string& url, const CustomTabsOptions& options = {});
+    // setAlwaysUseBrowserUI(intent) / shouldAlwaysUseBrowserUI(intent).
+    Intent SetAlwaysUseBrowserUI(Intent intent);
+    bool ShouldAlwaysUseBrowserUI(const Intent& intent);
     // The start animation, share identity and pass-through options build() puts in its
     // startAnimationBundle.
     ActivityOptions CustomTabsActivityOptions(const CustomTabsOptions& options);

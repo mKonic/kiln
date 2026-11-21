@@ -2,6 +2,8 @@
 
 #include <jni.h>
 
+#include "kiln/ui/Credentials.h"
+
 namespace kiln::android {
 
     // ui::SetApplicationLocales (dev.kiln.KilnLocales).
@@ -12,5 +14,10 @@ namespace kiln::android {
     // kiln::alarm (dev.kiln.KilnAlarms, AlarmManager).
     void InstallAlarms(JNIEnv* env);
     void InstallSpeech(JNIEnv* env);
+    // ui::CustomTabsClient (dev.kiln.KilnCustomTabs, the browser's binder service).
+    void InstallCustomTabs(JNIEnv* env);
+    // KilnBundles' {keys, kinds, values} arrays.
+    jobjectArray BundleToJavaArrays(JNIEnv* env, const kiln::ui::Bundle& b);
+    kiln::ui::Bundle BundleFromJavaArrays(JNIEnv* env, jobjectArray b);
 
 }

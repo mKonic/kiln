@@ -63,6 +63,16 @@ namespace kiln::ui {
         std::string enter, exit;
         bool operator==(const BundleAnimationOptions&) const = default;
     };
+    // A Custom Tabs session's callback binder (EXTRA_SESSION), and a session id's PendingIntent
+    // (EXTRA_SESSION_ID), by kiln's session and id numbers.
+    struct BundleCustomTabsSession {
+        int session = 0;
+        bool operator==(const BundleCustomTabsSession&) const = default;
+    };
+    struct BundleCustomTabsSessionId {
+        int id = 0;
+        bool operator==(const BundleCustomTabsSessionId&) const = default;
+    };
     // An ArrayList<Bundle> (putParcelableArrayList) and a SparseArray<Bundle>.
     struct BundleList {
         std::vector<std::shared_ptr<const Bundle>> bundles;
@@ -77,7 +87,8 @@ namespace kiln::ui {
     // longs, URI lists, intents and bundles.
     using BundleValue = std::variant<std::string, bool, std::int32_t, std::vector<std::string>, std::optional<std::vector<std::uint8_t>>, BundleUri,
                                      std::vector<std::int32_t>, std::int64_t, BundleUriList, BundleIntent, BundleNullBinder, BundleNested, BundleBitmap,
-                                     BundlePendingIntent, BundleList, BundleSparse, BundleAnimationOptions>;
+                                     BundlePendingIntent, BundleList, BundleSparse, BundleAnimationOptions,
+                                     BundleCustomTabsSession, BundleCustomTabsSessionId>;
 
     struct Bundle {
         std::vector<std::pair<std::string, BundleValue>> entries;

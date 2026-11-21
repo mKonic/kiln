@@ -1,6 +1,7 @@
 #include "kiln/ui/CustomTabs.h"
 
 #include "kiln/ui/Configuration.h"
+#include "kiln/ui/CustomTabsClient.h"
 #include "kiln/ui/Share.h"
 
 #include <memory>
@@ -146,8 +147,16 @@ namespace kiln::ui {
         if (o.ephemeralBrowsing) x.Put(kExtraEphemeralBrowsing, *o.ephemeralBrowsing);
         if (o.closeButton) x.Put(kExtraCloseButtonEnabled, *o.closeButton);
 
-        // build()
-        x.Put(kExtraSession, BundleNullBinder{});   // present, even without a session
+        // setSession / setPendingSession, else build()'s null EXTRA_SESSION.
+        constexpr const char* kExtraSessionId = "android.support.customtabs.extra.SESSION_ID";
+        if (o.session) {
+            i.packageName = o.session->PackageName();
+            x.Put(kExtraSession, BundleCustomTabsSession{ o.session->Id() });
+            if (o.session->SessionId()) x.Put(kExtraSessionId, BundleCustomTabsSessionId{ *o.session->SessionId() });
+        } else {
+            x.Put(kExtraSession, BundleNullBinder{});   // present, even without a session
+            if (o.pendingSessionId) x.Put(kExtraSessionId, BundleCustomTabsSessionId{ *o.pendingSessionId });
+        }
         if (!o.menuItems.empty()) {
             BundleList list;
             for (const auto& m : o.menuItems) {
@@ -193,7 +202,26 @@ namespace kiln::ui {
             headers->Put("Accept-Language", locales.front());
             x.Put(kExtraHeaders, BundleNested{ headers });
         }
+        if (o.alwaysUseBrowserUI) i = SetAlwaysUseBrowserUI(std::move(i));
         return i;
+    }
+
+    namespace {
+        constexpr const char* kExtraUserOptOut = "android.support.customtabs.extra.user_opt_out";
+        constexpr int kFlagActivityNewTask = 0x10000000;
+    }
+
+    Intent SetAlwaysUseBrowserUI(Intent intent) {
+        if (intent.action.empty()) intent.action = kActionView;
+        intent.flags |= kFlagActivityNewTask;
+        intent.extras.Put(kExtraUserOptOut, true);
+        return intent;
+    }
+
+    bool ShouldAlwaysUseBrowserUI(const Intent& intent) {
+        const BundleValue* v = intent.extras.Get(kExtraUserOptOut);
+        const bool* b = v ? std::get_if<bool>(v) : nullptr;
+        return b && *b && (intent.flags & kFlagActivityNewTask) != 0;
     }
 
     ActivityOptions CustomTabsActivityOptions(const CustomTabsOptions& o) {

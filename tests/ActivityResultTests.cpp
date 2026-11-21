@@ -71,3 +71,50 @@ TEST(CheckSelfPermissionAsksTheHost) {
     CHECK(ui::CheckSelfPermission("android.permission.CAMERA") && !ui::CheckSelfPermission("android.permission.RECORD_AUDIO"));
     ui::SetPermissionCheck({});
 }
+
+// Auth Tab (AuthTabIntentTest, AuthenticateUserResultContract): the intent, the redirect extras,
+// the results, and an Auth Tab session through a fake host.
+#include "kiln/foundation/activity/AuthTab.h"
+
+TEST(AuthTabIntentContractAndSession) {
+    using namespace kiln::foundation;
+    AuthTabOptions o;
+    o.toolbarColor = kiln::ui::Color(0xFF112233u);
+    o.colorSchemeParams[kiln::ui::customtabs::kColorSchemeDark] = { .toolbarColor = kiln::ui::Color(0xFF000000u) };
+    o.ephemeralBrowsing = true;
+    const kiln::ui::Intent built = AuthTabIntent(o);
+    CHECK(*built.extras.Get(authtab::kExtraLaunchAuthTab) == kiln::ui::BundleValue(true));
+    CHECK(std::holds_alternative<kiln::ui::BundleNullBinder>(*built.extras.Get("android.support.customtabs.extra.SESSION")));
+    CHECK(*built.extras.Get("android.support.customtabs.extra.TOOLBAR_COLOR") == kiln::ui::BundleValue(std::int32_t(0xFF112233u)));
+    CHECK(std::get<kiln::ui::BundleSparse>(*built.extras.Get("androidx.browser.customtabs.extra.COLOR_SCHEME_PARAMS")).items.size() == 1);
+    CHECK(!built.extras.Get("androidx.browser.customtabs.extra.COLOR_SCHEME"));
+
+    contracts::AuthenticateUser contract;
+    const kiln::ui::Intent scheme = contract.CreateIntent(AuthTabRequest::ForScheme(built, "https://auth.example.com/login", "myapp"));
+    CHECK(scheme.data == std::optional<std::string>("https://auth.example.com/login") && *scheme.extras.GetString(authtab::kExtraRedirectScheme) == "myapp");
+    const kiln::ui::Intent https = contract.CreateIntent(AuthTabRequest::ForHttps(built, "https://auth.example.com/login", "example.com", "/done"));
+    CHECK(*https.extras.GetString(authtab::kExtraHttpsRedirectHost) == "example.com" && *https.extras.GetString(authtab::kExtraHttpsRedirectPath) == "/done");
+    kiln::ui::Intent back;
+    back.data = "myapp://done?code=1";
+    const AuthResult ok = contract.ParseResult(authtab::kResultOk, back);
+    CHECK(ok.resultCode == authtab::kResultOk && ok.resultUri == std::optional<std::string>("myapp://done?code=1"));
+    CHECK(contract.ParseResult(authtab::kResultVerificationFailed, back).resultUri == std::nullopt);
+    CHECK(contract.ParseResult(42, back).resultCode == authtab::kResultUnknownCode);
+
+    // A session: its callbacks under the Custom Tabs names, the intent tied to its browser.
+    kiln::ui::SetCustomTabsHost({ .newAuthTabSession = [](int, std::optional<int>) { return 77; } });
+    kiln::ui::CustomTabsClient client(1, "com.browser");
+    int event = 0;
+    auto session = client.AttachAuthTabSession(kiln::ui::CreatePendingAuthTabSession(4, { .onNavigationEvent = [&](int e, const kiln::ui::Bundle&) { event = e; } }));
+    CHECK(session && session->Id() == 77 && session->SessionId() == std::optional<int>(4));
+    kiln::ui::Bundle nav;
+    nav.Put("event", std::int32_t(kiln::ui::customtabs::kNavigationStarted));
+    kiln::ui::DispatchCustomTabsCallback(77, "onNavigationEvent", nav);
+    kiln::rt::Dispatcher::Main().RunPending();
+    CHECK(event == kiln::ui::customtabs::kNavigationStarted);
+    AuthTabOptions tied;
+    tied.session = session;
+    const kiln::ui::Intent t = AuthTabIntent(tied);
+    CHECK(t.packageName == "com.browser" && *t.extras.Get("android.support.customtabs.extra.SESSION") == kiln::ui::BundleValue(kiln::ui::BundleCustomTabsSession{ 77 }));
+    kiln::ui::SetCustomTabsHost({});
+}

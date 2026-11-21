@@ -258,7 +258,11 @@ final class KilnActivityResults {
         else if (data != null) i.setData(data);
         else if (type != null) i.setType(type);
         for (String c : (String[]) s[3]) i.addCategory(c);
-        if (s[4] != null && s[5] != null && !((String) s[4]).isEmpty()) i.setClassName((String) s[4], (String) s[5]);
+        // A package alone (Custom Tabs' setPackage) restricts the intent; with a class it names one.
+        if (s[4] != null && !((String) s[4]).isEmpty()) {
+            if (s[5] != null && !((String) s[5]).isEmpty()) i.setClassName((String) s[4], (String) s[5]);
+            else i.setPackage((String) s[4]);
+        }
         i.addFlags(Integer.parseInt((String) s[6]));
         KilnBundles.putExtras(i, (Object[]) s[7]);
         // Clip data: the URIs a grant flag gives the target access to.

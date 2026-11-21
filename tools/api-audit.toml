@@ -256,6 +256,34 @@ RoomRawQuery = "Connection::Query"
 "Builder.setAutoCloseTimeout" = "autoCloseTimeoutMs"
 "RoomDatabase.isOpen" = "IsOpen"
 
+# browser: the builder's setters are CustomTabsOptions fields; the client's static calls are free
+# functions; a pending session is CustomTabsPendingSession.
+"Builder.addCustomContentAction" = "customContentActions"
+"Builder.setActivitySideSheetMaximizationEnabled" = "activitySideSheetMaximization"
+"Builder.setBackgroundInteractionEnabled" = "backgroundInteraction"
+"Builder.setBookmarksButtonEnabled" = "bookmarksButton"
+"Builder.setCloseButtonEnabled" = "closeButton"
+"Builder.setDownloadButtonEnabled" = "downloadButton"
+"Builder.setEphemeralBrowsingEnabled" = "ephemeralBrowsing"
+"Builder.setInstantAppsEnabled" = "instantApps"
+"Builder.setSendToExternalDefaultHandlerEnabled" = "sendToExternalDefaultHandler"
+"Builder.setUrlBarHidingEnabled" = "urlBarHiding"
+"CustomTabsIntent.setAlwaysUseBrowserUI" = "SetAlwaysUseBrowserUI"
+"CustomTabsIntent.shouldAlwaysUseBrowserUI" = "ShouldAlwaysUseBrowserUI"
+"CustomTabsIntent.getMaxToolbarItems" = "kMaxToolbarItems"
+CustomTabsFeatures = "kFeatureEngagementSignals"
+"CustomTabsClient.attachSession" = "AttachSession"
+"CustomTabsClient.newPendingSession" = "NewPendingSession"
+"CustomTabsClient.isEphemeralBrowsingSupported" = "IsEphemeralBrowsingSupported"
+"CustomTabsClient.isSetNetworkSupported" = "IsSetNetworkSupported"
+"CustomTabsClient.isAuthTabSupported" = "IsAuthTabSupported"
+"CustomTabsServiceConnection.onCustomTabsServiceConnected" = "onConnected"
+"CustomTabsServiceConnection.onServiceConnected" = "onConnected"
+"CustomTabsSession::PendingSession" = "CustomTabsPendingSession"
+"CustomTabsClient.newAuthTabSession" = "NewAuthTabSession"
+"CustomTabsClient.attachAuthTabSession" = "AttachAuthTabSession"
+"CustomTabsClient.createPendingAuthTabSession" = "CreatePendingAuthTabSession"
+
 # media3 Player: getters with the unit in the name, and state read from PlayerState (ExoPlayer's
 # content position is the position: no ads; one period per item).
 PlaybackSuppressionReason = "PlaybackSuppression"
@@ -971,6 +999,23 @@ MultiInstanceInvalidationService = "cross-process invalidation; kiln apps open a
 # Tuning without behaviour of its own.
 "Builder.setPreparedStatementCacheSize" = "a statement cache is a speed knob; kiln prepares each statement (results are the same)"
 "Builder.setInMemoryTrackingMode" = "the invalidation log is always a TEMP table in memory (Room's default)"
+
+# browser: the browser's side and test doubles, RemoteViews toolbars, Auth Tab.
+"CustomTabsService.onBind" = "CustomTabsService is for browsers implementing Custom Tabs, not apps"
+CustomTabsSessionToken = "the browser's view of a session (CustomTabsService); apps use CustomTabsSession"
+"CustomTabsSession.createMockSessionForTesting" = "a Java test double; kiln's tests use a fake CustomTabsHost"
+"Builder.setSecondaryToolbarViews" = "a RemoteViews toolbar needs an XML layout resource inflated by the browser; kiln apps have no View layouts"
+"CustomTabsSession.setSecondaryToolbarViews" = "see Builder.setSecondaryToolbarViews"
+# CustomTabsIntent's readers of a built intent (for browsers and tests): kiln builds from CustomTabsOptions, which the app has.
+"CustomTabsIntent.getActivityResizeBehavior" = "a reader of a built intent; the app has its CustomTabsOptions"
+"CustomTabsIntent.getSecondaryToolbarSwipeUpGesture" = "see getActivityResizeBehavior"
+"CustomTabsIntent.isActivitySideSheetMaximizationEnabled" = "see getActivityResizeBehavior"
+"CustomTabsIntent.isBackgroundInteractionEnabled" = "see getActivityResizeBehavior"
+"CustomTabsIntent.isBookmarksButtonEnabled" = "see getActivityResizeBehavior"
+"CustomTabsIntent.isCloseButtonEnabled" = "see getActivityResizeBehavior"
+"CustomTabsIntent.isDownloadButtonEnabled" = "see getActivityResizeBehavior"
+"CustomTabsIntent.isEphemeralBrowsingEnabled" = "see getActivityResizeBehavior"
+"CustomTabsIntent.isSendToExternalDefaultHandlerEnabled" = "see getActivityResizeBehavior"
 
 [skipped_patterns]
 '^(Storage|FileStorage|StorageConnection|ReadScope|WriteScope|InterProcessCoordinator|MultiProcessDataStoreFactory|createSingleProcessCoordinator|createMultiProcessCoordinator|writeData|readData)(\..*)?$' = "pluggable storage and multi-process coordination: kiln's DataStore is one process, one file (FileStorage's behaviour built in)"

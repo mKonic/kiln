@@ -10,7 +10,9 @@ import android.os.Bundle;
  * KilnActivityResults passes intents), 10 a null binder (Bundle.putBinder(key, null)), 11 a Bundle
  * (nested arrays), 12 a Bitmap ({byte[] encoded or null, String drawable}), 13 a PendingIntent
  * opening the app at a deep link (String), 14 ArrayList<Bundle> (Object[] of bundles), 15
- * SparseArray<Bundle> ({int[] keys, Object[] bundles}).
+ * SparseArray<Bundle> ({int[] keys, Object[] bundles}), 16 ActivityOptions' animations bundle
+ * ({enter, exit}), 17 a Custom Tabs session's binder (its id as text), 18 a session id's
+ * PendingIntent (the id as text).
  */
 final class KilnBundles {
     private KilnBundles() {}
@@ -41,6 +43,8 @@ final class KilnBundles {
                 case 14: b.putParcelableArrayList(keys[i], bundles((Object[]) v)); break;
                 case 15: b.putSparseParcelableArray(keys[i], sparse((Object[]) v)); break;
                 case 16: b.putBundle(keys[i], animations((String[]) v)); break;
+                case 17: b.putBinder(keys[i], KilnCustomTabs.sessionBinder(Integer.parseInt((String) v))); break;
+                case 18: b.putParcelable(keys[i], KilnCustomTabs.pendingSessionId(Integer.parseInt((String) v))); break;
                 default: break;
             }
         }
@@ -148,6 +152,8 @@ final class KilnBundles {
                 case 14: intent.putParcelableArrayListExtra(keys[i], bundles((Object[]) v)); break;
                 case 15: { Bundle nb = new Bundle(); nb.putSparseParcelableArray(keys[i], sparse((Object[]) v)); intent.putExtras(nb); break; }
                 case 16: intent.putExtra(keys[i], animations((String[]) v)); break;
+                case 17: { Bundle nb = new Bundle(); nb.putBinder(keys[i], KilnCustomTabs.sessionBinder(Integer.parseInt((String) v))); intent.putExtras(nb); break; }
+                case 18: intent.putExtra(keys[i], KilnCustomTabs.pendingSessionId(Integer.parseInt((String) v))); break;
                 default: break;
             }
         }

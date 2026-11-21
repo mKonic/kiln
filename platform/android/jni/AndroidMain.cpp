@@ -1351,6 +1351,7 @@ namespace {
         kiln::android::InstallProcessLifecycle(env);
         kiln::android::InstallSecurity(env);
         kiln::android::InstallAlarms(env);
+        kiln::android::InstallCustomTabs(env);
         kiln::android::InstallSpeech(env);
         // Not tied to a window: a process started for a job, a widget or an alarm has them too.
         kiln::android::InstallDateFormat(env);
@@ -1425,7 +1426,10 @@ namespace {
                     auto tri = [](const std::optional<bool>& b) { return std::string(!b ? "" : *b ? "true" : "false"); };
                     jobjectArray jo = JavaStrings(e, { o.enterAnimation, o.exitAnimation, tri(o.shareIdentity), tri(o.allowPassThroughOnTouchOutside) });
                     const bool ok = e->CallBooleanMethod(g_Host->view, start, ji, jo);
-                    if (e->ExceptionCheck()) e->ExceptionClear();
+                    if (e->ExceptionCheck()) {
+                        e->ExceptionDescribe();
+                        e->ExceptionClear();
+                    }
                     e->DeleteLocalRef(ji);
                     e->DeleteLocalRef(jo);
                     return ok;
@@ -2722,6 +2726,8 @@ namespace {
                 env->DeleteLocalRef(d);
                 jv = pair;
             }
+            else if (const auto* cs = std::get_if<kiln::ui::BundleCustomTabsSession>(&v)) { kinds.push_back(17); jv = env->NewStringUTF(std::to_string(cs->session).c_str()); }
+            else if (const auto* ci = std::get_if<kiln::ui::BundleCustomTabsSessionId>(&v)) { kinds.push_back(18); jv = env->NewStringUTF(std::to_string(ci->id).c_str()); }
             else if (const auto* ao = std::get_if<kiln::ui::BundleAnimationOptions>(&v)) { kinds.push_back(16); jv = JavaStrings(env, { ao->enter, ao->exit }); }
             else if (const auto* pi = std::get_if<kiln::ui::BundlePendingIntent>(&v)) { kinds.push_back(13); jv = JavaString(env, kiln::foundation::ToUtf16(pi->data)); }
             else if (const auto* bl = std::get_if<kiln::ui::BundleList>(&v)) {
@@ -3792,6 +3798,12 @@ namespace {
         g_Host->window = nullptr;
     }
 
+}
+
+namespace kiln::android {
+    // KilnBundles' arrays for other JNI modules.
+    jobjectArray BundleToJavaArrays(JNIEnv* env, const kiln::ui::Bundle& b) { return JavaBundle(env, b); }
+    kiln::ui::Bundle BundleFromJavaArrays(JNIEnv* env, jobjectArray b) { return BundleFromJava(env, b); }
 }
 
 // kiln's registration of its natives. JNI_OnLoad below calls it; an app whose linker hides C

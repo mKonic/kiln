@@ -783,7 +783,20 @@ void SharePhoto(const std::string& contentUri) {
 * `streams` are `content://` URIs; the app that receives them may read them.
 * `ui::OpenUri(url)` opens a link in the browser or the app that handles it.
 * `ui::LaunchCustomTab(url, { .toolbarColor = ... })` (`kiln/ui/CustomTabs.h`) opens a page
-  in a Custom Tab: the user's browser, inside the app, in the app's colours.
+  in a Custom Tab: the user's browser, inside the app, in the app's colours. The options have
+  the rest of Custom Tabs: menu items and an action button (each opens the app at a deep
+  link), dark-mode colours, a partial-height or side-sheet tab, start and exit animations, and
+  the toolbar's buttons.
+* `ui::BindCustomTabsService` (`kiln/ui/CustomTabsClient.h`) connects to the browser.
+  `Warmup` starts it early, and a session's `MayLaunchUrl` loads the likely next page ahead of
+  time. A tab opened with `.session` reports its navigation to the session's callbacks.
+  Declare a `<queries>` entry for `android.support.customtabs.action.CustomTabsService` so
+  `GetCustomTabsPackageName` can find the browser.
+* Sign-in pages go through an Auth Tab (`kiln/foundation/activity/AuthTab.h`): launch
+  `contracts::AuthenticateUser` with `AuthTabRequest::ForScheme(AuthTabIntent({}), url,
+  "myapp")`. The browser returns to the app when the page redirects to `myapp://`, and the
+  result carries that URI (`AuthResult::resultUri`). A browser without Auth Tab opens a Custom
+  Tab instead.
 * `ui::StartActivity(intent)` starts any activity without waiting for a result, and
   `ui::CreateChooser(intent, title)` wraps an intent in the system's chooser. An intent's
   extras can hold other intents and lists of URIs.
