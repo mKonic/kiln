@@ -22,11 +22,20 @@
 // dev.kiln.KilnWidgetReceiver in a Gradle app) and res/xml/<name>_widget.xml, its
 // appwidget-provider info.
 
+#include "kiln/datastore/DataStore.h"
 #include "kiln/datastore/Preferences.h"
+#include "kiln/runtime/Flow.h"
+#include "kiln/runtime/Task.h"
+#include "kiln/ui/Credentials.h"
 #include "kiln/ui/Geometry.h"
 #include <kiln/Function.h>
 
+#include <any>
 #include <climits>
+#include <cstdio>
+#include <exception>
+#include <memory>
+#include <mutex>
 #include <cstdint>
 #include <initializer_list>
 #include <map>
@@ -479,19 +488,114 @@ namespace kiln::glance {
     // launcher shows it at; Responsive draws for the given sizes, the launcher picking the best.
     enum class SizeMode { Single, Exact, Responsive };
 
-    // The drawn widget (LocalGlanceId's AppWidgetId and LocalSize).
+    // The drawn widget: its name, LocalGlanceId's AppWidgetId, LocalSize and LocalAppWidgetOptions
+    // (the launcher's options for it: OPTION_APPWIDGET_MIN_WIDTH, the host category...).
     struct WidgetContext {
         std::string name;
         int appWidgetId = 0;
         ui::Size size;   // dp: what this drawing is for (LocalSize)
+        ui::Bundle options;
     };
     using GlanceId = int;   // AppWidgetId.appWidgetId
+
+    // --- state ---------------------------------------------------------------------------------
+
+    // GlanceStateDefinition: where each placed widget's state lives, a store per instance under
+    // its file key ("appWidget-<id>"). The content reads it with CurrentState.
+    class StateDefinition {
+    public:
+        virtual ~StateDefinition() = default;
+        // getLocation: the store's file.
+        virtual std::string GetLocation(const std::string& fileKey) const = 0;
+        // The value now (GlanceState.getValue), type-erased for the content.
+        virtual rt::Task<std::any> GetAny(std::string fileKey) const = 0;
+        // GlanceState.deleteStore: forgets the store and deletes its file.
+        virtual void DeleteStore(const std::string& fileKey) const = 0;
+    };
+    // A typed DataStore per instance.
+    template<typename T>
+    class GlanceStateDefinition : public StateDefinition {
+    public:
+        using GetDataStoreFn = kiln::Function<std::shared_ptr<datastore::DataStore<T>>(const std::string& fileKey)>;
+        using GetLocationFn = kiln::Function<std::string(const std::string& fileKey)>;
+        GlanceStateDefinition(GetDataStoreFn getDataStore, GetLocationFn getLocation)
+            : m_GetDataStore(std::move(getDataStore)), m_GetLocation(std::move(getLocation)) {}
+
+        // The instance's store, one per file key while it is in use.
+        std::shared_ptr<datastore::DataStore<T>> GetDataStore(const std::string& fileKey) const {
+            std::lock_guard lock(m_Mutex);
+            auto& slot = m_Stores[fileKey];
+            if (!slot) slot = m_GetDataStore(fileKey);
+            return slot;
+        }
+        std::string GetLocation(const std::string& fileKey) const override { return m_GetLocation(fileKey); }
+        rt::Task<T> GetValue(std::string fileKey) const { co_return co_await rt::First(GetDataStore(fileKey)->Data()); }
+        rt::Task<T> UpdateValue(std::string fileKey, kiln::Function<T(T)> update) const {
+            co_return co_await GetDataStore(fileKey)->UpdateData(std::move(update));
+        }
+        rt::Task<std::any> GetAny(std::string fileKey) const override { co_return std::any(co_await GetValue(std::move(fileKey))); }
+        void DeleteStore(const std::string& fileKey) const override {
+            {
+                std::lock_guard lock(m_Mutex);
+                m_Stores.erase(fileKey);
+            }
+            std::remove(GetLocation(fileKey).c_str());
+        }
+
+    private:
+        GetDataStoreFn m_GetDataStore;
+        GetLocationFn m_GetLocation;
+        mutable std::mutex m_Mutex;
+        mutable std::map<std::string, std::shared_ptr<datastore::DataStore<T>>> m_Stores;
+    };
+    // PreferencesGlanceStateDefinition: Preferences per instance (datastore's preferences file for
+    // the file key), every widget's state unless it says otherwise.
+    class PreferencesStateDefinition : public StateDefinition {
+    public:
+        std::shared_ptr<datastore::PreferencesDataStore> GetDataStore(const std::string& fileKey) const;
+        std::string GetLocation(const std::string& fileKey) const override;
+        rt::Task<datastore::Preferences> GetValue(std::string fileKey) const;
+        rt::Task<datastore::Preferences> UpdateValue(std::string fileKey, kiln::Function<void(datastore::MutablePreferences&)> update) const;
+        rt::Task<std::any> GetAny(std::string fileKey) const override;
+        void DeleteStore(const std::string& fileKey) const override;
+
+    private:
+        mutable std::mutex m_Mutex;
+        mutable std::map<std::string, std::shared_ptr<datastore::PreferencesDataStore>> m_Stores;
+    };
+    const std::shared_ptr<PreferencesStateDefinition>& PreferencesGlanceStateDefinition();
+    // createUniqueRemoteUiName: an instance's file key.
+    std::string AppWidgetStateKey(GlanceId id);
+
+    namespace detail {
+        const std::any& CurrentStateAny();
+    }
+    // currentState<T>(): the drawn instance's state (LocalState); std::bad_any_cast for another type.
+    template<typename T> const T& CurrentState() { return std::any_cast<const T&>(detail::CurrentStateAny()); }
+    // currentState(key): a preference of it.
+    template<typename T> std::optional<T> CurrentState(const datastore::PreferenceKey<T>& key) { return CurrentState<datastore::Preferences>().Get(key); }
+
+    // --- widgets ------------------------------------------------------------------------------
 
     struct GlanceAppWidget {
         SizeMode sizeMode = SizeMode::Single;
         std::vector<ui::Size> responsiveSizes;   // dp
+        // provideContent's content: drawn for each size.
         kiln::Function<void(const WidgetContext&)> content;
+        // provideGlance: loads what the content needs, then provides it (ProvideContent); run
+        // before each drawing. Unset: `content`.
+        kiln::Function<rt::Task<kiln::Function<void(const WidgetContext&)>>(WidgetContext)> provideGlance;
+        // stateDefinition: none for a widget without state.
+        std::shared_ptr<StateDefinition> stateDefinition = PreferencesGlanceStateDefinition();
+        // onDelete: an instance was removed (its state is deleted after it).
+        kiln::Function<rt::Task<>(GlanceId)> onDelete;
+        // errorUiLayout: the layout shown when the content throws (empty: nothing shown, the error
+        // logged). onCompositionError replaces showing it.
+        std::string errorUiLayout = "kiln_glance_error";
+        kiln::Function<void(const WidgetContext&, std::exception_ptr)> onCompositionError;
     };
+    // provideContent: the content provideGlance provides.
+    inline kiln::Function<void(const WidgetContext&)> ProvideContent(kiln::Function<void(const WidgetContext&)> content) { return content; }
     void RegisterWidget(std::string name, GlanceAppWidget widget);
     struct WidgetRegistration {
         WidgetRegistration(std::string name, GlanceAppWidget widget) { RegisterWidget(std::move(name), std::move(widget)); }
@@ -502,42 +606,96 @@ namespace kiln::glance {
         int appWidgetId = 0;
         ActionParameters parameters;   // a toggle's new state as ToggleableStateKey
     };
+    // ActionCallback.onAction: in the app's process; the widget is redrawn when it finishes.
     void RegisterActionCallback(std::string key, kiln::Function<void(const ActionContext&)> callback);
+    void RegisterActionCallback(std::string key, kiln::Function<rt::Task<>(ActionContext)> callback);
     struct ActionCallbackRegistration {
         ActionCallbackRegistration(std::string key, kiln::Function<void(const ActionContext&)> callback) {
             RegisterActionCallback(std::move(key), std::move(callback));
         }
+        ActionCallbackRegistration(std::string key, kiln::Function<rt::Task<>(ActionContext)> callback) {
+            RegisterActionCallback(std::move(key), std::move(callback));
+        }
     };
 
-    // Redraws every placed instance of the widget (GlanceAppWidget.updateAll).
+    // getAppWidgetState: an instance's state under a definition, or the widget's own.
+    template<typename T> rt::Task<T> GetAppWidgetState(const GlanceStateDefinition<T>& definition, GlanceId id) {
+        co_return co_await definition.GetValue(AppWidgetStateKey(id));
+    }
+    rt::Task<datastore::Preferences> GetAppWidgetState(const PreferencesStateDefinition& definition, GlanceId id);
+    rt::Task<std::any> GetAppWidgetState(std::string widget, GlanceId id);
+    // updateAppWidgetState: changes an instance's state (redraw it with Update after).
+    template<typename T> rt::Task<T> UpdateAppWidgetState(const GlanceStateDefinition<T>& definition, GlanceId id, kiln::Function<T(T)> update) {
+        co_return co_await definition.UpdateValue(AppWidgetStateKey(id), std::move(update));
+    }
+    rt::Task<> UpdateAppWidgetState(GlanceId id, kiln::Function<void(datastore::MutablePreferences&)> update);
+
+    // Redraws every placed instance of the widget (GlanceAppWidget.updateAll), or one (update).
     void UpdateAll(const std::string& widget);
-    // The ids of its placed instances.
+    void Update(const std::string& widget, GlanceId id);
+    // updateIf: redraws the instances whose state passes.
+    template<typename State> rt::Task<> UpdateIf(std::string widget, kiln::Function<bool(const State&)> predicate);
+    // The ids of its placed instances (GlanceAppWidgetManager.getGlanceIds).
     std::vector<int> AppWidgetIds(const std::string& widget);
-    // Asks the launcher to place one (requestPinAppWidget; false: the launcher cannot).
+    inline std::vector<GlanceId> GetGlanceIds(const std::string& widget) { return AppWidgetIds(widget); }
+    // getAppWidgetSizes: the sizes the launcher shows an instance at (dp).
+    std::vector<ui::Size> GetAppWidgetSizes(GlanceId id);
+    // requestPinGlanceAppWidget: asks the launcher to place one (false: it cannot), showing a
+    // drawing of it at `previewSize` in its dialog, and opening the app at `successDeepLink`
+    // once placed (empty: neither).
     bool RequestPin(const std::string& widget);
+    rt::Task<bool> RequestPinGlanceAppWidget(std::string widget, std::optional<ui::Size> previewSize = std::nullopt,
+                                             std::string successDeepLink = {});
 
     // --- what the platform's host uses ---------------------------------------------------------
 
     // The sizes to draw for: the launcher's (Exact), the responsive ones, or the minimum (Single).
     std::vector<ui::Size> SizesToDraw(const GlanceAppWidget& widget, const std::vector<ui::Size>& launcherSizes, ui::Size minimum);
+    // GlanceAppWidget.resize: whether new options need a redraw (not for Single, nor Responsive
+    // past API 31, whose launcher picks among the sizes drawn).
+    bool RedrawsOnResize(const GlanceAppWidget& widget, int sdkInt);
     // The content for one size, normalized and encoded for the host's RemoteViews translation
-    // (KilnGlance.java). Empty when the widget is not registered.
-    std::vector<std::uint8_t> Render(const std::string& widget, const WidgetContext& context);
+    // (KilnGlance.java), with the given state. Empty when the widget is not registered.
+    std::vector<std::uint8_t> Render(const std::string& widget, const WidgetContext& context, std::any state = {});
+    // A drawing of each size: the state read, provideGlance run, then the content. `failed`: the
+    // content threw; the host shows `errorLayout` unless it is empty (onCompositionError ran, or
+    // the widget shows nothing).
+    struct Drawing {
+        std::vector<std::vector<std::uint8_t>> contents;
+        bool failed = false;
+        std::string errorLayout;
+        bool found = true;
+    };
+    rt::Task<Drawing> Draw(std::string widget, WidgetContext context, std::vector<ui::Size> sizes);
     const GlanceAppWidget* FindWidget(const std::string& name);
     // Runs a callback (true when it exists); the host redraws the widget after it.
-    bool RunActionCallback(const std::string& key, const ActionContext& context);
+    rt::Task<bool> RunActionCallback(std::string key, ActionContext context);
     // Runs a lambda of the widget's last drawing (true when it exists), drawing it first when the
     // process has not drawn it yet.
-    bool RunLambdaAction(const std::string& widget, int appWidgetId, const std::string& key);
+    rt::Task<bool> RunLambdaAction(std::string widget, int appWidgetId, std::string key);
+    // GlanceAppWidget.deleted: onDelete, then the instance's state deleted.
+    rt::Task<> Deleted(std::string widget, GlanceId id);
     // Parameters as the host carries them in an intent (and back).
     std::vector<std::uint8_t> ParametersToBytes(const ActionParameters& p);
     ActionParameters ParametersFromBytes(const std::vector<std::uint8_t>& bytes);
 
     struct GlanceHost {
         kiln::Function<void(const std::string&)> updateAll;
+        kiln::Function<void(const std::string&, int)> update;
         kiln::Function<std::vector<int>(const std::string&)> appWidgetIds;
-        kiln::Function<bool(const std::string&)> requestPin;
+        kiln::Function<std::vector<ui::Size>(int)> appWidgetSizes;
+        // The widget's name, a drawing for the pin dialog (empty: none), the deep link to open once placed.
+        kiln::Function<bool(const std::string&, const std::vector<std::uint8_t>&, const std::string&)> requestPin;
     };
     void SetGlanceHost(GlanceHost host);
+
+    template<typename State> rt::Task<> UpdateIf(std::string widget, kiln::Function<bool(const State&)> predicate) {
+        const GlanceAppWidget* w = FindWidget(widget);
+        if (!w || !w->stateDefinition) throw std::logic_error("GlanceAppWidget.updateIf cannot be used if no state is defined.");
+        for (GlanceId id : GetGlanceIds(widget)) {
+            std::any state = co_await w->stateDefinition->GetAny(AppWidgetStateKey(id));
+            if (predicate(std::any_cast<const State&>(state))) Update(widget, id);
+        }
+    }
 
 }

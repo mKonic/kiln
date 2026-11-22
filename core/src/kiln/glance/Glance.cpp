@@ -44,6 +44,7 @@ namespace kiln::glance {
             std::vector<Node>* children = nullptr;
             ColorProviders colors;
             int lambdas = 0;   // default lambda keys, in the order made
+            std::any state;    // LocalState
         };
         thread_local Build* t_Build = nullptr;
 
@@ -389,9 +390,14 @@ namespace kiln::glance {
             static std::map<std::string, GlanceAppWidget> w;
             return w;
         }
-        std::map<std::string, kiln::Function<void(const ActionContext&)>>& Callbacks() {
-            static std::map<std::string, kiln::Function<void(const ActionContext&)>> c;
+        using Callback = kiln::Function<rt::Task<>(ActionContext)>;
+        std::map<std::string, Callback>& Callbacks() {
+            static std::map<std::string, Callback> c;
             return c;
+        }
+        rt::Task<> RunSync(kiln::Function<void(const ActionContext&)> callback, ActionContext context) {
+            callback(context);
+            co_return;
         }
         // Each placed widget's lambdas and the context of its last drawing.
         struct Drawn {
@@ -773,22 +779,27 @@ namespace kiln::glance {
         auto it = Widgets().find(name);
         return it == Widgets().end() ? nullptr : &it->second;
     }
-    void RegisterActionCallback(std::string key, kiln::Function<void(const ActionContext&)> callback) {
+    void RegisterActionCallback(std::string key, kiln::Function<rt::Task<>(ActionContext)> callback) {
         std::lock_guard lock(Mutex());
         Callbacks()[std::move(key)] = std::move(callback);
     }
-    bool RunActionCallback(const std::string& key, const ActionContext& context) {
-        kiln::Function<void(const ActionContext&)> f;
+    void RegisterActionCallback(std::string key, kiln::Function<void(const ActionContext&)> callback) {
+        RegisterActionCallback(std::move(key), kiln::Function<rt::Task<>(ActionContext)>([callback = std::move(callback)](ActionContext c) {
+            return RunSync(callback, std::move(c));
+        }));
+    }
+    rt::Task<bool> RunActionCallback(std::string key, ActionContext context) {
+        Callback f;
         {
             std::lock_guard lock(Mutex());
             auto it = Callbacks().find(key);
-            if (it == Callbacks().end()) return false;
+            if (it == Callbacks().end()) co_return false;
             f = it->second;
         }
-        f(context);
-        return true;
+        co_await f(std::move(context));
+        co_return true;
     }
-    bool RunLambdaAction(const std::string& widget, int appWidgetId, const std::string& key) {
+    rt::Task<bool> RunLambdaAction(std::string widget, int appWidgetId, std::string key) {
         auto find = [&]() -> std::vector<kiln::Function<void()>> {
             std::lock_guard lock(Mutex());
             auto it = DrawnWidgets().find({ widget, appWidgetId });
@@ -799,17 +810,17 @@ namespace kiln::glance {
         auto blocks = find();
         if (blocks.empty()) {
             // A new process: draw the widget again to find its lambdas, at the size it was last drawn.
-            WidgetContext c{ widget, appWidgetId, {} };
+            WidgetContext c{ widget, appWidgetId, {}, {} };
             {
                 std::lock_guard lock(Mutex());
                 auto it = DrawnWidgets().find({ widget, appWidgetId });
                 if (it != DrawnWidgets().end()) c = it->second.context;
             }
-            Render(widget, c);
+            co_await Draw(widget, c, { c.size });
             blocks = find();
         }
         for (auto& b : blocks) if (b) b();
-        return !blocks.empty();
+        co_return !blocks.empty();
     }
 
     std::vector<ui::Size> SizesToDraw(const GlanceAppWidget& widget, const std::vector<ui::Size>& launcherSizes, ui::Size minimum) {
@@ -830,56 +841,183 @@ namespace kiln::glance {
         return { minimum };
     }
 
-    std::vector<std::uint8_t> Render(const std::string& name, const WidgetContext& context) {
-        const GlanceAppWidget* widget = FindWidget(name);
-        if (!widget || !widget->content) return {};
-        // The content's elements go under the root (RemoteViewsRoot).
-        Node root;
-        root.kind = kBox;
-        Build build;
-        build.children = &root.children;
-        build.colors = DynamicThemeColorProviders();
-        Build* saved = t_Build;
-        t_Build = &build;
-        try {
-            widget->content(context);
-        } catch (...) {
+    namespace {
+        std::vector<std::uint8_t> RenderWith(const std::string& name, const kiln::Function<void(const WidgetContext&)>& content,
+                                             const WidgetContext& context, std::any state) {
+            if (!content) return {};
+            // The content's elements go under the root (RemoteViewsRoot).
+            Node root;
+            root.kind = kBox;
+            Build build;
+            build.children = &root.children;
+            build.colors = DynamicThemeColorProviders();
+            build.state = std::move(state);
+            Build* saved = t_Build;
+            t_Build = &build;
+            try {
+                content(context);
+            } catch (...) {
+                t_Build = saved;
+                throw;
+            }
             t_Build = saved;
-            throw;
-        }
-        t_Build = saved;
 
-        // normalizeCompositionTree: one child under the root, sizes, then each element.
-        if (root.children.size() != 1) {
-            Node box;
-            box.kind = kBox;
-            box.children = std::move(root.children);
-            root.children.clear();
-            root.children.push_back(std::move(box));
+            // normalizeCompositionTree: one child under the root, sizes, then each element.
+            if (root.children.size() != 1) {
+                Node box;
+                box.kind = kBox;
+                box.children = std::move(root.children);
+                root.children.clear();
+                root.children.push_back(std::move(box));
+            }
+            NormalizeSizes(root);
+            AdjustButtons(root.children);
+            Normalize(root.children);
+            Lambdas lambdas;
+            UpdateLambdaKeys(root.children, lambdas);
+            {
+                std::lock_guard lock(Mutex());
+                Drawn& d = DrawnWidgets()[{ name, context.appWidgetId }];
+                d.lambdas = std::move(lambdas);
+                d.context = context;
+            }
+
+            jvm::Writer w;
+            w.I32(kFormat);
+            WriteNode(w, root.children[0]);
+            return w.Take();
         }
-        NormalizeSizes(root);
-        AdjustButtons(root.children);
-        Normalize(root.children);
-        Lambdas lambdas;
-        UpdateLambdaKeys(root.children, lambdas);
+    }
+
+    std::vector<std::uint8_t> Render(const std::string& name, const WidgetContext& context, std::any state) {
+        const GlanceAppWidget* widget = FindWidget(name);
+        if (!widget) return {};
+        return RenderWith(name, widget->content, context, std::move(state));
+    }
+
+    rt::Task<Drawing> Draw(std::string name, WidgetContext context, std::vector<ui::Size> sizes) {
+        Drawing out;
+        const GlanceAppWidget* w = FindWidget(name);
+        if (!w) {
+            out.found = false;
+            co_return out;
+        }
+        std::exception_ptr error;
+        try {
+            std::any state;
+            if (w->stateDefinition) state = co_await w->stateDefinition->GetAny(AppWidgetStateKey(context.appWidgetId));
+            kiln::Function<void(const WidgetContext&)> content = w->content;
+            if (w->provideGlance) content = co_await w->provideGlance(context);
+            for (const ui::Size& size : sizes) {
+                WidgetContext c = context;
+                c.size = size;
+                out.contents.push_back(RenderWith(name, content, c, state));
+            }
+        } catch (...) {
+            error = std::current_exception();
+        }
+        if (error) {
+            // onCompositionError: by default the error layout.
+            out.contents.clear();
+            out.failed = true;
+            try {
+                std::rethrow_exception(error);
+            } catch (const std::exception& e) {
+                log::Error("kiln", "glance: widget {} ({}) cannot draw: {}", name, context.appWidgetId, e.what());
+            } catch (...) {
+                log::Error("kiln", "glance: widget {} ({}) cannot draw", name, context.appWidgetId);
+            }
+            if (w->onCompositionError) w->onCompositionError(context, error);
+            else out.errorLayout = w->errorUiLayout;
+        }
+        co_return out;
+    }
+
+    rt::Task<> Deleted(std::string name, GlanceId id) {
+        const GlanceAppWidget* w = FindWidget(name);
+        if (!w) co_return;
+        if (w->onDelete) {
+            try {
+                co_await w->onDelete(id);
+            } catch (const std::exception& e) {
+                log::Error("kiln", "glance: error in the deletion callback of {}: {}", name, e.what());
+            } catch (...) {
+                log::Error("kiln", "glance: error in the deletion callback of {}", name);
+            }
+        }
+        if (w->stateDefinition) w->stateDefinition->DeleteStore(AppWidgetStateKey(id));
+        std::lock_guard lock(Mutex());
+        DrawnWidgets().erase({ name, id });
+    }
+
+    bool RedrawsOnResize(const GlanceAppWidget& widget, int sdkInt) {
+        return !(widget.sizeMode == SizeMode::Single || (sdkInt > 31 && widget.sizeMode == SizeMode::Responsive));
+    }
+
+    // --- state ----------------------------------------------------------------------------------
+
+    std::string AppWidgetStateKey(GlanceId id) { return "appWidget-" + std::to_string(id); }
+    const std::any& detail::CurrentStateAny() {
+        static const std::any none;
+        return t_Build ? t_Build->state : none;
+    }
+    std::shared_ptr<datastore::PreferencesDataStore> PreferencesStateDefinition::GetDataStore(const std::string& fileKey) const {
+        std::lock_guard lock(m_Mutex);
+        auto& slot = m_Stores[fileKey];
+        if (!slot) slot = datastore::PreferencesDataStore::OpenFile(GetLocation(fileKey));
+        return slot;
+    }
+    std::string PreferencesStateDefinition::GetLocation(const std::string& fileKey) const { return datastore::DataStoreFile(fileKey + ".preferences"); }
+    rt::Task<datastore::Preferences> PreferencesStateDefinition::GetValue(std::string fileKey) const {
+        co_return co_await rt::First(GetDataStore(fileKey)->Data());
+    }
+    rt::Task<datastore::Preferences> PreferencesStateDefinition::UpdateValue(std::string fileKey, kiln::Function<void(datastore::MutablePreferences&)> update) const {
+        auto store = GetDataStore(fileKey);
+        co_await store->Edit(std::move(update));
+        co_return store->Current();
+    }
+    rt::Task<std::any> PreferencesStateDefinition::GetAny(std::string fileKey) const { co_return std::any(co_await GetValue(std::move(fileKey))); }
+    void PreferencesStateDefinition::DeleteStore(const std::string& fileKey) const {
         {
-            std::lock_guard lock(Mutex());
-            Drawn& d = DrawnWidgets()[{ name, context.appWidgetId }];
-            d.lambdas = std::move(lambdas);
-            d.context = context;
+            std::lock_guard lock(m_Mutex);
+            m_Stores.erase(fileKey);
         }
-
-        jvm::Writer w;
-        w.I32(kFormat);
-        WriteNode(w, root.children[0]);
-        return w.Take();
+        std::remove(GetLocation(fileKey).c_str());
+    }
+    const std::shared_ptr<PreferencesStateDefinition>& PreferencesGlanceStateDefinition() {
+        static const std::shared_ptr<PreferencesStateDefinition> d = std::make_shared<PreferencesStateDefinition>();
+        return d;
+    }
+    rt::Task<datastore::Preferences> GetAppWidgetState(const PreferencesStateDefinition& definition, GlanceId id) {
+        co_return co_await definition.GetValue(AppWidgetStateKey(id));
+    }
+    rt::Task<std::any> GetAppWidgetState(std::string widget, GlanceId id) {
+        const GlanceAppWidget* w = FindWidget(widget);
+        if (!w || !w->stateDefinition) throw std::logic_error("No state defined in this provider");
+        co_return co_await w->stateDefinition->GetAny(AppWidgetStateKey(id));
+    }
+    rt::Task<> UpdateAppWidgetState(GlanceId id, kiln::Function<void(datastore::MutablePreferences&)> update) {
+        co_await PreferencesGlanceStateDefinition()->UpdateValue(AppWidgetStateKey(id), std::move(update));
     }
 
     void SetGlanceHost(GlanceHost host) { Host() = std::move(host); }
     void UpdateAll(const std::string& widget) {
         if (Host().updateAll) Host().updateAll(widget);
     }
+    void Update(const std::string& widget, GlanceId id) {
+        if (Host().update) Host().update(widget, id);
+    }
     std::vector<int> AppWidgetIds(const std::string& widget) { return Host().appWidgetIds ? Host().appWidgetIds(widget) : std::vector<int>{}; }
-    bool RequestPin(const std::string& widget) { return Host().requestPin && Host().requestPin(widget); }
+    std::vector<ui::Size> GetAppWidgetSizes(GlanceId id) { return Host().appWidgetSizes ? Host().appWidgetSizes(id) : std::vector<ui::Size>{}; }
+    bool RequestPin(const std::string& widget) { return Host().requestPin && Host().requestPin(widget, {}, {}); }
+    rt::Task<bool> RequestPinGlanceAppWidget(std::string widget, std::optional<ui::Size> previewSize, std::string successDeepLink) {
+        if (!Host().requestPin) co_return false;
+        std::vector<std::uint8_t> preview;
+        if (previewSize) {
+            Drawing d = co_await Draw(widget, { widget, 0, *previewSize, {} }, { *previewSize });
+            if (!d.contents.empty()) preview = std::move(d.contents[0]);
+        }
+        co_return Host().requestPin(widget, preview, successDeepLink);
+    }
 
 }

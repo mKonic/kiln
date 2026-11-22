@@ -555,8 +555,24 @@ g::ActionCallbackRegistration tap("tap", [](const g::ActionContext&) { ++taps; }
   `Background(modifier, image, contentScale, colorFilter)` draws an image behind the element.
   `Semantics(modifier, ...)` sets the content description that accessibility services read. An
   `Image` without one is decorative.
+* Each placed widget has its own state: by default Preferences in a file of its own. The content
+  reads it with `CurrentState(key)`, and `UpdateAppWidgetState(id, [](MutablePreferences& p) { ... })`
+  changes it, followed by `Update(name, id)` to redraw. A `GlanceStateDefinition<T>` keeps a
+  typed `DataStore<T>` per widget instead. Set it as `stateDefinition`, or set none for a widget
+  without state. The state is read before each drawing, and deleted when the widget is removed,
+  after `onDelete` runs.
+* `provideGlance` loads what the content needs, asynchronously, then returns the content with
+  `ProvideContent(...)`. It runs before each drawing. Action callbacks may also be coroutines
+  (`rt::Task<>(ActionContext)`); the widget is redrawn when they finish. When the content
+  throws, the widget shows Glance's "Can't show content" view, in the launcher's language,
+  unless the widget sets `onCompositionError` or an `errorUiLayout` of its own.
 * `glance::UpdateAll(name)` redraws every placed instance after the app's data changes, for
-  example from a `kiln::work` job. `RequestPin(name)` asks the launcher to place one.
+  example from a `kiln::work` job. `Update(name, id)` redraws one, and
+  `UpdateIf<State>(name, predicate)` redraws those whose state passes. `GetGlanceIds` lists
+  the placed instances and `GetAppWidgetSizes` gives their sizes. `RequestPin(name)` asks the
+  launcher to place one. `RequestPinGlanceAppWidget` can also show a drawing of it in the
+  launcher's dialog and open the app at a deep link once it is placed.
+  `WidgetContext::options` holds the launcher's options for the instance.
 * A widget has up to four `LazyColumn`s. Images are app drawables by name, encoded bytes or a
   URI. Sizes, padding and corner radii take dimension resources as well as dp.
 

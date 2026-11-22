@@ -4,12 +4,39 @@
 
 #include "kiln/glance/Glance.h"
 #include "kiln/jvm/Codec.h"
+#include "kiln/ui/AppDirectories.h"
 #include <kiln/kiln.h>
+
+#include <chrono>
+#include <thread>
 
 using namespace kiln;
 using namespace kiln::glance;
 
 namespace {
+    // A task run to its end on the main dispatcher (IO results come back through it).
+    template<typename T> rt::Task<> Into(rt::Task<T> task, std::optional<T>* out) { *out = co_await std::move(task); }
+    rt::Task<> Into(rt::Task<> task, bool* done) { co_await std::move(task); *done = true; }
+    template<typename T> T Await(rt::Task<T> task) {
+        std::optional<T> out;
+        rt::Job job = rt::Launch(rt::Dispatcher::Main(), Into(std::move(task), &out));
+        for (int i = 0; i < 5000 && !job.Done(); ++i) {
+            rt::Dispatcher::Main().RunPending();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        CHECK(out.has_value());
+        return std::move(*out);
+    }
+    void Await(rt::Task<> task) {
+        bool done = false;
+        rt::Job job = rt::Launch(rt::Dispatcher::Main(), Into(std::move(task), &done));
+        for (int i = 0; i < 5000 && !job.Done(); ++i) {
+            rt::Dispatcher::Main().RunPending();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        CHECK(done);
+    }
+
     // The encoded tree, read back: kind, modifiers (kind and the parts tests look at), props, children.
     struct Mod {
         int kind = 0;
@@ -288,11 +315,11 @@ TEST(GlanceActionsCarryParametersAndLambdas) {
     CHECK(ParametersFromBytes(column.children[4].Find(K::Clickable)->params).Get(name) == std::string("v"));
     // A check box keeps its own ripple: the action stays on it.
     CHECK(column.children[5].kind == 10 && column.children[5].Find(K::Clickable)->actionKey == "toggle");
-    CHECK(RunLambdaAction("test-actions", 9, "0+0") && lambdaRuns == 1);
-    CHECK(RunLambdaAction("test-actions", 9, "k+1") && keyedRuns == 1);
-    CHECK(!RunLambdaAction("test-actions", 9, "missing"));
+    CHECK(Await(RunLambdaAction("test-actions", 9, "0+0")) && lambdaRuns == 1);
+    CHECK(Await(RunLambdaAction("test-actions", 9, "k+1")) && keyedRuns == 1);
+    CHECK(!Await(RunLambdaAction("test-actions", 9, "missing")));
     // An instance this process has not drawn: drawn first.
-    CHECK(RunLambdaAction("test-actions", 10, "k+1") && keyedRuns == 2);
+    CHECK(Await(RunLambdaAction("test-actions", 10, "k+1")) && keyedRuns == 2);
 }
 
 TEST(GlanceSizesFollowTheSizeMode) {
@@ -316,8 +343,8 @@ TEST(GlanceActionCallbacksRunByKey) {
     MutableActionParameters params;
     params.Set(ToggleableStateKey, std::optional<bool>(true));
     c.parameters = params;
-    CHECK(RunActionCallback("test-toggle", c) && runs == 1 && got.appWidgetId == 3 && got.parameters.Get(ToggleableStateKey) == true);
-    CHECK(!RunActionCallback("test-missing", c));
+    CHECK(Await(RunActionCallback("test-toggle", c)) && runs == 1 && got.appWidgetId == 3 && got.parameters.Get(ToggleableStateKey) == true);
+    CHECK(!Await(RunActionCallback("test-missing", c)));
     // Without a platform host: nothing placed, nothing to pin.
     CHECK(AppWidgetIds("w").empty() && !RequestPin("w"));
 }
@@ -349,7 +376,7 @@ TEST(GlanceFromTheCApi) {
     kiln_fn_glance_action add{};
     add.call = [](void*, const char*, int32_t, const char* params, int32_t) { paramsSeen = params; };
     kiln_glance_register_action("c-add", add);
-    CHECK(RunActionCallback("c-add", { "test-c", 1, ParametersFromBytes(tree.children[1].Find(K::Clickable)->params) }) && paramsSeen == "x");
+    CHECK(Await(RunActionCallback("c-add", { "test-c", 1, ParametersFromBytes(tree.children[1].Find(K::Clickable)->params) })) && paramsSeen == "x");
     static int checkedSeen = -2;
     kiln_fn_glance_action action{};
     action.call = [](void*, const char*, int32_t, const char*, int32_t checked) { checkedSeen = checked; };
@@ -358,5 +385,107 @@ TEST(GlanceFromTheCApi) {
     MutableActionParameters off;
     off.Set(ToggleableStateKey, std::optional<bool>(false));
     c.parameters = off;
-    CHECK(RunActionCallback("c-toggle", c) && checkedSeen == 0);
+    CHECK(Await(RunActionCallback("c-toggle", c)) && checkedSeen == 0);
+}
+
+TEST(GlanceStateIsPerInstanceAndLoadedBeforeDrawing) {
+    const std::string dir = test::MakeTempDir("kiln-glance-");
+    ui::SetAppDirectories(dir + "/f", dir + "/c", dir + "/n");
+    const auto kCount = datastore::IntKey("count");
+    std::vector<std::string> seen;
+    int provided = 0;
+    RegisterWidget("test-state", { .content = [&](const WidgetContext& w) {
+        seen.push_back(std::to_string(w.appWidgetId) + ":" + std::to_string(CurrentState(kCount).value_or(0)));
+        Text("x");
+    } });
+    Await(UpdateAppWidgetState(21, [&](datastore::MutablePreferences& p) { p.Set(kCount, 5); }));
+    Drawing d = Await(Draw("test-state", { "test-state", 21, {}, {} }, { { 100, 100 }, { 200, 100 } }));
+    CHECK(!d.failed && d.contents.size() == 2 && seen == (std::vector<std::string>{ "21:5", "21:5" }));
+    // Another instance has its own state.
+    Await(Draw("test-state", { "test-state", 22, {}, {} }, { { 100, 100 } }));
+    CHECK(seen.back() == "22:0");
+    CHECK(Await(GetAppWidgetState(*PreferencesGlanceStateDefinition(), 21)).Get(kCount) == 5);
+    CHECK(std::any_cast<datastore::Preferences>(Await(GetAppWidgetState(std::string("test-state"), 21))).Get(kCount) == 5);
+    // Deleted: onDelete, then the state is gone.
+    int deletedId = 0;
+    RegisterWidget("test-state", { .content = [&](const WidgetContext& w) {
+        seen.push_back(std::to_string(w.appWidgetId) + ":" + std::to_string(CurrentState(kCount).value_or(0)));
+    }, .onDelete = [&](GlanceId id) -> rt::Task<> { deletedId = id; co_return; } });
+    Await(Deleted("test-state", 21));
+    CHECK(deletedId == 21);
+    Await(Draw("test-state", { "test-state", 21, {}, {} }, { { 100, 100 } }));
+    CHECK(seen.back() == "21:0");
+
+    // provideGlance: run before the content, which it provides.
+    RegisterWidget("test-provide", { .provideGlance = [&](WidgetContext w) -> rt::Task<kiln::Function<void(const WidgetContext&)>> {
+        ++provided;
+        std::string label = "for " + std::to_string(w.appWidgetId);
+        co_return ProvideContent([label](const WidgetContext&) { Text(label); });
+    }, .stateDefinition = nullptr });
+    Drawing p = Await(Draw("test-provide", { "test-provide", 3, {}, {} }, { { 100, 100 } }));
+    CHECK(provided == 1 && p.contents.size() == 1 && ReadText(ReadTree(p.contents[0])).text == "for 3");
+
+    // A custom state definition: a typed DataStore per instance.
+    datastore::Serializer<std::int32_t> serializer{
+        .defaultValue = 0,
+        .readFrom = [](std::string_view b) { return b.empty() ? 0 : std::int32_t(std::uint8_t(b[0])); },
+        .writeTo = [](const std::int32_t& v) { return std::string(1, char(v)); },
+    };
+    auto definition = std::make_shared<GlanceStateDefinition<std::int32_t>>(
+        [serializer](const std::string& key) { return datastore::DataStoreFactory::Create(serializer, datastore::DataStoreFile(key + ".n")); },
+        [](const std::string& key) { return datastore::DataStoreFile(key + ".n"); });
+    int drawnWith = -1;
+    RegisterWidget("test-typed", { .content = [&](const WidgetContext&) { drawnWith = CurrentState<std::int32_t>(); }, .stateDefinition = definition });
+    CHECK(Await(UpdateAppWidgetState<std::int32_t>(*definition, 4, [](std::int32_t v) { return v + 7; })) == 7);
+    Await(Draw("test-typed", { "test-typed", 4, {}, {} }, { { 10, 10 } }));
+    CHECK(drawnWith == 7 && Await(GetAppWidgetState(*definition, 4)) == 7);
+    definition->DeleteStore(AppWidgetStateKey(4));
+    CHECK(Await(GetAppWidgetState(*definition, 4)) == 0);
+
+    // A content that throws: the error layout, or onCompositionError.
+    RegisterWidget("test-error", { .content = [](const WidgetContext&) { throw std::runtime_error("boom"); }, .stateDefinition = nullptr });
+    Drawing e = Await(Draw("test-error", { "test-error", 1, {}, {} }, { { 10, 10 } }));
+    CHECK(e.failed && e.contents.empty() && e.errorLayout == "kiln_glance_error");
+    bool reported = false;
+    RegisterWidget("test-error", { .content = [](const WidgetContext&) { throw std::runtime_error("boom"); }, .stateDefinition = nullptr,
+                                   .onCompositionError = [&](const WidgetContext&, std::exception_ptr) { reported = true; } });
+    e = Await(Draw("test-error", { "test-error", 1, {}, {} }, { { 10, 10 } }));
+    CHECK(e.failed && reported && e.errorLayout.empty());
+    CHECK(!Await(Draw("nobody", {}, {})).found);
+
+    CHECK(!RedrawsOnResize({ .sizeMode = SizeMode::Single }, 34) && RedrawsOnResize({ .sizeMode = SizeMode::Exact }, 34));
+    CHECK(RedrawsOnResize({ .sizeMode = SizeMode::Responsive }, 31) && !RedrawsOnResize({ .sizeMode = SizeMode::Responsive }, 32));
+    ui::SetAppDirectories({}, {}, {});
+}
+
+TEST(GlanceAsyncCallbacksAndUpdates) {
+    int ran = 0;
+    RegisterActionCallback("test-async", kiln::Function<rt::Task<>(ActionContext)>([&](ActionContext c) -> rt::Task<> {
+        ran = c.appWidgetId;
+        co_return;
+    }));
+    CHECK(Await(RunActionCallback("test-async", { "w", 8, {} })) && ran == 8);
+    // The host's update and pin requests.
+    std::vector<std::string> calls;
+    GlanceHost host;
+    host.update = [&](const std::string& w, int id) { calls.push_back(w + "/" + std::to_string(id)); };
+    host.appWidgetIds = [](const std::string&) { return std::vector<int>{ 1, 2 }; };
+    host.appWidgetSizes = [](int) { return std::vector<ui::Size>{ { 120, 80 } }; };
+    host.requestPin = [&](const std::string& w, const std::vector<std::uint8_t>& preview, const std::string& link) {
+        calls.push_back("pin " + w + " " + std::to_string(!preview.empty()) + " " + link);
+        return true;
+    };
+    SetGlanceHost(std::move(host));
+    const std::string dir = test::MakeTempDir("kiln-glance-");
+    ui::SetAppDirectories(dir + "/f", dir + "/c", dir + "/n");
+    const auto kOn = datastore::BoolKey("on");
+    RegisterWidget("test-update", { .content = [](const WidgetContext&) { Text("x"); } });
+    Await(UpdateAppWidgetState(2, [&](datastore::MutablePreferences& p) { p.Set(kOn, true); }));
+    Await(UpdateIf<datastore::Preferences>("test-update", [&](const datastore::Preferences& p) { return p.Get(kOn).value_or(false); }));
+    CHECK(calls == std::vector<std::string>{ "test-update/2" });
+    CHECK(GetGlanceIds("test-update").size() == 2 && GetAppWidgetSizes(1) == (std::vector<ui::Size>{ { 120, 80 } }));
+    CHECK(Await(RequestPinGlanceAppWidget("test-update", ui::Size{ 100, 100 }, "app://placed")) && calls.back() == "pin test-update 1 app://placed");
+    CHECK(RequestPin("test-update") && calls.back() == "pin test-update 0 ");
+    SetGlanceHost({});
+    ui::SetAppDirectories({}, {}, {});
 }

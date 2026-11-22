@@ -1,37 +1,51 @@
 package dev.kiln;
 
+import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProviderInfo;
 import android.appwidget.AppWidgetProvider;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.LocaleList;
 import android.util.Log;
 import android.util.SizeF;
 import android.widget.RemoteViews;
 
+import dev.kiln.bridge.Codec;
+import dev.kiln.bridge.Completion;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
  * A kiln::glance widget's receiver (GlanceAppWidgetReceiver). Each widget has its own subclass
  * (kiln-pack generates them for WIDGETS; a Gradle app writes {@code class X : KilnWidgetReceiver()})
  * declared with the appwidget-provider info and {@code <meta-data android:name="dev.kiln.widget"
- * android:value="name">}, the name the C++ side registered.
+ * android:value="name">}, the name the C++ side registered. Drawing, callbacks and deletions run
+ * as native tasks (the widget's state is read, provideGlance runs) while the broadcast is kept
+ * alive with goAsync.
  */
 public class KilnWidgetReceiver extends AppWidgetProvider {
     private static Context appContext;
 
-    static native Object[] render(String widget, int appWidgetId, float[] launcherSizes, float minWidth, float minHeight);
+    // glance::Draw for each size: the result's bytes are found, failed, the error layout, then
+    // each drawn size and its content.
+    static native void draw(String widget, int appWidgetId, float[] launcherSizes, float minWidth, float minHeight, Object[] options, Completion done);
     // A callback (key) or a lambda of the widget's drawing (lambda), with its parameters.
-    static native boolean runCallback(String widget, int appWidgetId, String key, String lambda, byte[] params);
+    static native void runCallback(String widget, int appWidgetId, String key, String lambda, byte[] params, Completion done);
+    static native void deleted(String widget, int appWidgetId, Completion done);
+    static native boolean redrawsOnResize(String widget, int sdkInt);
 
     static void attach(Context context) {
         if (appContext == null) appContext = context.getApplicationContext();
@@ -51,17 +65,48 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
         return null;
     }
 
+    /** Runs `count` pieces of work, then finishes the broadcast. */
+    private static final class Pending {
+        private final BroadcastReceiver.PendingResult result;
+        private int left;
+        Pending(BroadcastReceiver.PendingResult result, int count) {
+            this.result = result;
+            this.left = count;
+            if (count == 0) finish();
+        }
+        void done() {
+            if (--left == 0) finish();
+        }
+        private void finish() {
+            if (result != null) result.finish();
+        }
+    }
+
     @Override
     public void onUpdate(Context context, AppWidgetManager manager, int[] ids) {
         ensureLoaded(context);
         String name = widgetName(context);
-        for (int id : ids) draw(context, manager, new ComponentName(context, getClass()), name, id);
+        Pending p = new Pending(goAsync(), ids.length);
+        for (int id : ids) draw(context, manager, new ComponentName(context, getClass()), name, id, p::done);
     }
 
     @Override
     public void onAppWidgetOptionsChanged(Context context, AppWidgetManager manager, int id, Bundle options) {
         ensureLoaded(context);
-        draw(context, manager, new ComponentName(context, getClass()), widgetName(context), id);
+        String name = widgetName(context);
+        // GlanceAppWidget.resize: Single, and Responsive past API 31, need no redraw.
+        if (name == null || !redrawsOnResize(name, Build.VERSION.SDK_INT)) return;
+        Pending p = new Pending(goAsync(), 1);
+        draw(context, manager, new ComponentName(context, getClass()), name, id, p::done);
+    }
+
+    @Override
+    public void onDeleted(Context context, int[] ids) {
+        ensureLoaded(context);
+        String name = widgetName(context);
+        if (name == null) return;
+        Pending p = new Pending(goAsync(), ids.length);
+        for (int id : ids) deleted(name, id, completion(p::done, "delete " + name));
     }
 
     @Override
@@ -80,20 +125,34 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
             if (params == null) params = new Bundle();
             // A toggle's new state (ActionCallbackBroadcastReceiver: ToggleableStateKey).
             if (intent.hasExtra(RemoteViews.EXTRA_CHECKED)) params.putBoolean(RemoteViews.EXTRA_CHECKED, intent.getBooleanExtra(RemoteViews.EXTRA_CHECKED, false));
-            runCallback(name, id, intent.getStringExtra(KilnGlance.EXTRA_KEY), intent.getStringExtra(KilnGlance.EXTRA_LAMBDA), KilnGlance.bundleToParams(params));
-            // Redrawn after its callback, as Glance does.
-            updateAll(name);
+            Pending p = new Pending(goAsync(), 1);
+            final String widget = name;
+            runCallback(name, id, intent.getStringExtra(KilnGlance.EXTRA_KEY), intent.getStringExtra(KilnGlance.EXTRA_LAMBDA),
+                    KilnGlance.bundleToParams(params), completion(() -> {
+                        // Redrawn after its callback, as Glance does.
+                        drawAll(context, widget, p::done);
+                    }, "callback in " + name));
             return;
         }
         if (Intent.ACTION_LOCALE_CHANGED.equals(intent.getAction())) {
             // Redrawn in the new language, as GlanceAppWidgetReceiver does.
             ensureLoaded(context);
-            AppWidgetManager manager = AppWidgetManager.getInstance(context);
-            ComponentName receiver = new ComponentName(context, getClass());
-            for (int id : manager.getAppWidgetIds(receiver)) draw(context, manager, receiver, widgetName(context), id);
+            Pending p = new Pending(goAsync(), 1);
+            drawAll(context, widgetName(context), p::done);
             return;
         }
         super.onReceive(context, intent);
+    }
+
+    /** A completion that runs `then` either way, logging a failure. */
+    private static Completion completion(Runnable then, String what) {
+        return new Completion() {
+            @Override public void resume(byte[] value) { then.run(); }
+            @Override public void fail(String type, String message) {
+                Log.e("kiln", "widget: " + what + ": " + type + ": " + message);
+                then.run();
+            }
+        };
     }
 
     @SuppressWarnings("deprecation")
@@ -114,14 +173,21 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
         }
     }
 
-    static void draw(Context context, AppWidgetManager manager, ComponentName receiver, String name, int id) {
+    /** The launcher's sizes for an instance (dp), or estimates. */
+    private static ArrayList<SizeF> launcherSizes(Bundle options) {
+        ArrayList<SizeF> sizes = sizes(options);
+        if (sizes == null || sizes.isEmpty()) sizes = estimateSizes(options);
+        return sizes;
+    }
+
+    static void draw(Context context, AppWidgetManager manager, ComponentName receiver, String name, int id, Runnable after) {
         if (name == null) {
             Log.e("kiln", "widget: " + receiver.getClassName() + " has no dev.kiln.widget meta-data");
+            after.run();
             return;
         }
         Bundle options = manager.getAppWidgetOptions(id);
-        ArrayList<SizeF> sizes = sizes(options);
-        if (sizes == null || sizes.isEmpty()) sizes = estimateSizes(options);
+        ArrayList<SizeF> sizes = launcherSizes(options);
         float[] launcher = new float[sizes.size() * 2];
         for (int i = 0; i < sizes.size(); i++) {
             launcher[2 * i] = sizes.get(i).getWidth();
@@ -138,29 +204,79 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
             minWidth = w / density;
             minHeight = h / density;
         }
-        Object[] drawn = render(name, id, launcher, minWidth, minHeight);
-        if (drawn == null) {
+        draw(name, id, launcher, minWidth, minHeight, KilnBundles.fromBundle(options), new Completion() {
+            @Override public void resume(byte[] value) {
+                try {
+                    show(context, manager, receiver, name, id, value);
+                } catch (RuntimeException e) {
+                    Log.e("kiln", "widget " + name + ": cannot draw", e);
+                }
+                after.run();
+            }
+            @Override public void fail(String type, String message) {
+                Log.e("kiln", "widget " + name + ": cannot draw: " + type + ": " + message);
+                after.run();
+            }
+        });
+    }
+
+    /** A drawing's RemoteViews, or the error view. */
+    private static void show(Context context, AppWidgetManager manager, ComponentName receiver, String name, int id, byte[] value) {
+        Codec.Reader r = new Codec.Reader(value);
+        if (!r.readBoolean()) {
             Log.e("kiln", "widget: no widget named " + name + " (register it with a static glance::WidgetRegistration)");
             return;
         }
-        float[] drawnSizes = (float[]) drawn[0];
-        byte[][] contents = (byte[][]) drawn[1];
-        RemoteViews views;
-        try {
-            if (contents.length == 1) {
-                views = KilnGlance.build(context, contents[0], id, receiver);
-            } else {
-                // One layout per size, the launcher choosing (RemoteViews(Map<SizeF, RemoteViews>)).
-                Map<SizeF, RemoteViews> map = new HashMap<>();
-                for (int i = 0; i < contents.length; i++)
-                    map.put(new SizeF(drawnSizes[2 * i], drawnSizes[2 * i + 1]), KilnGlance.build(context, contents[i], id, receiver));
-                views = new RemoteViews(map);
-            }
-        } catch (RuntimeException e) {
-            Log.e("kiln", "widget " + name + ": cannot draw", e);
+        boolean failed = r.readBoolean();
+        String errorLayout = r.readString();
+        if (failed) {
+            if (!errorLayout.isEmpty()) manager.updateAppWidget(id, errorView(context, errorLayout));
             return;
         }
-        manager.updateAppWidget(id, views);
+        int count = r.readInt();
+        float[] drawnSizes = new float[count * 2];
+        byte[][] contents = new byte[count][];
+        for (int i = 0; i < count; i++) {
+            drawnSizes[2 * i] = r.readFloat();
+            drawnSizes[2 * i + 1] = r.readFloat();
+            contents[i] = r.readBytes();
+        }
+        manager.updateAppWidget(id, views(context, receiver, id, drawnSizes, contents));
+    }
+
+    private static RemoteViews views(Context context, ComponentName receiver, int id, float[] drawnSizes, byte[][] contents) {
+        if (contents.length == 1) return KilnGlance.build(context, contents[0], id, receiver);
+        // One layout per size, the launcher choosing (RemoteViews(Map<SizeF, RemoteViews>)).
+        Map<SizeF, RemoteViews> map = new HashMap<>();
+        for (int i = 0; i < contents.length; i++)
+            map.put(new SizeF(drawnSizes[2 * i], drawnSizes[2 * i + 1]), KilnGlance.build(context, contents[i], id, receiver));
+        return new RemoteViews(map);
+    }
+
+    /** onCompositionError's default: the error layout, its text in the launcher's language. */
+    private static RemoteViews errorView(Context context, String layout) {
+        int layoutId = context.getResources().getIdentifier(layout, "layout", context.getPackageName());
+        RemoteViews rv = new RemoteViews(context.getPackageName(), layoutId);
+        if ("kiln_glance_error".equals(layout)) {
+            int text = context.getResources().getIdentifier("kiln_glance_error_text", "id", context.getPackageName());
+            rv.setTextViewText(text, errorText(context.getResources().getConfiguration().getLocales()));
+        }
+        return rv;
+    }
+
+    /** glance_error_layout_text_v2 for the first locale it has (the language tag, then the language). */
+    private static String errorText(LocaleList locales) {
+        for (int i = 0; i < locales.size(); i++) {
+            Locale l = locales.get(i);
+            String tag = l.toLanguageTag();
+            String v = KilnGlanceStrings.ERROR_TEXT.get(tag);
+            if (v == null && !l.getScript().isEmpty()) v = KilnGlanceStrings.ERROR_TEXT.get(l.getLanguage() + "-" + l.getScript());
+            if (v == null && !l.getCountry().isEmpty()) v = KilnGlanceStrings.ERROR_TEXT.get(l.getLanguage() + "-" + l.getCountry());
+            if (v == null) v = KilnGlanceStrings.ERROR_TEXT.get(l.getLanguage());
+            if (v != null) return v;
+            if (l.getLanguage().equals("en")) break;
+        }
+        return KilnGlanceStrings.ERROR_TEXT.get("");
     }
 
     /**
@@ -200,14 +316,39 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
         return out;
     }
 
+    /** Draws every placed instance, then runs `after`. */
+    private static void drawAll(Context c, String name, Runnable after) {
+        if (c == null || name == null) {
+            after.run();
+            return;
+        }
+        AppWidgetManager manager = AppWidgetManager.getInstance(c);
+        List<ComponentName> rs = receivers(c, name);
+        List<int[]> work = new ArrayList<>();
+        for (ComponentName r : rs) for (int id : manager.getAppWidgetIds(r)) work.add(new int[] { rs.indexOf(r), id });
+        if (work.isEmpty()) {
+            after.run();
+            return;
+        }
+        int[] left = { work.size() };
+        for (int[] w : work) draw(c, manager, rs.get(w[0]), name, w[1], () -> {
+            if (--left[0] == 0) after.run();
+        });
+    }
+
     // --- glance::GlanceHost -----------------------------------------------------------------
 
     static void updateAll(String name) {
+        drawAll(appContext, name, () -> {});
+    }
+
+    static void update(String name, int id) {
         Context c = appContext;
         if (c == null || name == null) return;
         AppWidgetManager manager = AppWidgetManager.getInstance(c);
         for (ComponentName r : receivers(c, name))
-            for (int id : manager.getAppWidgetIds(r)) draw(c, manager, r, name, id);
+            for (int placed : manager.getAppWidgetIds(r))
+                if (placed == id) draw(c, manager, r, name, id, () -> {});
     }
 
     static int[] appWidgetIds(String name) {
@@ -221,11 +362,38 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
         return out;
     }
 
-    static boolean requestPin(String name) {
+    /** GlanceAppWidgetManager.getAppWidgetSizes: width, height pairs in dp. */
+    static float[] appWidgetSizes(int id) {
+        Context c = appContext;
+        if (c == null) return new float[0];
+        ArrayList<SizeF> sizes = launcherSizes(AppWidgetManager.getInstance(c).getAppWidgetOptions(id));
+        float[] out = new float[sizes.size() * 2];
+        for (int i = 0; i < sizes.size(); i++) {
+            out[2 * i] = sizes.get(i).getWidth();
+            out[2 * i + 1] = sizes.get(i).getHeight();
+        }
+        return out;
+    }
+
+    /** requestPinGlanceAppWidget: a drawing for the dialog, and the app opened once placed. */
+    static boolean requestPin(String name, byte[] preview, String successDeepLink) {
         Context c = appContext;
         if (c == null) return false;
         AppWidgetManager manager = AppWidgetManager.getInstance(c);
         List<ComponentName> r = receivers(c, name);
-        return !r.isEmpty() && manager.isRequestPinAppWidgetSupported() && manager.requestPinAppWidget(r.get(0), null, null);
+        if (r.isEmpty() || !manager.isRequestPinAppWidgetSupported()) return false;
+        Bundle extras = null;
+        if (preview != null && preview.length > 0) {
+            extras = new Bundle();
+            extras.putParcelable(AppWidgetManager.EXTRA_APPWIDGET_PREVIEW, KilnGlance.build(c, preview, 0, r.get(0)));
+        }
+        PendingIntent success = null;
+        if (successDeepLink != null && !successDeepLink.isEmpty()) {
+            Intent open = c.getPackageManager().getLaunchIntentForPackage(c.getPackageName());
+            if (open == null) open = new Intent().setClassName(c.getPackageName(), "dev.kiln.KilnActivity");
+            open.setAction(Intent.ACTION_VIEW).setData(Uri.parse(successDeepLink)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            success = PendingIntent.getActivity(c, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        }
+        return manager.requestPinAppWidget(r.get(0), extras, success);
     }
 }

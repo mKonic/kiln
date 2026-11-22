@@ -340,20 +340,28 @@ namespace {
     }
 
     // The gallery's home-screen widget: taps counted in the app's process, which the system
-    // starts for them.
+    // starts for them, per placed widget in its own state, and a lambda that counts them all.
     std::atomic<int> g_WidgetTaps{ 0 };
+    const auto kWidgetTaps = kiln::datastore::IntKey("taps");
     kiln::glance::WidgetRegistration galleryWidget("gallery", { .sizeMode = kiln::glance::SizeMode::Exact, .content = [](const kiln::glance::WidgetContext& w) {
         namespace g = kiln::glance;
-        g::Column(g::CornerRadius(g::Padding(g::FillMaxSize(g::Background(g::GlanceModifier{}, { 0xFFF3EDF7, 0xFF2B2930 })), 12), 16), g::Alignment::Center(), [&] {
-            g::Text("kiln gallery", {}, { .color = { 0xFF6750A4, 0xFFD0BCFF }, .fontSize = 16, .fontWeight = g::FontWeight::Bold });
-            g::Text(std::to_string(g_WidgetTaps.load()) + " taps", g::Padding(g::GlanceModifier{}, 0, 4), { .color = { 0xFF1D1B20, 0xFFE6E0E9 } });
+        const g::ColorProviders& colors = g::GlanceTheme::colors();
+        g::Column(g::CornerRadius(g::Padding(g::FillMaxSize(g::Background(g::GlanceModifier{}, colors.widgetBackground)), 12), 16), g::Alignment::Center(), [&] {
+            g::Text("kiln gallery", {}, { .color = colors.primary, .fontSize = 16, .fontWeight = g::FontWeight::Bold });
+            g::Text(std::to_string(g::CurrentState(kWidgetTaps).value_or(0)) + " taps here, " + std::to_string(g_WidgetTaps.load()) + " in all",
+                    g::Padding(g::GlanceModifier{}, 0, 4), { .color = colors.onSurface });
             g::Row({}, g::Alignment::Center(), [&] {
-                g::Button("Tap", g::RunCallback("gallery-tap"));
-                if (w.size.width >= 180) g::Button("Open", g::StartActivity(), g::Padding(g::GlanceModifier{}, 8, 0, 0, 0));
+                g::Button("Tap", g::ActionRunCallback("gallery-tap"));
+                g::Button("+1", [] { ++g_WidgetTaps; }, g::Padding(g::GlanceModifier{}, 8, 0, 0, 0));
+                if (w.size.width >= 220) g::Button("Open", g::ActionStartActivity(), g::Padding(g::GlanceModifier{}, 8, 0, 0, 0));
             });
         });
     } });
-    kiln::glance::ActionCallbackRegistration galleryWidgetTap("gallery-tap", [](const kiln::glance::ActionContext&) { ++g_WidgetTaps; });
+    kiln::glance::ActionCallbackRegistration galleryWidgetTap("gallery-tap", kiln::Function<kiln::rt::Task<>(kiln::glance::ActionContext)>(
+        [](kiln::glance::ActionContext c) -> kiln::rt::Task<> {
+            ++g_WidgetTaps;
+            co_await kiln::glance::UpdateAppWidgetState(c.appWidgetId, [](kiln::datastore::MutablePreferences& p) { p.Set(kWidgetTaps, p.Get(kWidgetTaps).value_or(0) + 1); });
+        }));
 
     void WidgetDemo() {
         using namespace kiln::foundation;
