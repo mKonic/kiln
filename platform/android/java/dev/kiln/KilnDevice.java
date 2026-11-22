@@ -3,8 +3,6 @@ package dev.kiln;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.hardware.biometrics.BiometricManager;
-import android.hardware.biometrics.BiometricPrompt;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -17,16 +15,15 @@ import android.os.VibratorManager;
 
 import java.util.HashMap;
 
-/** Vibration, location and the biometric prompt for kiln's ui::Vibration, ui::Location and ui::Biometric. */
+/** Vibration and location for kiln's ui::Vibration and ui::Location (the biometric prompt is KilnBiometric). */
 final class KilnDevice {
     private static Context sContext;
-    // Requests in progress by native id: CancellationSignals and LocationListeners.
+    // Requests in progress by native id: LocationListeners.
     private static final HashMap<Integer, Object> sRequests = new HashMap<>();
 
     private KilnDevice() {}
 
     static native void locationResult(int id, boolean hasFix, double[] values, String provider, boolean done);
-    static native void biometricResult(int id, boolean succeeded, int errorCode, String message, int authenticationType);
 
     static void attach(Context context) { sContext = context.getApplicationContext(); }
 
@@ -149,50 +146,10 @@ final class KilnDevice {
         }
     }
 
-    // --- biometric ---------------------------------------------------------------------------
-
-    static int canAuthenticate(int authenticators) {
-        BiometricManager bm = sContext.getSystemService(BiometricManager.class);
-        return bm == null ? 12 : bm.canAuthenticate(authenticators);
-    }
-
-    static boolean authenticate(int id, String title, String subtitle, String description, String negative, int allowed, boolean confirm) {
-        try {
-            BiometricPrompt.Builder b = new BiometricPrompt.Builder(sContext).setTitle(title).setAllowedAuthenticators(allowed)
-                    .setConfirmationRequired(confirm);
-            if (!subtitle.isEmpty()) b.setSubtitle(subtitle);
-            if (!description.isEmpty()) b.setDescription(description);
-            // A negative button is refused alongside DEVICE_CREDENTIAL (the PIN is the way out).
-            if ((allowed & BiometricManager.Authenticators.DEVICE_CREDENTIAL) == 0)
-                b.setNegativeButton(negative, sContext.getMainExecutor(), (d, w) -> {
-                    sRequests.remove(id);
-                    biometricResult(id, false, 13 /* androidx ERROR_NEGATIVE_BUTTON */, negative, 0);
-                });
-            CancellationSignal signal = new CancellationSignal();
-            sRequests.put(id, signal);
-            b.build().authenticate(signal, sContext.getMainExecutor(), new BiometricPrompt.AuthenticationCallback() {
-                @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult r) {
-                    sRequests.remove(id);
-                    biometricResult(id, true, 0, "", r.getAuthenticationType());
-                }
-                @Override public void onAuthenticationError(int code, CharSequence message) {
-                    sRequests.remove(id);
-                    biometricResult(id, false, code, message == null ? "" : message.toString(), 0);
-                }
-            });
-            return true;
-        } catch (IllegalArgumentException | SecurityException e) {
-            sRequests.remove(id);
-            android.util.Log.w("kiln", "biometric prompt: " + e.getMessage());
-            return false;
-        }
-    }
-
-    /** Cancels a location request or a prompt. */
+    /** Cancels a location request. */
     static void cancel(int id) {
         Object o = sRequests.remove(id);
-        if (o instanceof CancellationSignal) ((CancellationSignal) o).cancel();
-        else if (o instanceof LocationListener) {
+        if (o instanceof LocationListener) {
             LocationManager lm = locations();
             if (lm != null) lm.removeUpdates((LocationListener) o);
         }

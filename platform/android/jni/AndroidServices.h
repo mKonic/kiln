@@ -11,6 +11,8 @@ namespace kiln::android {
     void InstallProcessLifecycle(JNIEnv* env);
     // security::SecureStore's key store (dev.kiln.KilnSecure, the Android Keystore).
     void InstallSecurity(JNIEnv* env);
+    // ui::Biometric (dev.kiln.KilnBiometric) and security::KeyStore (dev.kiln.KilnSecure).
+    void InstallBiometric(JNIEnv* env);
     // kiln::alarm (dev.kiln.KilnAlarms, AlarmManager).
     void InstallAlarms(JNIEnv* env);
     void InstallSpeech(JNIEnv* env);

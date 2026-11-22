@@ -1350,6 +1350,7 @@ namespace {
         kiln::android::InstallLocales(env);
         kiln::android::InstallProcessLifecycle(env);
         kiln::android::InstallSecurity(env);
+        kiln::android::InstallBiometric(env);
         kiln::android::InstallAlarms(env);
         kiln::android::InstallCustomTabs(env);
         kiln::android::InstallSpeech(env);

@@ -25,7 +25,6 @@ import dev.kiln.bridge.Completion;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -241,19 +240,9 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
         return rv;
     }
 
-    /** glance_error_layout_text_v2 for the first locale it has (the language tag, then the language). */
+    /** glance_error_layout_text_v2 in the launcher's language. */
     private static String errorText(LocaleList locales) {
-        for (int i = 0; i < locales.size(); i++) {
-            Locale l = locales.get(i);
-            String tag = l.toLanguageTag();
-            String v = KilnGlanceStrings.ERROR_TEXT.get(tag);
-            if (v == null && !l.getScript().isEmpty()) v = KilnGlanceStrings.ERROR_TEXT.get(l.getLanguage() + "-" + l.getScript());
-            if (v == null && !l.getCountry().isEmpty()) v = KilnGlanceStrings.ERROR_TEXT.get(l.getLanguage() + "-" + l.getCountry());
-            if (v == null) v = KilnGlanceStrings.ERROR_TEXT.get(l.getLanguage());
-            if (v != null) return v;
-            if (l.getLanguage().equals("en")) break;
-        }
-        return KilnGlanceStrings.ERROR_TEXT.get("");
+        return KilnGlanceStrings.pick(KilnGlanceStrings.ERROR_TEXT, locales);
     }
 
     /**

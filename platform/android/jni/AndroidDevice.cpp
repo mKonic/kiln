@@ -1,6 +1,5 @@
 #include "AndroidDevice.h"
 
-#include "kiln/ui/Biometric.h"
 #include "kiln/ui/Location.h"
 #include "kiln/ui/Notifications.h"
 #include "kiln/ui/Sensors.h"
@@ -26,7 +25,6 @@ namespace kiln::android {
         // Main thread only.
         std::map<int, kiln::Function<void(std::optional<ui::Location>)>> g_Current;
         std::map<int, kiln::Function<void(const ui::Location&)>> g_Updates;
-        std::map<int, kiln::Function<void(ui::BiometricResult)>> g_Prompts;
 
         JNIEnv* Env() {
             JNIEnv* env = nullptr;
@@ -79,15 +77,6 @@ namespace kiln::android {
             }
             if (g_RequestFrame) g_RequestFrame();
         }
-        void BiometricResult(JNIEnv* env, jclass, jint id, jboolean ok, jint code, jstring message, jint type) {
-            auto it = g_Prompts.find(id);
-            if (it == g_Prompts.end()) return;
-            auto fn = std::move(it->second);
-            g_Prompts.erase(it);
-            fn(ui::BiometricResult{ bool(ok), int(code), Str(env, message), int(type) });
-            if (g_RequestFrame) g_RequestFrame();
-        }
-
         // --- sensors (NDK) ----------------------------------------------------------------------
 
         struct SensorSub {
@@ -151,9 +140,8 @@ namespace kiln::android {
         env->DeleteLocalRef(c);
         static const JNINativeMethod natives[] = {
             { "locationResult", "(IZ[DLjava/lang/String;Z)V", reinterpret_cast<void*>(&LocationResult) },
-            { "biometricResult", "(IZILjava/lang/String;I)V", reinterpret_cast<void*>(&BiometricResult) },
         };
-        env->RegisterNatives(g_Device, natives, 2);
+        env->RegisterNatives(g_Device, natives, 1);
 
         static jmethodID check = Static(env, "checkSelfPermission", "(Ljava/lang/String;)Z");
         ui::SetPermissionCheck([](const std::string& permission) {
@@ -239,37 +227,11 @@ namespace kiln::android {
             .cancel = [](int id) {
                 g_Current.erase(id);
                 g_Updates.erase(id);
-                g_Prompts.erase(id);
                 JNIEnv* env = Env();
                 env->CallStaticVoidMethod(g_Device, cancel, jint(id));
                 Clear(env);
             },
             .enabled = [] { JNIEnv* env = Env(); const bool r = env->CallStaticBooleanMethod(g_Device, enabled); Clear(env); return r; },
-        });
-
-        // Biometric prompt.
-        static jmethodID canAuthenticate = Static(env, "canAuthenticate", "(I)I");
-        static jmethodID authenticate = Static(env, "authenticate", "(ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IZ)Z");
-        ui::SetBiometricHost({
-            .canAuthenticate = [](int a) { JNIEnv* env = Env(); const int r = env->CallStaticIntMethod(g_Device, canAuthenticate, jint(a)); Clear(env); return r; },
-            .authenticate = [](const ui::BiometricPromptInfo& info, kiln::Function<void(ui::BiometricResult)> done) -> int {
-                JNIEnv* env = Env();
-                const int id = g_NextId++;
-                g_Prompts[id] = std::move(done);
-                jstring t = env->NewStringUTF(info.title.c_str()), s = env->NewStringUTF(info.subtitle.c_str()),
-                        d = env->NewStringUTF(info.description.c_str()), n = env->NewStringUTF(info.negativeButtonText.c_str());
-                const bool ok = env->CallStaticBooleanMethod(g_Device, authenticate, jint(id), t, s, d, n, jint(info.allowedAuthenticators), jboolean(info.confirmationRequired));
-                Clear(env);
-                for (jobject o : { (jobject)t, (jobject)s, (jobject)d, (jobject)n }) env->DeleteLocalRef(o);
-                if (!ok) { g_Prompts.erase(id); return -1; }
-                return id;
-            },
-            .cancel = [](int id) {
-                g_Prompts.erase(id);
-                JNIEnv* env = Env();
-                env->CallStaticVoidMethod(g_Device, cancel, jint(id));
-                Clear(env);
-            },
         });
 
         // Notifications.

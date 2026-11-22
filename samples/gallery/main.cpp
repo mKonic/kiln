@@ -33,6 +33,8 @@
 #include <kiln/ui/FileProvider.h>
 #include <kiln/glance/Glance.h>
 #include <kiln/glance/GlanceComponents.h>
+#include <kiln/security/KeyStore.h>
+#include <kiln/ui/Biometric.h>
 #include <atomic>
 #include <kiln/foundation/Dialog.h>
 #include <kiln/material3/DynamicColorScheme.h>
@@ -715,6 +717,87 @@ namespace {
         });
     }
 
+    // The biometric prompt: the device credential, a Keystore key unlocked by it (encrypt, then
+    // decrypt what was encrypted), and the request API with a fallback of the app's.
+    struct BiometricDemoState {
+        std::vector<std::uint8_t> sealed, iv;
+        std::shared_ptr<kiln::ui::AuthenticationResultLauncher> launcher;
+    };
+    kiln::rt::Task<> EncryptWithKey(kiln::rt::State<std::string>* status, std::shared_ptr<BiometricDemoState> state) {
+        namespace ui = kiln::ui;
+        if (!kiln::security::ContainsKey("gallery-biometric")) {
+            kiln::security::KeyGenSpec spec;
+            spec.userAuthenticationRequired = true;
+            spec.userAuthenticationTypes = kiln::security::AUTH_BIOMETRIC_STRONG | kiln::security::AUTH_DEVICE_CREDENTIAL;
+            if (!kiln::security::GenerateKey("gallery-biometric", spec)) {
+                status->Set("No key: set a screen lock first");
+                co_return;
+            }
+        }
+        const std::string text = "kiln secret";
+        ui::BiometricResult r = co_await ui::Authenticate({ .title = "Encrypt", .allowedAuthenticators = ui::kBiometricStrong | ui::kDeviceCredential },
+                                                          ui::CryptoObject::Encrypt("gallery-biometric", std::vector<std::uint8_t>(text.begin(), text.end())));
+        if (!r.succeeded || !r.crypto) {
+            status->Set("Encrypt: error " + std::to_string(r.errorCode) + " " + r.errorMessage);
+            co_return;
+        }
+        state->sealed = r.crypto->output;
+        state->iv = r.crypto->outputIv;
+        status->Set("Encrypted " + std::to_string(state->sealed.size()) + " bytes, IV " + std::to_string(state->iv.size()) + " bytes");
+    }
+    kiln::rt::Task<> DecryptWithKey(kiln::rt::State<std::string>* status, std::shared_ptr<BiometricDemoState> state) {
+        namespace ui = kiln::ui;
+        if (state->sealed.empty()) {
+            status->Set("Encrypt something first");
+            co_return;
+        }
+        ui::BiometricResult r = co_await ui::Authenticate({ .title = "Decrypt", .allowedAuthenticators = ui::kBiometricStrong | ui::kDeviceCredential },
+                                                          ui::CryptoObject::Decrypt("gallery-biometric", state->sealed, state->iv));
+        if (!r.succeeded || !r.crypto) status->Set("Decrypt: error " + std::to_string(r.errorCode) + " " + r.errorMessage);
+        else status->Set("Decrypted: " + std::string(r.crypto->output.begin(), r.crypto->output.end()));
+    }
+    kiln::rt::Task<> PromptCredential(kiln::rt::State<std::string>* status) {
+        namespace ui = kiln::ui;
+        ui::BiometricResult r = co_await ui::Authenticate({ .title = "Unlock the gallery", .subtitle = "With your PIN",
+                                                            .allowedAuthenticators = ui::kBiometricWeak | ui::kDeviceCredential });
+        status->Set(r.succeeded ? "Authenticated (type " + std::to_string(r.authenticationType) + ")" : "Error " + std::to_string(r.errorCode) + " " + r.errorMessage);
+    }
+
+    void BiometricDemo() {
+        using namespace kiln::foundation;
+        namespace ui = kiln::ui;
+        auto& c = *kiln::rt::Composition::Current();
+        auto& status = RememberState(std::string("can authenticate: " + std::to_string(ui::CanAuthenticate(ui::kBiometricWeak | ui::kDeviceCredential))));
+        auto state = c.Remember<std::shared_ptr<BiometricDemoState>>([] { return std::make_shared<BiometricDemoState>(); });
+        auto scope = kiln::rt::RememberCoroutineScope();
+        if (!state->launcher)
+            state->launcher = ui::RegisterForAuthenticationResult({ .onAuthResult = [&status](const ui::AuthenticationResult& r) {
+                if (r.IsSuccess()) status.Set("Request: success (type " + std::to_string(r.success()->authType) + ")");
+                else if (r.IsError()) status.Set("Request: error " + std::to_string(r.error()->errorCode) + " " + r.error()->errString);
+                else status.Set("Request: fallback " + r.customFallbackSelected()->fallback.text);
+            } });
+        Column(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), Arrangement::SpacedBy(12_dp), AlignmentH::Start(), [&] {
+            BasicText("Biometric prompt", Padding(Modifier{}, 16_dp, 0_dp), { 22, kOnSurface });
+            BasicText(status.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
+            FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&] {
+                auto button = [](const char* label, kiln::Function<void()> onClick) {
+                    Box(Clickable(Background(Modifier{}, kPrimaryContainer, CornerShape::Pill()), std::move(onClick)), Alignment::Center(), false,
+                        [label] { BasicText(label, Padding(Modifier{}, 20_dp, 10_dp), { 14, kOnSurface }); });
+                };
+                button("Prompt", [&status, scope] { scope->Launch(PromptCredential(&status)); });
+                button("Encrypt with a key", [&status, scope, state] { scope->Launch(EncryptWithKey(&status, state)); });
+                button("Decrypt", [&status, scope, state] { scope->Launch(DecryptWithKey(&status, state)); });
+                button("Request with a fallback", [state] {
+                    state->launcher->Launch(ui::AuthenticationRequest::BiometricRequest("Sign in", { ui::Fallback::CustomOption("Use account password") },
+                        [](ui::AuthenticationRequest::Biometric& b) {
+                            b.content = ui::AuthenticationRequest::BodyContent::VerticalList("You're signing in to", { ui::PromptContentItemBulletedText("kiln gallery") });
+                        }));
+                });
+                button("Credential request", [state] { state->launcher->Launch(ui::AuthenticationRequest::CredentialRequest("Confirm it's you")); });
+            });
+        });
+    }
+
     // The app's own language (ui::SetApplicationLocales): its strings follow, the system's stay.
     void LanguageDemo() {
         using namespace kiln::foundation;
@@ -894,6 +977,10 @@ namespace {
         }
         if (section == "alarm") {
             AlarmDemo();
+            return;
+        }
+        if (section == "biometric") {
+            BiometricDemo();
             return;
         }
         if (section == "language") {

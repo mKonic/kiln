@@ -61,6 +61,11 @@ modules = [
 ]
 
 [renamed]
+# biometric: BiometricManager.Strings and the content views are plain structs.
+"Strings.getButtonLabel" = "buttonLabel"
+"Strings.getPromptMessage" = "promptMessage"
+"Strings.getSettingName" = "settingName"
+"PromptVerticalListContentView.getListItems" = "items"
 "Builder.addMigrations" = "Create"   # DataStoreFactory::Create(serializer, path, handler, migrations)
 ReThrowCorruptionHandler = "CorruptionException"   # without a handler, reads throw it
 "MutablePreferences.putAll" = "PutAll"
@@ -610,6 +615,9 @@ ResourceFont = "Font"
 toFontFamily = "FontFamily Of"
 
 [skipped]
+AuthenticationUtils = "Kotlin's file facade for registerForAuthenticationResult, a free function in kiln"
+"CryptoObject.getPresentationSession" = "android.security.identity (IdentityCredential, PresentationSession) is deprecated by the platform; kiln's CryptoObjects are Keystore operations"
+"CryptoObject.getIdentityCredential" = "see CryptoObject.getPresentationSession"
 # glance: kiln's widget content is a function run for each drawing, not a composition.
 GlanceComposable = "widget content is a plain function (no Compose compiler to mark it for)"
 "Element.all" = "an element is a GlanceModifier::Item; GlanceModifier::All covers a modifier of one"

@@ -631,8 +631,23 @@ void Tilt() {
   immediate but possibly old one, and `LocationUpdates(provider, interval)` a flow of fixes.
   Without the permission they answer nothing.
 * **Biometric prompt** (`android.permission.USE_BIOMETRIC`): `Authenticate` shows the system's
-  prompt and returns when it closes; `CanAuthenticate()` is 0 when it can be used, 11 when
-  nothing is enrolled. Allow `kDeviceCredential` to accept the device's PIN as well.
+  prompt and returns when it closes. `CanAuthenticate()` is `BIOMETRIC_SUCCESS` when the
+  prompt can be used, or `BIOMETRIC_ERROR_NONE_ENROLLED` when nothing is enrolled. Allow
+  `kDeviceCredential` to accept the device's PIN as well. `GetBiometricStrings` gives the
+  system's names for your own buttons and settings. `BiometricPrompt` reports each rejected
+  attempt before the outcome, and `CancelAuthentication()` closes it. From API 35 the prompt
+  can show a `PromptContentView`: a list of items, or a "more options" button.
+* **Keys unlocked by the prompt:** `security::GenerateKey(alias, { .userAuthenticationRequired = true })`
+  makes a key in the Android Keystore (`kiln/security/KeyStore.h`). Pass a `CryptoObject` to
+  `Authenticate` (`CryptoObject::Encrypt`, `Decrypt`, `Sign`, `MacOf` or `Agree`). Once the user
+  authenticates, kiln runs that key's operation on your input, and the result's `crypto` holds
+  the output and, for encryption, the IV. Kotlin apps hold the unlocked `Cipher` themselves.
+  kiln runs the operation for you, since the unlocked object can't leave the platform. A key
+  invalidated by a new enrollment fails with `ERROR_CRYPTO_UNAVAILABLE`.
+* **The request API:** `RegisterForAuthenticationResult(callback)` gives a launcher for
+  `AuthenticationRequest::BiometricRequest(title, fallbacks, ...)` or `CredentialRequest`.
+  Fallbacks are the device credential or options of your own, which come back as
+  `CustomFallbackSelected`. A launch waits until the activity is started, as in androidx.
 
 ## Sign-in with Credential Manager
 
