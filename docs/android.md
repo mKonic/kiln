@@ -512,10 +512,11 @@ namespace g = kiln::glance;
 std::atomic<int> taps{ 0 };
 
 g::WidgetRegistration counter("counter", { .sizeMode = g::SizeMode::Exact, .content = [](const g::WidgetContext& w) {
-    g::Column(g::Padding(g::FillMaxSize(g::Background(g::GlanceModifier{}, { 0xFFFFFFFF, 0xFF1D1B20 })), 12), g::Alignment::Center(), [&] {
-        g::Text(std::to_string(taps.load()) + " taps", {}, { .fontSize = 18, .fontWeight = g::FontWeight::Bold });
-        g::Button("Tap", g::RunCallback("tap"));
-        if (w.size.width > 200) g::Button("Open", g::StartActivity("app://counter"));
+    const g::ColorProviders& colors = g::GlanceTheme::colors();
+    g::Column(g::Padding(g::FillMaxSize(g::Background(g::GlanceModifier{}, colors.widgetBackground)), 12), g::Alignment::Center(), [&] {
+        g::Text(std::to_string(taps.load()) + " taps", {}, { .color = colors.onSurface, .fontSize = 18, .fontWeight = g::FontWeight::Bold });
+        g::Button("Tap", g::ActionRunCallback("tap"));
+        if (w.size.width > 200) g::Button("Open", g::ActionStartActivity("app://counter"));
     });
 } });
 g::ActionCallbackRegistration tap("tap", [](const g::ActionContext&) { ++taps; });
@@ -534,12 +535,30 @@ g::ActionCallbackRegistration tap("tap", [](const g::ActionContext&) { ++taps; }
   resize minimum when it resizes). `Exact` draws for every size the launcher uses, or for a
   portrait and a landscape size when the launcher does not list them. `Responsive` draws for the sizes you list, and the launcher picks among
   them. `WidgetContext::size` is the size being drawn.
-* `RunCallback` runs a registered callback in the app's process, then redraws the widget.
-  `StartActivity` opens the app at a deep link. A `CheckBox` or `Switch` reports its new state in
-  `ActionContext::checked`.
+* Colours come from `GlanceTheme::colors()`: by default the system's dynamic colours, which the
+  launcher resolves for day and night when it draws. `GlanceTheme(colors, content)` sets your
+  own `ColorProviders`. `Button`, and later the components, take their default colours from it.
+  A `ColorProvider` is a fixed colour, a day and a night colour, or a colour resource by name.
+  `Text` is black unless its style sets a colour, as in Glance.
+* `ActionRunCallback(key, parameters)` runs a registered callback in the app's process, then
+  redraws the widget. `ActionParameters` are typed values: make a key with
+  `ActionParameters::Key<int>{ "count" }` and pass `ActionParametersOf({ key.to(3) })`.
+  `ActionStartActivity(deepLink, parameters)` opens the app, with the parameters as the
+  intent's extras. `ActionSendBroadcast` and `ActionStartService` reach one of your
+  receivers or services by class name. A `CheckBox` or `Switch` reports its new state as
+  `ToggleableStateKey` in `ActionContext::parameters`.
+* `Clickable(modifier, [] { ... })` and `Button(text, [] { ... })` run a lambda of the widget's
+  drawing, then redraw the widget. When the process has restarted since the drawing, the content
+  runs again first to find the lambda. Give a `key` when the lambda's position in the content
+  changes between drawings.
+* As in Glance, a clickable element shows a ripple, drawn as an image in front of it, and
+  `Background(modifier, image, contentScale, colorFilter)` draws an image behind the element.
+  `Semantics(modifier, ...)` sets the content description that accessibility services read. An
+  `Image` without one is decorative.
 * `glance::UpdateAll(name)` redraws every placed instance after the app's data changes, for
   example from a `kiln::work` job. `RequestPin(name)` asks the launcher to place one.
-* A widget has up to four `LazyColumn`s. Images are app drawables by name, or encoded bytes.
+* A widget has up to four `LazyColumn`s. Images are app drawables by name, encoded bytes or a
+  URI. Sizes, padding and corner radii take dimension resources as well as dp.
 
 ## Device features
 

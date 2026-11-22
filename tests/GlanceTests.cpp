@@ -10,43 +10,103 @@ using namespace kiln;
 using namespace kiln::glance;
 
 namespace {
-    // The encoded tree, read back: kind, modifier kinds, props, children.
+    // The encoded tree, read back: kind, modifiers (kind and the parts tests look at), props, children.
+    struct Mod {
+        int kind = 0;
+        int dimension = -1;
+        float dp = 0;
+        std::string resource;
+        int actionKind = -1;
+        std::string actionKey;
+        std::vector<std::uint8_t> params;
+        std::string description;
+        bool hasColor = false;
+        std::uint32_t day = 0;
+        std::string colorResource;
+        float padding[4] = {};
+    };
     struct Node {
         int kind = 0;
+        std::vector<Mod> mods;
         std::vector<int> modifiers;
         std::vector<std::uint8_t> props;
         std::vector<Node> children;
+        const Mod* Find(GlanceModifier::Item::Kind k) const {
+            for (const Mod& m : mods) if (m.kind == int(k)) return &m;
+            return nullptr;
+        }
     };
+    void ReadColor(jvm::Reader& r, Mod* m = nullptr) {
+        bool set = r.Bool();
+        std::uint32_t day = std::uint32_t(r.I32());
+        r.I32();
+        std::string res = r.Str();
+        if (m) { m->hasColor = set; m->day = day; m->colorResource = res; }
+    }
     Node ReadNode(jvm::Reader& r) {
         Node n;
         n.kind = r.I32();
-        int m = r.I32();
-        for (int i = 0; i < m; ++i) {
-            int k = r.I32();
-            n.modifiers.push_back(k);
+        int count = r.I32();
+        for (int i = 0; i < count; ++i) {
+            Mod m;
+            m.kind = r.I32();
+            n.modifiers.push_back(m.kind);
             using K = GlanceModifier::Item::Kind;
-            switch (K(k)) {
-                case K::Width: case K::Height: r.I32(); r.F32(); break;
-                case K::Padding: case K::CornerRadius: r.F32(); r.F32(); r.F32(); r.F32(); break;
-                case K::BackgroundColor: r.Bool(); r.I32(); r.I32(); break;
-                case K::BackgroundResource: case K::ContentDescription: r.Str(); break;
-                case K::Clickable: r.I32(); r.Str(); r.Str(); r.Str(); break;
-                case K::Visibility: case K::Enabled: r.I32(); break;
+            switch (K(m.kind)) {
+                case K::Width: case K::Height: case K::CornerRadius: m.dimension = r.I32(); m.dp = r.F32(); m.resource = r.Str(); break;
+                case K::Padding:
+                    for (float& p : m.padding) p = r.F32();
+                    for (int k = 0; k < 4; ++k) r.Str();
+                    r.Bool();
+                    break;
+                case K::BackgroundColor: ReadColor(r, &m); break;
+                case K::Clickable: m.actionKind = r.I32(); r.Str(); m.actionKey = r.Str(); r.Str(); m.params = r.Bytes(); r.Bool(); break;
+                case K::Visibility: case K::Enabled: case K::ClipToOutline: r.I32(); break;
+                case K::Semantics: r.Bool(); m.description = r.Str(); break;
+                default: CHECK(false); break;
             }
+            n.mods.push_back(std::move(m));
         }
         n.props = r.Bytes();
         int c = r.I32();
         for (int i = 0; i < c; ++i) n.children.push_back(ReadNode(r));
         return n;
     }
-    std::vector<Node> ReadTree(const std::vector<std::uint8_t>& bytes) {
+    // The normalized tree's single root element.
+    Node ReadTree(const std::vector<std::uint8_t>& bytes) {
         jvm::Reader r(bytes);
-        std::vector<Node> out;
-        if (r.I32() != 1) return out;
-        int n = r.I32();
-        for (int i = 0; i < n; ++i) out.push_back(ReadNode(r));
+        CHECK(r.I32() == 2);
+        Node root = ReadNode(r);
         CHECK(r.Remaining() == 0);
-        return out;
+        return root;
+    }
+    // A Text's or Button's props: text, then its style's colour.
+    struct TextProps {
+        std::string text;
+        bool hasStyle = false;
+        Mod color;
+        float fontSize = 0;
+        int weight = 0, fontStyle = 0, align = 0, decoration = 0;
+        std::string family;
+        int maxLines = 0;
+    };
+    TextProps ReadText(const Node& n) {
+        jvm::Reader r(n.props);
+        TextProps t;
+        t.text = r.Str();
+        t.hasStyle = r.Bool();
+        if (t.hasStyle) {
+            ReadColor(r, &t.color);
+            t.fontSize = r.F32();
+            t.weight = r.I32();
+            t.fontStyle = r.I32();
+            t.align = r.I32();
+            t.decoration = r.I32();
+            t.family = r.Str();
+        }
+        t.maxLines = r.I32();
+        r.I32();
+        return t;
     }
 }
 
@@ -60,7 +120,7 @@ TEST(GlanceContentBuildsTheElementTree) {
             Text("Notes", {}, { .fontSize = 18, .fontWeight = FontWeight::Bold }, 1);
             Row(FillMaxWidth(GlanceModifier{}), {}, [] {
                 Text("left", DefaultWeight(GlanceModifier{}));
-                Button("Add", RunCallback("add", "1"));
+                Button("Add", ActionRunCallback("add"));
             });
             if (w.size.width > 200) Text("wide");
             LazyColumn(GlanceModifier{}, [](LazyListScope& s) {
@@ -68,27 +128,171 @@ TEST(GlanceContentBuildsTheElementTree) {
             });
         });
     } });
-    std::vector<Node> narrow = ReadTree(Render("test-notes", { "test-notes", 7, { 120, 120 } }));
+    const Node column = ReadTree(Render("test-notes", { "test-notes", 7, { 120, 120 } }));
     CHECK(drawn == 1 && seen == (ui::Size{ 120, 120 }));
-    CHECK(narrow.size() == 1);
-    const Node& column = narrow[0];
     using K = GlanceModifier::Item::Kind;
     CHECK(column.kind == 3 && column.modifiers == (std::vector<int>{ int(K::BackgroundColor), int(K::Width), int(K::Height), int(K::Padding) }));
     CHECK(column.children.size() == 3);
-    CHECK(column.children[0].kind == 4);   // Text
+    const TextProps title = ReadText(column.children[0]);
+    CHECK(column.children[0].kind == 4 && title.text == "Notes" && title.weight == 700 && title.maxLines == 1);
+    // TextDefaults: black unless the style says otherwise.
+    CHECK(title.color.hasColor && title.color.day == 0xFF000000u);
     const Node& row = column.children[1];
     CHECK(row.kind == 2 && row.children.size() == 2 && row.children[1].kind == 6);
     CHECK(row.children[0].modifiers == (std::vector<int>{ int(K::Width), int(K::Height) }));   // DefaultWeight: Expand both ways
     const Node& list = column.children[2];
-    CHECK(list.kind == 12 && list.children.size() == 3 && list.children[2].kind == 13 && list.children[2].children[0].kind == 4);
+    CHECK(list.kind == 12 && list.children.size() == 3 && list.children[2].kind == 13);
+    // normalizeLazyListItem: each item's content in a Box.
+    CHECK(list.children[2].children.size() == 1 && list.children[2].children[0].kind == 1 && list.children[2].children[0].children[0].kind == 4);
     jvm::Reader itemId(list.children[1].props);
     CHECK(itemId.I64() == 101);
     // A wider size draws more.
-    CHECK(ReadTree(Render("test-notes", { "test-notes", 7, { 300, 120 } }))[0].children.size() == 4);
+    CHECK(ReadTree(Render("test-notes", { "test-notes", 7, { 300, 120 } })).children.size() == 4);
     // The column's props: the gravity of Center.
     jvm::Reader g(column.props);
     CHECK(g.I32() == (0x01 | 0x10));
     CHECK(Render("nobody", {}).empty());
+}
+
+TEST(GlanceButtonsTakeTheThemeAndTheirAdjustments) {
+    RegisterWidget("test-buttons", { .content = [](const WidgetContext&) {
+        Column({}, {}, [] {
+            Button("Themed", ActionRunCallback("x"));
+            Button("Custom", ActionRunCallback("x"), Padding(GlanceModifier{}, 4), true, TextStyle{ .fontSize = 12 },
+                   ButtonDefaults::buttonColors(0xFF112233u, 0xFF445566u));
+            Button("Off", ActionRunCallback("x"), {}, false);
+            GlanceTheme(ColorProviders{ .primary = 0xFFAA0000u, .onPrimary = 0xFF00AA00u }, [] { Button("Red", ActionRunCallback("x")); });
+        });
+    } });
+    const Node column = ReadTree(Render("test-buttons", { "test-buttons", 1, { 100, 100 } }));
+    using K = GlanceModifier::Item::Kind;
+    const Node& themed = column.children[0];
+    // ButtonElement then translateEmittableButton: tap, the colours' background, enabled, 16 dp
+    // corners, default padding; a button has its own ripple, so no wrapping box.
+    CHECK(themed.kind == 6);
+    CHECK(themed.modifiers == (std::vector<int>{ int(K::Clickable), int(K::BackgroundColor), int(K::Enabled), int(K::CornerRadius), int(K::Padding) }));
+    CHECK(themed.Find(K::BackgroundColor)->colorResource == "kiln_glance_colorPrimary");
+    CHECK(ReadText(themed).color.colorResource == "kiln_glance_colorOnPrimary");
+    CHECK(themed.Find(K::Padding)->padding[0] == 16 && themed.Find(K::Padding)->padding[1] == 8 && themed.Find(K::CornerRadius)->dp == 16);
+    const Node& custom = column.children[1];
+    CHECK(custom.Find(K::BackgroundColor)->day == 0xFF112233u && ReadText(custom).color.day == 0xFF445566u && ReadText(custom).fontSize == 12);
+    CHECK(custom.Find(K::Padding)->padding[0] == 4);   // its own padding: no default
+    // Disabled: no tap.
+    CHECK(!column.children[2].Find(K::Clickable));
+    CHECK(column.children[3].Find(K::BackgroundColor)->day == 0xFFAA0000u && ReadText(column.children[3]).color.day == 0xFF00AA00u);
+    CHECK(DynamicThemeColorProviders().widgetBackground.resource == "kiln_glance_colorWidgetBackground");
+    CHECK(GlanceTheme::colors() == DynamicThemeColorProviders());   // outside content: the default
+}
+
+TEST(GlanceRipplesAndBackgroundImagesWrapTheElement) {
+    RegisterWidget("test-ripple", { .content = [](const WidgetContext&) {
+        Column({}, {}, [] {
+            Text("tap", Clickable(Size(GlanceModifier{}, 40), ActionRunCallback("x")));
+            Text("own", Clickable(GlanceModifier{}, ActionRunCallback("x"), "my_ripple"));
+            Box(CornerRadius(Background(Width(GlanceModifier{}, 80), ImageProvider::Resource("bg"), ContentScale::Crop, ColorFilter::Tint(0xFF00FF00u)), 8),
+                Alignment::Center());
+            Text("plain", Background(GlanceModifier{}, 0xFF123456u));
+        });
+    } });
+    const Node column = ReadTree(Render("test-ripple", { "test-ripple", 1, { 100, 100 } }));
+    using K = GlanceModifier::Item::Kind;
+    // transformBackgroundImageAndActionRipple: the tap and size on a box, the text filling it,
+    // the ripple image in front.
+    const Node& tap = column.children[0];
+    CHECK(tap.kind == 1 && tap.modifiers == (std::vector<int>{ int(K::Clickable), int(K::Width), int(K::Height) }));
+    CHECK(tap.children.size() == 2 && tap.children[0].kind == 4 && tap.children[1].kind == 5);
+    CHECK(tap.children[0].modifiers == (std::vector<int>{ int(K::Width), int(K::Height) }) && tap.children[0].Find(K::Width)->dimension == 1);
+    jvm::Reader ripple(tap.children[1].props);
+    CHECK(ripple.Str() == "kiln_glance_ripple");
+    jvm::Reader own(column.children[1].children[1].props);
+    CHECK(own.Str() == "my_ripple");
+    // A background image: an image behind the content, the size and corners on the box.
+    const Node& bg = column.children[2];
+    CHECK(bg.kind == 1 && bg.modifiers == (std::vector<int>{ int(K::Width), int(K::CornerRadius) }));
+    CHECK(bg.children.size() == 2 && bg.children[0].kind == 5 && bg.children[1].kind == 1);
+    jvm::Reader image(bg.children[0].props);
+    CHECK(image.Str() == "bg");
+    image.Bytes(); image.Str(); image.Bool(); image.Str();
+    CHECK(image.I32() == int(ContentScale::Crop) && image.Bool());
+    // A background colour alone: no wrapping.
+    CHECK(column.children[3].kind == 4 && column.children[3].modifiers == (std::vector<int>{ int(K::BackgroundColor) }));
+}
+
+TEST(GlanceTextStylesAndSemantics) {
+    RegisterWidget("test-text", { .content = [](const WidgetContext&) {
+        Text("styled", Semantics(GlanceModifier{}, [](SemanticsPropertyReceiver& s) { s.SetContentDescription("a"); s.SetTestTag("t"); }),
+             { .color = ColorProvider::Resource("my_color"), .fontWeight = FontWeight::Medium, .fontStyle = FontStyle::Italic,
+               .textAlign = TextAlign::End, .textDecoration = TextDecoration::Underline() + TextDecoration::LineThrough(),
+               .fontFamily = FontFamily::Monospace() });
+    } });
+    const Node text = ReadTree(Render("test-text", { "test-text", 1, { 100, 100 } }));
+    using K = GlanceModifier::Item::Kind;
+    CHECK(text.Find(K::Semantics)->description == "a");
+    const TextProps t = ReadText(text);
+    CHECK(t.color.colorResource == "my_color" && t.weight == 500 && t.fontStyle == 1 && t.align == int(TextAlign::End) && t.decoration == 3 && t.family == "monospace");
+    CHECK((TextDecoration::Underline() + TextDecoration::LineThrough()).Contains(TextDecoration::Underline()));
+    CHECK(!TextDecoration::Underline().Contains(TextDecoration::LineThrough()));
+    CHECK(TextDecoration::Combine({ TextDecoration::Underline(), TextDecoration::LineThrough() }).mask == 3);
+    SemanticsConfiguration c;
+    c.SetContentDescription("x");
+    CHECK(c.Get(SemanticsProperties::ContentDescription()) == std::vector<std::string>{ "x" } && !c.GetOrNull(SemanticsProperties::TestTag()));
+    bool threw = false;
+    try { c.Get(SemanticsProperties::TestTag()); } catch (const std::logic_error&) { threw = true; }
+    CHECK(threw);
+    CHECK(SemanticsProperties::ContentDescription().Merge(std::vector<std::string>{ "p" }, { "c" }) == (std::vector<std::string>{ "p", "c" }));
+    CHECK(SemanticsProperties::TestTag().Merge(std::string("p"), "c") == std::string("p"));
+    // GlanceModifier: then, any, all, foldIn, foldOut.
+    GlanceModifier m = Padding(GlanceModifier{}, 1).Then(Width(GlanceModifier{}, 3));
+    CHECK(m.Items().size() == 2 && m.Any([](const GlanceModifier::Item& i) { return i.kind == K::Width; }));
+    CHECK(!m.All([](const GlanceModifier::Item& i) { return i.kind == K::Width; }));
+    CHECK(m.FoldIn<std::string>("", [](std::string acc, const GlanceModifier::Item& i) { return acc + std::to_string(int(i.kind)); }) == "20");
+    CHECK(m.FoldOut<std::string>("", [](const GlanceModifier::Item& i, std::string acc) { return acc + std::to_string(int(i.kind)); }) == "02");
+}
+
+TEST(GlanceActionsCarryParametersAndLambdas) {
+    const ActionParameters::Key<std::string> name{ "name" };
+    const ActionParameters::Key<std::int32_t> count{ "count" };
+    ActionParameters p = ActionParametersOf({ name.to("a"), count.to(3) });
+    CHECK(p.Get(name) == std::string("a") && p.GetOrDefault(count, 0) == 3 && p.Contains(count) && !p.IsEmpty());
+    CHECK(!p.Get(ActionParameters::Key<bool>{ "name" }));   // another type
+    MutableActionParameters mp = ToMutableParameters(p);
+    CHECK(mp.Set(count, std::optional<std::int32_t>(4)) == 3 && mp.Get(count) == 4);
+    CHECK(mp.Set<std::int32_t>(count, std::nullopt) == 4 && !mp.Contains(count));
+    CHECK(mp.Remove(name) == std::string("a") && mp.IsEmpty());
+    CHECK(ToParametersKey(datastore::IntKey("n")).name == "n");
+    MutableActionParameters all = MutableActionParametersOf({ ActionParameters::Key<bool>{ "b" }.to(true), ActionParameters::Key<std::int64_t>{ "l" }.to(5),
+                                                              ActionParameters::Key<float>{ "f" }.to(1.5f), ActionParameters::Key<double>{ "d" }.to(2.5),
+                                                              name.to("s") });
+    CHECK(ParametersFromBytes(ParametersToBytes(all)) == all);
+
+    int lambdaRuns = 0, keyedRuns = 0;
+    RegisterWidget("test-actions", { .content = [&](const WidgetContext&) {
+        Column({}, {}, [&] {
+            Text("lambda", Clickable(GlanceModifier{}, [&] { ++lambdaRuns; }));
+            Button("keyed", [&] { ++keyedRuns; }, {}, true, std::nullopt, std::nullopt, INT_MAX, "k");
+            Text("broadcast", Clickable(GlanceModifier{}, ActionSendBroadcast("my.ACTION", "com.x.Receiver")));
+            Text("service", Clickable(GlanceModifier{}, ActionStartService("com.x.Service", true)));
+            Text("open", Clickable(GlanceModifier{}, ActionStartActivity("app://x", ActionParametersOf({ name.to("v") }))));
+            CheckBox(true, ActionRunCallback("toggle"));
+        });
+    } });
+    const Node column = ReadTree(Render("test-actions", { "test-actions", 9, { 100, 100 } }));
+    using K = GlanceModifier::Item::Kind;
+    // updateLambdaActionKeys: the key, then its place among its siblings (the ripple box's).
+    const Mod* lambda = column.children[0].Find(K::Clickable);
+    CHECK(lambda->actionKind == int(Action::Kind::Lambda) && lambda->actionKey == "0+0");
+    const Mod* keyed = column.children[1].Find(K::Clickable);
+    CHECK(keyed->actionKey == "k+1");
+    CHECK(column.children[2].Find(K::Clickable)->actionKind == int(Action::Kind::SendBroadcast));
+    CHECK(column.children[3].Find(K::Clickable)->actionKind == int(Action::Kind::StartService));
+    CHECK(ParametersFromBytes(column.children[4].Find(K::Clickable)->params).Get(name) == std::string("v"));
+    // A check box keeps its own ripple: the action stays on it.
+    CHECK(column.children[5].kind == 10 && column.children[5].Find(K::Clickable)->actionKey == "toggle");
+    CHECK(RunLambdaAction("test-actions", 9, "0+0") && lambdaRuns == 1);
+    CHECK(RunLambdaAction("test-actions", 9, "k+1") && keyedRuns == 1);
+    CHECK(!RunLambdaAction("test-actions", 9, "missing"));
+    // An instance this process has not drawn: drawn first.
+    CHECK(RunLambdaAction("test-actions", 10, "k+1") && keyedRuns == 2);
 }
 
 TEST(GlanceSizesFollowTheSizeMode) {
@@ -109,9 +313,10 @@ TEST(GlanceActionCallbacksRunByKey) {
     ActionContext c;
     c.widget = "w";
     c.appWidgetId = 3;
-    c.params = "p";
-    c.checked = true;
-    CHECK(RunActionCallback("test-toggle", c) && runs == 1 && got.appWidgetId == 3 && got.params == "p" && got.checked == true);
+    MutableActionParameters params;
+    params.Set(ToggleableStateKey, std::optional<bool>(true));
+    c.parameters = params;
+    CHECK(RunActionCallback("test-toggle", c) && runs == 1 && got.appWidgetId == 3 && got.parameters.Get(ToggleableStateKey) == true);
     CHECK(!RunActionCallback("test-missing", c));
     // Without a platform host: nothing placed, nothing to pin.
     CHECK(AppWidgetIds("w").empty() && !RequestPin("w"));
@@ -136,15 +341,22 @@ TEST(GlanceFromTheCApi) {
     kiln_glance_register_widget("test-c", 1, content);
     const GlanceAppWidget* w = FindWidget("test-c");
     CHECK(w && w->sizeMode == SizeMode::Exact);
-    std::vector<Node> tree = ReadTree(Render("test-c", { "test-c", 1, { 200, 100 } }));
+    const Node tree = ReadTree(Render("test-c", { "test-c", 1, { 200, 100 } }));
     using K = GlanceModifier::Item::Kind;
-    CHECK(tree.size() == 1 && tree[0].kind == 3 && tree[0].children.size() == 2 && tree[0].children[1].kind == 6);
-    CHECK(tree[0].modifiers == (std::vector<int>{ int(K::BackgroundColor), int(K::Width), int(K::Padding) }));
+    CHECK(tree.kind == 3 && tree.children.size() == 2 && tree.children[1].kind == 6);
+    CHECK(tree.modifiers == (std::vector<int>{ int(K::BackgroundColor), int(K::Width), int(K::Padding) }));
+    static std::string paramsSeen;
+    kiln_fn_glance_action add{};
+    add.call = [](void*, const char*, int32_t, const char* params, int32_t) { paramsSeen = params; };
+    kiln_glance_register_action("c-add", add);
+    CHECK(RunActionCallback("c-add", { "test-c", 1, ParametersFromBytes(tree.children[1].Find(K::Clickable)->params) }) && paramsSeen == "x");
     static int checkedSeen = -2;
     kiln_fn_glance_action action{};
     action.call = [](void*, const char*, int32_t, const char*, int32_t checked) { checkedSeen = checked; };
     kiln_glance_register_action("c-toggle", action);
     ActionContext c;
-    c.checked = false;
+    MutableActionParameters off;
+    off.Set(ToggleableStateKey, std::optional<bool>(false));
+    c.parameters = off;
     CHECK(RunActionCallback("c-toggle", c) && checkedSeen == 0);
 }

@@ -146,12 +146,15 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
     </application>
 </manifest>
 XML
-# kiln's resources (the widget layouts), raw as an AAR carries them, and their symbols.
+# kiln's resources (the widget layouts, colours and drawables), raw as an AAR carries them, and their symbols.
 rm -rf "$STAGING/res"
 cp -r "$KILN_ROOT/platform/android/res" "$STAGING/res"
 {
     for f in "$STAGING"/res/layout/*.xml; do echo "int layout $(basename "$f" .xml) 0x0"; done
     grep -ho '@+id/[a-z_]*' "$STAGING"/res/layout/*.xml | sort -u | sed 's|@+id/|int id |; s|$| 0x0|'
+    for f in "$STAGING"/res/drawable/*.xml; do echo "int drawable $(basename "$f" .xml) 0x0"; done
+    for f in "$STAGING"/res/color/*.xml; do echo "int color $(basename "$f" .xml) 0x0"; done
+    grep -ho '<color name="[a-zA-Z_]*"' "$STAGING"/res/values/*.xml | sort -u | sed 's|<color name="|int color |; s|"$| 0x0|'
 } > "$STAGING/R.txt"
 # Rules for an app that shrinks its code: native code finds kiln's Java by name, and the androidx
 # interfaces kiln's embedded-View holder implements are the app's to bring.

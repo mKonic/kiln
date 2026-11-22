@@ -47,13 +47,18 @@ namespace kiln::android {
             }
         }
 
-        jboolean RunCallbackJni(JNIEnv* env, jclass, jstring name, jint id, jstring key, jstring params, jint checked) {
+        jboolean RunCallbackJni(JNIEnv* env, jclass, jstring name, jint id, jstring key, jstring lambda, jbyteArray params) {
             try {
                 glance::ActionContext c;
                 c.widget = jvm::ToString(env, name);
                 c.appWidgetId = id;
-                c.params = jvm::ToString(env, params);
-                if (checked >= 0) c.checked = checked != 0;
+                c.parameters = glance::ParametersFromBytes(jvm::ToBytes(env, params));
+                if (lambda) {
+                    const std::string k = jvm::ToString(env, lambda);
+                    if (glance::RunLambdaAction(c.widget, int(id), k)) return JNI_TRUE;
+                    __android_log_print(ANDROID_LOG_ERROR, "kiln", "widget %s: no lambda %s in its content", c.widget.c_str(), k.c_str());
+                    return JNI_FALSE;
+                }
                 const std::string k = jvm::ToString(env, key);
                 if (glance::RunActionCallback(k, c)) return JNI_TRUE;
                 __android_log_print(ANDROID_LOG_ERROR, "kiln", "widget: no action callback %s (register it with glance::ActionCallbackRegistration)", k.c_str());
@@ -71,7 +76,7 @@ namespace kiln::android {
             jclass c = g_Receiver.get();
             static const JNINativeMethod natives[] = {
                 { "render", "(Ljava/lang/String;I[FFF)[Ljava/lang/Object;", reinterpret_cast<void*>(&RenderJni) },
-                { "runCallback", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;I)Z", reinterpret_cast<void*>(&RunCallbackJni) },
+                { "runCallback", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;[B)Z", reinterpret_cast<void*>(&RunCallbackJni) },
             };
             jvm::detail::RegisterNatives(env, c, natives, 2);
             g_UpdateAll = jvm::detail::StaticMethod(env, c, "updateAll", "(Ljava/lang/String;)V");

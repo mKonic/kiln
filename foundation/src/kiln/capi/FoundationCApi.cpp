@@ -3144,6 +3144,8 @@ KILN_API void kiln_alarm_open_exact_settings(void) {
 
 namespace {
     namespace gl = kiln::glance;
+    // The C API's string parameters, as one action parameter.
+    const gl::ActionParameters::Key<std::string> kGlanceParams{ "kiln.params" };
     gl::Dimension GlanceDimension(int32_t kind, float dp) {
         switch (kind) {
             case 1: return gl::Dimension::Fill();
@@ -3154,7 +3156,7 @@ namespace {
     }
     gl::Action GlanceAction(const kiln_glance_action& a) {
         if (a.kind == 1) return gl::StartActivity(a.uri ? a.uri : "");
-        if (a.kind == 2) return gl::RunCallback(a.key ? a.key : "", a.params ? a.params : "");
+        if (a.kind == 2) return gl::ActionRunCallback(a.key ? a.key : "", gl::ActionParametersOf({ kGlanceParams.to(a.params ? a.params : "") }));
         return {};
     }
     gl::GlanceModifier GlanceModifierOf(const kiln_glance_modifier* m) {
@@ -3200,9 +3202,9 @@ KILN_API void kiln_glance_text(const char* text, const kiln_glance_modifier* m, 
     TRY {
         gl::TextStyle style;
         style.fontSize = size;
-        if (color) style.color = color;
+        if (color) style.color = color;   // else TextDefaults' black
         style.fontWeight = weight >= 700 ? gl::FontWeight::Bold : weight >= 500 ? gl::FontWeight::Medium : gl::FontWeight::Normal;
-        gl::Text(ToString(text), GlanceModifierOf(m), style, maxLines);
+        gl::Text(ToString(text), GlanceModifierOf(m), style, maxLines > 0 ? maxLines : INT_MAX);
     } CATCH_VOID
 }
 KILN_API void kiln_glance_button(const char* text, kiln_glance_action onClick, const kiln_glance_modifier* m) {
@@ -3234,7 +3236,9 @@ KILN_API void kiln_glance_register_action(const char* key, kiln_fn_glance_action
     TRY {
         gl::RegisterActionCallback(ToString(key), [owned](const gl::ActionContext& c) {
             kiln::capi::CallbackScope scope;
-            owned->f.call(owned->f.user, c.widget.c_str(), c.appWidgetId, c.params.c_str(), c.checked ? (*c.checked ? 1 : 0) : -1);
+            const std::string params = c.parameters.GetOrDefault(kGlanceParams, std::string());
+            const std::optional<bool> checked = c.parameters.Get(gl::ToggleableStateKey);
+            owned->f.call(owned->f.user, c.widget.c_str(), c.appWidgetId, params.c_str(), checked ? (*checked ? 1 : 0) : -1);
         });
     } CATCH_VOID
 }

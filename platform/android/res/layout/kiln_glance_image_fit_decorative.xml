@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- kiln::glance (KilnGlance.java): a decorative Image (no content description; ContentScale fit). -->
+<ImageView xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/kiln_glance_view" android:layout_width="wrap_content" android:layout_height="wrap_content" android:importantForAccessibility="no" android:duplicateParentState="true" android:scaleType="fitCenter" />

@@ -30,7 +30,8 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
     private static Context appContext;
 
     static native Object[] render(String widget, int appWidgetId, float[] launcherSizes, float minWidth, float minHeight);
-    static native boolean runCallback(String widget, int appWidgetId, String key, String params, int checked);
+    // A callback (key) or a lambda of the widget's drawing (lambda), with its parameters.
+    static native boolean runCallback(String widget, int appWidgetId, String key, String lambda, byte[] params);
 
     static void attach(Context context) {
         if (appContext == null) appContext = context.getApplicationContext();
@@ -69,14 +70,17 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
             ensureLoaded(context);
             String name = widgetName(context);
             int id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 0);
-            String start = intent.getStringExtra(KilnGlance.EXTRA_START);
-            if (start != null) {
-                // A deep link from a list item (the list's template is a broadcast).
-                context.startActivity(KilnGlance.openFromList(context, start));
+            Intent forward = forwardedIntent(intent);
+            if (forward != null) {
+                // From a list item (the list's template is a broadcast to this receiver).
+                forward(context, forward, intent.getIntExtra(KilnGlance.EXTRA_FORWARD_KIND, 0));
                 return;
             }
-            int checked = intent.hasExtra(RemoteViews.EXTRA_CHECKED) ? (intent.getBooleanExtra(RemoteViews.EXTRA_CHECKED, false) ? 1 : 0) : -1;
-            runCallback(name, id, intent.getStringExtra(KilnGlance.EXTRA_KEY), intent.getStringExtra(KilnGlance.EXTRA_PARAMS), checked);
+            Bundle params = intent.getBundleExtra(KilnGlance.EXTRA_PARAMS);
+            if (params == null) params = new Bundle();
+            // A toggle's new state (ActionCallbackBroadcastReceiver: ToggleableStateKey).
+            if (intent.hasExtra(RemoteViews.EXTRA_CHECKED)) params.putBoolean(RemoteViews.EXTRA_CHECKED, intent.getBooleanExtra(RemoteViews.EXTRA_CHECKED, false));
+            runCallback(name, id, intent.getStringExtra(KilnGlance.EXTRA_KEY), intent.getStringExtra(KilnGlance.EXTRA_LAMBDA), KilnGlance.bundleToParams(params));
             // Redrawn after its callback, as Glance does.
             updateAll(name);
             return;
@@ -90,6 +94,24 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
             return;
         }
         super.onReceive(context, intent);
+    }
+
+    @SuppressWarnings("deprecation")
+    private static Intent forwardedIntent(Intent intent) {
+        if (!intent.hasExtra(KilnGlance.EXTRA_FORWARD)) return null;
+        if (Build.VERSION.SDK_INT >= 33) return intent.getParcelableExtra(KilnGlance.EXTRA_FORWARD, Intent.class);
+        return intent.getParcelableExtra(KilnGlance.EXTRA_FORWARD);
+    }
+
+    /** What a list item's tap does besides callbacks: Glance's ActionTrampolineActivity's work. */
+    private static void forward(Context context, Intent target, int kind) {
+        switch (kind) {
+            case KilnGlance.FORWARD_ACTIVITY: context.startActivity(target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); break;
+            case KilnGlance.FORWARD_BROADCAST: context.sendBroadcast(target); break;
+            case KilnGlance.FORWARD_SERVICE: context.startService(target); break;
+            case KilnGlance.FORWARD_FOREGROUND_SERVICE: context.startForegroundService(target); break;
+            default: break;
+        }
     }
 
     static void draw(Context context, AppWidgetManager manager, ComponentName receiver, String name, int id) {
