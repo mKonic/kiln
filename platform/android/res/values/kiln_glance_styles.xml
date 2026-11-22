@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- kiln::glance: the invisible trampoline that runs a list item's tap (glance-appwidget Widget.Glance.AppWidget.CallbackTrampoline). -->
+<resources>
+    <style name="KilnWidgetTrampoline" parent="android:Theme">
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowIsTranslucent">true</item>
+    </style>
+</resources>

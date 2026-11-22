@@ -3217,7 +3217,7 @@ KILN_API void kiln_glance_spacer(const kiln_glance_modifier* m) {
     TRY { gl::Spacer(GlanceModifierOf(m)); } CATCH_VOID
 }
 KILN_API void kiln_glance_check_box(bool checked, kiln_glance_action onChange, const char* text, const kiln_glance_modifier* m) {
-    TRY { gl::CheckBox(checked, GlanceAction(onChange), ToString(text), GlanceModifierOf(m)); } CATCH_VOID
+    TRY { gl::CheckBox(checked, GlanceAction(onChange), GlanceModifierOf(m), ToString(text)); } CATCH_VOID
 }
 KILN_API void kiln_glance_register_widget(const char* name, int32_t sizeMode, kiln_fn_glance_content content) {
     auto owned = kiln::capi::Own(content);

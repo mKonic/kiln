@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- kiln::glance: CheckboxDefaults.colors() with the dynamic theme (glance-appwidget color/glance_default_check_box.xml). -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="?android:attr/colorControlActivated" android:state_checked="true"/>
+    <item android:color="?android:attr/colorControlNormal" />
+</selector>

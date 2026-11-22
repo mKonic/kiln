@@ -1,4 +1,5 @@
 #include "kiln/glance/Glance.h"
+#include "kiln/glance/GlanceComponents.h"
 
 #include "kiln/Log.h"
 #include "kiln/jvm/Codec.h"
@@ -13,7 +14,9 @@ namespace kiln::glance {
         // The element kinds KilnGlance.java reads.
         enum Kind : std::int32_t {
             kBox = 1, kRow, kColumn, kText, kImage, kButton, kSpacer, kLinearProgress, kCircularProgress,
-            kCheckBox, kSwitch, kLazyColumn, kListItem,
+            kCheckBox, kSwitch, kLazyColumn, kListItem, kRadioButton, kLazyGrid, kAndroidRemoteViews,
+            // Material 3 components, replaced by plain elements before encoding.
+            kM3TextButton = 100, kM3IconButton,
         };
         constexpr std::int32_t kFormat = 2;
         using MK = GlanceModifier::Item::Kind;
@@ -36,6 +39,17 @@ namespace kiln::glance {
             float progress = 0;
             ColorProvider color, background;
             std::int64_t itemId = 0;
+            bool indeterminate = false;
+            CheckableColors colors, colors2;   // a check box's or radio's; a switch's thumb and track
+            GridCells grid;
+            std::optional<ui::ActivityOptions> activityOptions;
+            std::string layout, container;      // AndroidRemoteViews
+            // M3 buttons
+            std::optional<ImageProvider> icon;
+            ColorProvider contentColor;
+            std::optional<ColorProvider> backgroundTint;
+            std::string backgroundResource;
+            int shape = 0;   // 0 square, 1 circle
             std::vector<Node> children;
         };
 
@@ -180,7 +194,7 @@ namespace kiln::glance {
                 target.modifier = rest;
             }
             // Switches, check boxes and buttons have a ripple of their own (API 31).
-            const bool builtinRipple = target.kind == kSwitch || target.kind == kCheckBox || isButton;
+            const bool builtinRipple = target.kind == kSwitch || target.kind == kCheckBox || target.kind == kRadioButton || isButton;
             const bool wrap = target.modifier.Any([&](const GlanceModifier::Item& i) {
                 return i.kind == MK::BackgroundImage || (i.kind == MK::Clickable && !builtinRipple);
             });
@@ -240,13 +254,85 @@ namespace kiln::glance {
             if (!Has(n.modifier, MK::Padding)) n.modifier = Padding(n.modifier, 16, 8);
         }
 
-        void Normalize(std::vector<Node>& children) {
+        void Normalize(std::vector<Node>& children, bool preview) {
             for (Node& c : children) {
-                if (c.kind == kLazyColumn) {
-                    for (Node& item : c.children) NormalizeListItem(item, Alignment::CenterStart());
+                if (preview && c.kind != kListItem) c.modifier = Extract(c.modifier, MK::Clickable).second;   // removeActionModifiers
+                if (c.kind == kLazyColumn || c.kind == kLazyGrid) {
+                    for (Node& item : c.children) NormalizeListItem(item, item.alignment);
                 }
                 c = TransformBackgroundAndRipple(std::move(c));
-                Normalize(c.children);
+                Normalize(c.children, preview);
+            }
+        }
+
+        // The M3 buttons as Glance draws them with RemoteViews (normalizeForRemoteViews).
+        Node M3TextButtonForRemoteViews(Node& b) {
+            Node main;
+            main.kind = kBox;
+            main.alignment = Alignment::Center();
+            main.modifier = CornerRadius(Enabled(Background(Padding(b.modifier, 16, 10, b.icon ? 24 : 16, 10), ImageProvider::Resource(b.backgroundResource),
+                                                            ContentScale::FillBounds, ColorFilter::Tint(*b.backgroundTint)),
+                                                 b.enabled),
+                                         Dimension::Resource("kiln_glance_component_button_corners"));
+            Node text;
+            text.kind = kText;
+            text.text = std::move(b.text);
+            text.style = TextStyle{ .color = b.contentColor, .fontSize = 14, .fontWeight = FontWeight::Medium };
+            text.maxLines = b.maxLines;
+            if (!b.icon) {
+                // For accessibility: the same minimum height as with an icon.
+                Node sizeFix;
+                sizeFix.kind = kBox;
+                sizeFix.modifier = Size({}, 18);
+                main.children.push_back(std::move(sizeFix));
+                main.children.push_back(std::move(text));
+            } else {
+                Node row;
+                row.kind = kRow;
+                row.alignment.vertical = VerticalAlignment::CenterVertically;
+                Node image = ImageNode(*b.icon, Size({}, 18));
+                image.filter = ColorFilter::Tint(b.contentColor);
+                row.children.push_back(std::move(image));
+                Node spacer;
+                spacer.kind = kSpacer;
+                spacer.modifier = Width({}, 8);
+                row.children.push_back(std::move(spacer));
+                row.children.push_back(std::move(text));
+                main.children.push_back(std::move(row));
+            }
+            return main;
+        }
+        Node M3IconButtonForRemoteViews(Node& b) {
+            const bool circle = b.shape == 1;
+            Node outer;
+            outer.kind = kBox;
+            outer.alignment = Alignment::Center();
+            GlanceModifier m = Size({}, circle ? 48.f : 60.f).Then(b.modifier);
+            if (b.backgroundTint)
+                m = Background(std::move(m), ImageProvider::Resource(circle ? "kiln_glance_component_btn_circle" : "kiln_glance_component_btn_square"),
+                               ContentScale::FillBounds, ColorFilter::Tint(*b.backgroundTint));
+            outer.modifier = CornerRadius(Enabled(std::move(m), b.enabled),
+                                          Dimension::Resource(circle ? "kiln_glance_component_circle_icon_button_corners" : "kiln_glance_component_square_icon_button_corners"));
+            Node image = ImageNode(b.image, Size({}, 24));
+            image.filter = ColorFilter::Tint(b.contentColor);
+            outer.children.push_back(std::move(image));
+            return outer;
+        }
+        void NormalizeM3Buttons(std::vector<Node>& children) {
+            for (Node& c : children) {
+                if (c.kind == kM3TextButton) c = M3TextButtonForRemoteViews(c);
+                else if (c.kind == kM3IconButton) c = M3IconButtonForRemoteViews(c);
+                NormalizeM3Buttons(c.children);
+            }
+        }
+
+        // ApplyModifiers' checks: selectableGroup on a Row or Column, one appWidgetBackground.
+        void CheckModifiers(const std::vector<Node>& children, int& backgrounds) {
+            for (const Node& c : children) {
+                if (Has(c.modifier, MK::SelectableGroup) && c.kind != kRow && c.kind != kColumn)
+                    throw std::logic_error("GlanceModifier.selectableGroup() can only be used on Row or Column composables.");
+                if (Has(c.modifier, MK::AppWidgetBackground) && ++backgrounds > 1) throw std::logic_error("At most one view can be set as AppWidgetBackground.");
+                CheckModifiers(c.children, backgrounds);
             }
         }
 
@@ -257,21 +343,23 @@ namespace kiln::glance {
             }
         }
 
-        // updateLambdaActionKeys: each lambda's key gets its position among its siblings.
+        // updateLambdaActionKeys: each lambda's key gets its position among its siblings, and the
+        // drawn size's index (Glance's keys differ per size by their composition position).
         using Lambdas = std::map<std::string, std::vector<kiln::Function<void()>>>;
-        void UpdateLambdaKeys(std::vector<Node>& children, Lambdas& out) {
+        void UpdateLambdaKeys(std::vector<Node>& children, Lambdas& out, int sizeIndex) {
             for (std::size_t index = 0; index < children.size(); ++index) {
                 Node& child = children[index];
                 GlanceModifier rewritten;
                 for (auto item : child.modifier.Items()) {
                     if (item.kind == MK::Clickable && item.action.kind == Action::Kind::Lambda) {
                         item.action.key += "+" + std::to_string(index);
+                        if (sizeIndex > 0) item.action.key += "@" + std::to_string(sizeIndex);
                         out[item.action.key].push_back(item.action.block);
                     }
                     rewritten = rewritten.Then(item);
                 }
                 child.modifier = rewritten;
-                UpdateLambdaKeys(child.children, out);
+                UpdateLambdaKeys(child.children, out, sizeIndex);
             }
         }
 
@@ -299,6 +387,11 @@ namespace kiln::glance {
             if (!f) return -1;
             return *f == FontWeight::Bold ? 700 : *f == FontWeight::Medium ? 500 : 400;
         }
+        void WriteCheckable(jvm::Writer& w, const CheckableColors& c) {
+            w.Str(c.resource);
+            WriteColor(w, c.checked);
+            WriteColor(w, c.unchecked);
+        }
         void WriteStyle(jvm::Writer& w, const std::optional<TextStyle>& s) {
             w.Bool(s.has_value());
             if (!s) return;
@@ -313,7 +406,7 @@ namespace kiln::glance {
         void WriteModifiers(jvm::Writer& w, const GlanceModifier& m) {
             std::vector<const GlanceModifier::Item*> items;
             for (const auto& i : m.Items())
-                if (i.kind != MK::BackgroundImage && i.kind != MK::AppWidgetBackground && i.kind != MK::SelectableGroup) items.push_back(&i);
+                if (i.kind != MK::BackgroundImage) items.push_back(&i);
             w.I32(std::int32_t(items.size()));
             for (const auto* p : items) {
                 const auto& i = *p;
@@ -365,14 +458,38 @@ namespace kiln::glance {
                     break;
                 case kLinearProgress:
                     p.F32(n.progress);
+                    p.Bool(n.indeterminate);
                     WriteColor(p, n.color);
                     WriteColor(p, n.background);
                     break;
                 case kCircularProgress: WriteColor(p, n.color); break;
-                case kCheckBox: case kSwitch:
+                case kCheckBox: case kSwitch: case kRadioButton:
                     p.Bool(n.checked);
+                    p.Bool(n.enabled);
                     p.Str(n.text);
-                    WriteColor(p, n.color);
+                    WriteStyle(p, n.style);
+                    p.I32(n.maxLines);
+                    WriteCheckable(p, n.colors);
+                    if (n.kind == kSwitch) WriteCheckable(p, n.colors2);
+                    break;
+                case kLazyColumn: case kLazyGrid: {
+                    p.I32(n.grid.count);
+                    p.F32(n.grid.minSize);
+                    p.Bool(n.activityOptions.has_value());
+                    const ui::ActivityOptions o = n.activityOptions.value_or(ui::ActivityOptions{});
+                    p.Str(o.enterAnimation);
+                    p.Str(o.exitAnimation);
+                    p.Str(o.shareIdentity ? (*o.shareIdentity ? "true" : "false") : "");
+                    p.Str(o.allowPassThroughOnTouchOutside ? (*o.allowPassThroughOnTouchOutside ? "true" : "false") : "");
+                    // Stable ids: when an item has an id of its own.
+                    bool stable = false;
+                    for (const Node& item : n.children) stable = stable || item.itemId > ReservedItemIdRangeEnd;
+                    p.Bool(stable);
+                    break;
+                }
+                case kAndroidRemoteViews:
+                    p.Str(n.layout);
+                    p.Str(n.container);
                     break;
                 case kListItem: p.I64(n.itemId); break;
                 default: break;
@@ -402,7 +519,8 @@ namespace kiln::glance {
         // Each placed widget's lambdas and the context of its last drawing.
         struct Drawn {
             Lambdas lambdas;
-            WidgetContext context;
+            std::vector<ui::Size> sizes;
+            ui::Bundle options;
         };
         std::map<std::pair<std::string, int>, Drawn>& DrawnWidgets() {
             static std::map<std::pair<std::string, int>, Drawn> d;
@@ -730,42 +848,164 @@ namespace kiln::glance {
         n.color = std::move(color);
         n.background = std::move(background);
     }
+    void LinearProgressIndicator(GlanceModifier modifier, ColorProvider color, ColorProvider background) {
+        Node& n = Emit(kLinearProgress, std::move(modifier));
+        n.indeterminate = true;
+        n.color = std::move(color);
+        n.background = std::move(background);
+    }
     void CircularProgressIndicator(GlanceModifier modifier, ColorProvider color) {
         Node& n = Emit(kCircularProgress, std::move(modifier));
         n.color = std::move(color);
     }
+
     namespace {
-        void Toggle(std::int32_t kind, bool checked, Action onChange, std::string text, GlanceModifier modifier, ColorProvider textColor) {
+        CheckableColors Checkable(const char* source, ColorProvider checked, ColorProvider unchecked) {
+            if (checked.IsResource() || unchecked.IsResource())
+                throw std::invalid_argument(std::string("Cannot provide resource-backed ColorProviders to ") + source);
+            return { {}, std::move(checked), std::move(unchecked) };
+        }
+        // The theme is the dynamic one: its colour state list resource.
+        bool DynamicTheme() { return GlanceTheme::colors() == DynamicThemeColorProviders(); }
+        CheckableColors ResourceCheckable(const char* name) { return { name, {}, {} }; }
+    }
+    CheckBoxColors CheckboxDefaults::colors(ColorProvider checkedColor, ColorProvider uncheckedColor) {
+        return { Checkable("CheckBoxColors", std::move(checkedColor), std::move(uncheckedColor)) };
+    }
+    CheckBoxColors CheckboxDefaults::colors() {
+        if (DynamicTheme()) return { ResourceCheckable("kiln_glance_default_check_box") };
+        return colors(GlanceTheme::colors().primary, GlanceTheme::colors().onSurface);
+    }
+    SwitchColors SwitchDefaults::colors(ColorProvider checkedThumb, ColorProvider uncheckedThumb, ColorProvider checkedTrack, ColorProvider uncheckedTrack) {
+        return { Checkable("SwitchColors", std::move(checkedThumb), std::move(uncheckedThumb)), Checkable("SwitchColors", std::move(checkedTrack), std::move(uncheckedTrack)) };
+    }
+    SwitchColors SwitchDefaults::colors() {
+        if (DynamicTheme()) return { ResourceCheckable("kiln_glance_default_switch_thumb"), ResourceCheckable("kiln_glance_default_switch_track") };
+        const ColorProviders& c = GlanceTheme::colors();
+        return colors(c.onPrimary, c.outline, c.primary, c.surfaceVariant);
+    }
+    RadioButtonColors RadioButtonDefaults::colors(ColorProvider checkedColor, ColorProvider uncheckedColor) {
+        return { Checkable("RadioButtonColors", std::move(checkedColor), std::move(uncheckedColor)) };
+    }
+    RadioButtonColors RadioButtonDefaults::colors() {
+        if (DynamicTheme()) return { ResourceCheckable("kiln_glance_default_radio_button") };
+        return colors(GlanceTheme::colors().primary, GlanceTheme::colors().onSurfaceVariant);
+    }
+
+    namespace {
+        Node& Toggle(std::int32_t kind, bool checked, Action onChange, GlanceModifier modifier, std::string text, std::optional<TextStyle> style, int maxLines) {
             // The action is a CompoundButtonAction: the host sets it as the checked-change response.
             if (onChange.kind != Action::Kind::None) modifier = Clickable(std::move(modifier), std::move(onChange));
             Node& n = Emit(kind, std::move(modifier));
             n.checked = checked;
             n.text = std::move(text);
-            n.color = std::move(textColor);
+            n.style = std::move(style);
+            n.maxLines = maxLines;
+            return n;
         }
     }
-    void CheckBox(bool checked, Action onChange, std::string text, GlanceModifier modifier, ColorProvider textColor) {
-        Toggle(kCheckBox, checked, std::move(onChange), std::move(text), std::move(modifier), std::move(textColor));
+    void CheckBox(bool checked, Action onChange, GlanceModifier modifier, std::string text, std::optional<TextStyle> style, std::optional<CheckBoxColors> colors,
+                  int maxLines) {
+        CheckBoxColors c = colors ? *colors : CheckboxDefaults::colors();
+        Toggle(kCheckBox, checked, std::move(onChange), std::move(modifier), std::move(text), std::move(style), maxLines).colors = std::move(c.checkBox);
     }
-    void Switch(bool checked, Action onChange, std::string text, GlanceModifier modifier, ColorProvider textColor) {
-        Toggle(kSwitch, checked, std::move(onChange), std::move(text), std::move(modifier), std::move(textColor));
+    void CheckBox(bool checked, kiln::Function<void()> onChange, GlanceModifier modifier, std::string text, std::optional<TextStyle> style,
+                  std::optional<CheckBoxColors> colors, int maxLines, std::string key) {
+        CheckBox(checked, LambdaAction(std::move(onChange), std::move(key)), std::move(modifier), std::move(text), std::move(style), std::move(colors), maxLines);
     }
-    void LazyListScope::Item(std::int64_t id, kiln::Function<void()> content) {
-        Node& n = Emit(kListItem, {});
-        n.itemId = id;
+    void Switch(bool checked, Action onChange, GlanceModifier modifier, std::string text, std::optional<TextStyle> style, std::optional<SwitchColors> colors,
+                int maxLines) {
+        SwitchColors c = colors ? *colors : SwitchDefaults::colors();
+        Node& n = Toggle(kSwitch, checked, std::move(onChange), std::move(modifier), std::move(text), std::move(style), maxLines);
+        n.colors = std::move(c.thumb);
+        n.colors2 = std::move(c.track);
+    }
+    void Switch(bool checked, kiln::Function<void()> onChange, GlanceModifier modifier, std::string text, std::optional<TextStyle> style,
+                std::optional<SwitchColors> colors, int maxLines, std::string key) {
+        Switch(checked, LambdaAction(std::move(onChange), std::move(key)), std::move(modifier), std::move(text), std::move(style), std::move(colors), maxLines);
+    }
+    void RadioButton(bool checked, Action onClick, GlanceModifier modifier, bool enabled, std::string text, std::optional<TextStyle> style,
+                     std::optional<RadioButtonColors> colors, int maxLines) {
+        RadioButtonColors c = colors ? *colors : RadioButtonDefaults::colors();
+        if (enabled && onClick.kind != Action::Kind::None) modifier = Clickable(std::move(modifier), std::move(onClick));
+        Node& n = Emit(kRadioButton, std::move(modifier));
+        n.checked = checked;
+        n.enabled = enabled;
+        n.text = std::move(text);
+        n.style = std::move(style);
+        n.maxLines = maxLines;
+        n.colors = std::move(c.radio);
+    }
+    void RadioButton(bool checked, kiln::Function<void()> onClick, GlanceModifier modifier, bool enabled, std::string text, std::optional<TextStyle> style,
+                     std::optional<RadioButtonColors> colors, int maxLines, std::string key) {
+        RadioButton(checked, LambdaAction(std::move(onClick), std::move(key)), std::move(modifier), enabled, std::move(text), std::move(style),
+                    std::move(colors), maxLines);
+    }
+    GlanceModifier SelectableGroup(GlanceModifier m) { return m.Then(Simple(MK::SelectableGroup)); }
+    GlanceModifier AppWidgetBackground(GlanceModifier m) { return m.Then(Simple(MK::AppWidgetBackground)); }
+
+    namespace {
+        // The list being filled: its items' alignment and default modifier.
+        struct LazyBuild {
+            Alignment alignment;
+            GlanceModifier itemModifier;
+            int index = 0;
+        };
+        thread_local LazyBuild* t_Lazy = nullptr;
+
+        void FillLazy(Node& n, Alignment alignment, GlanceModifier itemModifier, const kiln::Function<void(LazyListScope&)>& content) {
+            if (!content || !t_Build) return;
+            std::vector<Node>* saved = t_Build->children;
+            LazyBuild* savedLazy = t_Lazy;
+            LazyBuild lazy{ alignment, std::move(itemModifier), 0 };
+            t_Build->children = &n.children;
+            t_Lazy = &lazy;
+            LazyListScope scope;
+            try {
+                content(scope);
+            } catch (...) {
+                t_Build->children = saved;
+                t_Lazy = savedLazy;
+                throw;
+            }
+            t_Build->children = saved;
+            t_Lazy = savedLazy;
+        }
+    }
+    void LazyListScope::Item(std::int64_t itemId, kiln::Function<void()> content) {
+        if (itemId != UnspecifiedItemId && itemId <= ReservedItemIdRangeEnd)
+            throw std::invalid_argument("You may not specify item ids less than " + std::to_string(ReservedItemIdRangeEnd) + " in a Glance widget. These are reserved.");
+        const int index = t_Lazy ? t_Lazy->index++ : 0;
+        Node& n = Emit(kListItem, t_Lazy ? t_Lazy->itemModifier : GlanceModifier{});
+        n.itemId = itemId != UnspecifiedItemId ? itemId : ReservedItemIdRangeEnd - index;
+        if (t_Lazy) n.alignment = t_Lazy->alignment;
         Within(n, content);
     }
-    void LazyListScope::Items(int count, kiln::Function<std::int64_t(int)> id, kiln::Function<void(int)> content) {
-        for (int i = 0; i < count; ++i) Item(id ? id(i) : i, [&content, i] { content(i); });
+    void LazyListScope::Items(int count, kiln::Function<std::int64_t(int)> itemId, kiln::Function<void(int)> itemContent) {
+        for (int i = 0; i < count; ++i) Item(itemId ? itemId(i) : UnspecifiedItemId, [&itemContent, i] { itemContent(i); });
     }
-    void LazyColumn(GlanceModifier modifier, kiln::Function<void(LazyListScope&)> content) {
+    void LazyColumn(GlanceModifier modifier, HorizontalAlignment horizontalAlignment, kiln::Function<void(LazyListScope&)> content, LazyOptions options) {
         Node& n = Emit(kLazyColumn, std::move(modifier));
-        if (!content || !t_Build) return;
-        std::vector<Node>* saved = t_Build->children;
-        t_Build->children = &n.children;
-        LazyListScope scope;
-        content(scope);
-        t_Build->children = saved;
+        n.activityOptions = std::move(options.activityOptions);
+        FillLazy(n, { horizontalAlignment, VerticalAlignment::CenterVertically }, {}, content);
+    }
+    void LazyVerticalGrid(GridCells gridCells, GlanceModifier modifier, HorizontalAlignment horizontalAlignment, kiln::Function<void(LazyVerticalGridScope&)> content,
+                          std::optional<ui::ActivityOptions> activityOptions) {
+        if (gridCells.minSize <= 0 && (gridCells.count < 1 || gridCells.count > 5)) throw std::invalid_argument("Only counts from 1 to 5 are supported.");
+        Node& n = Emit(kLazyGrid, std::move(modifier));
+        n.grid = gridCells;
+        n.activityOptions = std::move(activityOptions);
+        // A grid item fills its cell's width, so its content aligns in it.
+        FillLazy(n, { horizontalAlignment, VerticalAlignment::CenterVertically }, FillMaxWidth(WrapContentHeight({})), content);
+    }
+
+    void AndroidRemoteViews(std::string layout, std::string containerViewId, GlanceModifier modifier, kiln::Function<void()> content) {
+        Node& n = Emit(kAndroidRemoteViews, std::move(modifier));
+        n.layout = std::move(layout);
+        n.container = std::move(containerViewId);
+        Within(n, content);
+        if (!n.children.empty() && n.container.empty())
+            throw std::invalid_argument("To add children to an `AndroidRemoteViews`, its `containerViewId` must be set.");
     }
 
     // --- widgets ----------------------------------------------------------------------------------
@@ -809,14 +1049,25 @@ namespace kiln::glance {
         };
         auto blocks = find();
         if (blocks.empty()) {
-            // A new process: draw the widget again to find its lambdas, at the size it was last drawn.
-            WidgetContext c{ widget, appWidgetId, {}, {} };
+            // A new process: draw the widget again to find its lambdas, at the sizes it was drawn
+            // at, or the launcher's (Glance's session starts with the widget's options).
+            std::vector<ui::Size> sizes;
+            ui::Bundle options;
             {
                 std::lock_guard lock(Mutex());
                 auto it = DrawnWidgets().find({ widget, appWidgetId });
-                if (it != DrawnWidgets().end()) c = it->second.context;
+                if (it != DrawnWidgets().end()) {
+                    sizes = it->second.sizes;
+                    options = it->second.options;
+                }
             }
-            co_await Draw(widget, c, { c.size });
+            if (sizes.empty()) {
+                if (const GlanceAppWidget* w = FindWidget(widget))
+                    sizes = SizesToDraw(*w, GetAppWidgetSizes(appWidgetId), Host().minimumSize ? Host().minimumSize(widget) : ui::Size{});
+                else
+                    sizes = { ui::Size{} };
+            }
+            co_await Draw(widget, { widget, appWidgetId, {}, std::move(options) }, sizes);
             blocks = find();
         }
         for (auto& b : blocks) if (b) b();
@@ -843,7 +1094,8 @@ namespace kiln::glance {
 
     namespace {
         std::vector<std::uint8_t> RenderWith(const std::string& name, const kiln::Function<void(const WidgetContext&)>& content,
-                                             const WidgetContext& context, std::any state) {
+                                             const WidgetContext& context, std::any state, bool preview = false, int sizeIndex = 0,
+                                             Lambdas* collected = nullptr) {
             if (!content) return {};
             // The content's elements go under the root (RemoteViewsRoot).
             Node root;
@@ -871,15 +1123,21 @@ namespace kiln::glance {
                 root.children.push_back(std::move(box));
             }
             NormalizeSizes(root);
+            NormalizeM3Buttons(root.children);
+            int backgrounds = 0;
+            CheckModifiers(root.children, backgrounds);
             AdjustButtons(root.children);
-            Normalize(root.children);
+            Normalize(root.children, preview);
             Lambdas lambdas;
-            UpdateLambdaKeys(root.children, lambdas);
-            {
+            UpdateLambdaKeys(root.children, lambdas, sizeIndex);
+            if (collected) {
+                for (auto& [k, v] : lambdas) collected->emplace(k, std::move(v));
+            } else if (!preview) {
                 std::lock_guard lock(Mutex());
                 Drawn& d = DrawnWidgets()[{ name, context.appWidgetId }];
                 d.lambdas = std::move(lambdas);
-                d.context = context;
+                d.sizes = { context.size };
+                d.options = context.options;
             }
 
             jvm::Writer w;
@@ -908,11 +1166,18 @@ namespace kiln::glance {
             if (w->stateDefinition) state = co_await w->stateDefinition->GetAny(AppWidgetStateKey(context.appWidgetId));
             kiln::Function<void(const WidgetContext&)> content = w->content;
             if (w->provideGlance) content = co_await w->provideGlance(context);
-            for (const ui::Size& size : sizes) {
+            // The lambdas of every size drawn, for a tap on any of them.
+            Lambdas lambdas;
+            for (std::size_t i = 0; i < sizes.size(); ++i) {
                 WidgetContext c = context;
-                c.size = size;
-                out.contents.push_back(RenderWith(name, content, c, state));
+                c.size = sizes[i];
+                out.contents.push_back(RenderWith(name, content, c, state, false, int(i), &lambdas));
             }
+            std::lock_guard lock(Mutex());
+            Drawn& d = DrawnWidgets()[{ name, context.appWidgetId }];
+            d.lambdas = std::move(lambdas);
+            d.sizes = sizes;
+            d.options = context.options;
         } catch (...) {
             error = std::current_exception();
         }
@@ -1000,6 +1265,40 @@ namespace kiln::glance {
         co_await PreferencesGlanceStateDefinition()->UpdateValue(AppWidgetStateKey(id), std::move(update));
     }
 
+    rt::Task<Drawing> ComposeForPreview(std::string name, int widgetCategory, ui::Size minimum) {
+        Drawing out;
+        const GlanceAppWidget* w = FindWidget(name);
+        if (!w) {
+            out.found = false;
+            co_return out;
+        }
+        kiln::Function<void(const WidgetContext&)> content;
+        if (w->providePreview) content = co_await w->providePreview(widgetCategory);
+        if (!content) {
+            // providePreview did not provide content: an empty preview.
+            log::Warn("kiln", "glance: {} did not provide content in providePreview", name);
+            content = [](const WidgetContext&) {};
+        }
+        std::vector<ui::Size> sizes = w->previewSizeMode == SizeMode::Responsive && !w->previewSizes.empty() ? w->previewSizes : std::vector<ui::Size>{ minimum };
+        for (const ui::Size& size : sizes) out.contents.push_back(RenderWith(name, content, { name, 0, size, {} }, {}, true));
+        co_return out;
+    }
+    rt::Task<int> SetWidgetPreviews(std::string name, std::vector<int> categories) {
+        if (!Host().setWidgetPreview) co_return SET_WIDGET_PREVIEWS_RESULT_RATE_LIMITED;
+        const GlanceAppWidget* w = FindWidget(name);
+        if (!w) throw std::invalid_argument("no widget named " + name);
+        const ui::Size minimum = w->previewSizeMode == SizeMode::Single && Host().minimumSize ? Host().minimumSize(name) : ui::Size{};
+        const std::vector<ui::Size> sizes = w->previewSizeMode == SizeMode::Responsive && !w->previewSizes.empty() ? w->previewSizes : std::vector<ui::Size>{ minimum };
+        for (int category : categories) {
+            Drawing d = co_await ComposeForPreview(name, category, minimum);
+            if (!Host().setWidgetPreview(name, category, sizes, d.contents)) {
+                log::Warn("kiln", "glance: setWidgetPreview for {} with categories {} was rate-limited", name, category);
+                co_return SET_WIDGET_PREVIEWS_RESULT_RATE_LIMITED;
+            }
+        }
+        co_return SET_WIDGET_PREVIEWS_RESULT_SUCCESS;
+    }
+
     void SetGlanceHost(GlanceHost host) { Host() = std::move(host); }
     void UpdateAll(const std::string& widget) {
         if (Host().updateAll) Host().updateAll(widget);
@@ -1018,6 +1317,101 @@ namespace kiln::glance {
             if (!d.contents.empty()) preview = std::move(d.contents[0]);
         }
         co_return Host().requestPin(widget, preview, successDeepLink);
+    }
+
+
+    // --- components -------------------------------------------------------------------------------
+
+    void Scaffold(GlanceModifier modifier, kiln::Function<void()> titleBar, kiln::Function<void()> content, ColorProvider backgroundColor, float horizontalPadding) {
+        const ColorProvider bg = backgroundColor.set ? backgroundColor : GlanceTheme::colors().widgetBackground;
+        Column(CornerRadius(AppWidgetBackground(Background(FillMaxSize(std::move(modifier)), bg)), Dimension::Resource("android:dimen/system_app_widget_background_radius")),
+               {}, [&] {
+                   if (titleBar) titleBar();
+                   Box(DefaultWeight(Padding({}, horizontalPadding, 0)), {}, content);
+               });
+    }
+
+    void TitleBar(ImageProvider startIcon, std::string title, std::optional<ColorProvider> iconColor, ColorProvider textColor, GlanceModifier modifier,
+                  std::optional<FontFamily> fontFamily, kiln::Function<void()> actions) {
+        const ColorProvider onSurface = GlanceTheme::colors().onSurface;
+        std::optional<ColorFilter> tint;
+        if (iconColor) tint = ColorFilter::Tint(iconColor->set ? *iconColor : onSurface);
+        const ColorProvider text = textColor.set ? textColor : onSurface;
+        Row(Padding(FillMaxWidth(std::move(modifier)), 0, 4), { HorizontalAlignment::Start, VerticalAlignment::CenterVertically }, [&] {
+            Box(Padding(Size({}, 48), 2, 0, 0, 0), Alignment::Center(), [&] { Image(startIcon, std::string(), Size({}, 24), ContentScale::Fit, tint); });
+            Text(title, DefaultWeight({}), { .color = text, .fontSize = 16, .fontWeight = FontWeight::Medium, .fontFamily = fontFamily }, 1);
+            if (actions) actions();
+        });
+    }
+
+    namespace {
+        void M3TextButton(std::string text, Action onClick, GlanceModifier modifier, bool enabled, std::optional<ImageProvider> icon, ColorProvider contentColor,
+                          std::string backgroundResource, ColorProvider backgroundTint, int maxLines) {
+            // Ripples are the platform's on API 31 (NoRippleOverride).
+            if (enabled) modifier = Clickable(std::move(modifier), std::move(onClick), NoRippleOverride);
+            Node& n = Emit(kM3TextButton, std::move(modifier));
+            n.text = std::move(text);
+            n.enabled = enabled;
+            n.icon = std::move(icon);
+            n.contentColor = std::move(contentColor);
+            n.backgroundResource = std::move(backgroundResource);
+            n.backgroundTint = std::move(backgroundTint);
+            n.maxLines = maxLines;
+        }
+        void M3IconButton(ImageProvider image, std::optional<std::string> description, ColorProvider contentColor, std::optional<ColorProvider> backgroundColor,
+                          int shape, Action onClick, GlanceModifier modifier, bool enabled) {
+            if (enabled) modifier = Clickable(std::move(modifier), std::move(onClick), NoRippleOverride);
+            if (description) modifier = ContentDescription(std::move(modifier), *description);
+            Node& n = Emit(kM3IconButton, std::move(modifier));
+            n.image = std::move(image);
+            n.contentColor = std::move(contentColor);
+            n.backgroundTint = std::move(backgroundColor);
+            n.shape = shape;
+            n.enabled = enabled;
+        }
+    }
+
+    void FilledButton(std::string text, Action onClick, GlanceModifier modifier, bool enabled, std::optional<ImageProvider> icon, std::optional<ButtonColors> colors,
+                      int maxLines) {
+        const ButtonColors c = colors ? *colors : ButtonDefaults::buttonColors();
+        M3TextButton(std::move(text), std::move(onClick), std::move(modifier), enabled, std::move(icon), c.contentColor, "kiln_glance_component_btn_filled",
+                     c.backgroundColor, maxLines);
+    }
+    void FilledButton(std::string text, kiln::Function<void()> onClick, GlanceModifier modifier, bool enabled, std::optional<ImageProvider> icon,
+                      std::optional<ButtonColors> colors, int maxLines, std::string key) {
+        FilledButton(std::move(text), LambdaAction(std::move(onClick), std::move(key)), std::move(modifier), enabled, std::move(icon), std::move(colors), maxLines);
+    }
+    void OutlineButton(std::string text, ColorProvider contentColor, Action onClick, GlanceModifier modifier, bool enabled, std::optional<ImageProvider> icon,
+                       int maxLines) {
+        M3TextButton(std::move(text), std::move(onClick), std::move(modifier), enabled, std::move(icon), contentColor, "kiln_glance_component_btn_outline",
+                     contentColor, maxLines);
+    }
+    void OutlineButton(std::string text, ColorProvider contentColor, kiln::Function<void()> onClick, GlanceModifier modifier, bool enabled,
+                       std::optional<ImageProvider> icon, int maxLines, std::string key) {
+        OutlineButton(std::move(text), std::move(contentColor), LambdaAction(std::move(onClick), std::move(key)), std::move(modifier), enabled, std::move(icon), maxLines);
+    }
+    void SquareIconButton(ImageProvider image, std::optional<std::string> description, Action onClick, GlanceModifier modifier, bool enabled,
+                          ColorProvider backgroundColor, ColorProvider contentColor) {
+        const ColorProviders& c = GlanceTheme::colors();
+        M3IconButton(std::move(image), std::move(description), contentColor.set ? contentColor : c.onPrimary, backgroundColor.set ? backgroundColor : c.primary, 0,
+                     std::move(onClick), std::move(modifier), enabled);
+    }
+    void SquareIconButton(ImageProvider image, std::optional<std::string> description, kiln::Function<void()> onClick, GlanceModifier modifier, bool enabled,
+                          ColorProvider backgroundColor, ColorProvider contentColor, std::string key) {
+        SquareIconButton(std::move(image), std::move(description), LambdaAction(std::move(onClick), std::move(key)), std::move(modifier), enabled,
+                         std::move(backgroundColor), std::move(contentColor));
+    }
+    void CircleIconButton(ImageProvider image, std::optional<std::string> description, Action onClick, GlanceModifier modifier, bool enabled,
+                          std::optional<ColorProvider> backgroundColor, ColorProvider contentColor) {
+        const ColorProviders& c = GlanceTheme::colors();
+        if (backgroundColor && !backgroundColor->set) backgroundColor = c.background;
+        M3IconButton(std::move(image), std::move(description), contentColor.set ? contentColor : c.onSurface, std::move(backgroundColor), 1, std::move(onClick),
+                     std::move(modifier), enabled);
+    }
+    void CircleIconButton(ImageProvider image, std::optional<std::string> description, kiln::Function<void()> onClick, GlanceModifier modifier, bool enabled,
+                          std::optional<ColorProvider> backgroundColor, ColorProvider contentColor, std::string key) {
+        CircleIconButton(std::move(image), std::move(description), LambdaAction(std::move(onClick), std::move(key)), std::move(modifier), enabled,
+                         std::move(backgroundColor), std::move(contentColor));
     }
 
 }

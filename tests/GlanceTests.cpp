@@ -3,6 +3,7 @@
 #include "Check.h"
 
 #include "kiln/glance/Glance.h"
+#include "kiln/glance/GlanceComponents.h"
 #include "kiln/jvm/Codec.h"
 #include "kiln/ui/AppDirectories.h"
 #include <kiln/kiln.h>
@@ -90,6 +91,7 @@ namespace {
                 case K::Clickable: m.actionKind = r.I32(); r.Str(); m.actionKey = r.Str(); r.Str(); m.params = r.Bytes(); r.Bool(); break;
                 case K::Visibility: case K::Enabled: case K::ClipToOutline: r.I32(); break;
                 case K::Semantics: r.Bool(); m.description = r.Str(); break;
+                case K::AppWidgetBackground: case K::SelectableGroup: break;
                 default: CHECK(false); break;
             }
             n.mods.push_back(std::move(m));
@@ -320,6 +322,11 @@ TEST(GlanceActionsCarryParametersAndLambdas) {
     CHECK(!Await(RunLambdaAction("test-actions", 9, "missing")));
     // An instance this process has not drawn: drawn first.
     CHECK(Await(RunLambdaAction("test-actions", 10, "k+1")) && keyedRuns == 2);
+    // Several sizes: each size's lambdas, told apart by the size's index.
+    Drawing two = Await(Draw("test-actions", { "test-actions", 11, {}, {} }, { { 100, 100 }, { 200, 100 } }));
+    CHECK(two.contents.size() == 2 && ReadTree(two.contents[1]).children[1].Find(K::Clickable)->actionKey == "k+1@1");
+    CHECK(Await(RunLambdaAction("test-actions", 11, "k+1@1")) && keyedRuns == 3);
+    CHECK(Await(RunLambdaAction("test-actions", 11, "k+1")) && keyedRuns == 4);
 }
 
 TEST(GlanceSizesFollowTheSizeMode) {
@@ -488,4 +495,195 @@ TEST(GlanceAsyncCallbacksAndUpdates) {
     CHECK(RequestPin("test-update") && calls.back() == "pin test-update 0 ");
     SetGlanceHost({});
     ui::SetAppDirectories({}, {}, {});
+}
+
+namespace {
+    struct ToggleProps {
+        bool checked = false, enabled = false;
+        std::string text;
+        std::string resource, resource2;
+        std::uint32_t checkedDay = 0, uncheckedDay = 0;
+    };
+    ToggleProps ReadToggle(const Node& n) {
+        jvm::Reader r(n.props);
+        ToggleProps t;
+        t.checked = r.Bool();
+        t.enabled = r.Bool();
+        t.text = r.Str();
+        if (r.Bool()) { ReadColor(r); r.F32(); r.I32(); r.I32(); r.I32(); r.I32(); r.Str(); }
+        r.I32();
+        t.resource = r.Str();
+        Mod c, u;
+        ReadColor(r, &c);
+        ReadColor(r, &u);
+        t.checkedDay = c.day;
+        t.uncheckedDay = u.day;
+        if (n.kind == 11) { t.resource2 = r.Str(); ReadColor(r); ReadColor(r); }
+        return t;
+    }
+}
+
+TEST(GlanceTogglesTakeTheirColoursAndRadioButtonsClick) {
+    RegisterWidget("test-toggles", { .content = [](const WidgetContext&) {
+        Column(SelectableGroup({}), {}, [] {
+            CheckBox(true, ActionRunCallback("c"), {}, "check");
+            Switch(false, ActionRunCallback("s"));
+            RadioButton(true, ActionRunCallback("r"), {}, true, "one");
+            RadioButton(false, ActionRunCallback("r"), {}, false, "off");
+            GlanceTheme(ColorProviders{ .primary = 0xFF0000AAu, .onPrimary = 0xFF0000BBu, .onSurface = 0xFF0000CCu, .surfaceVariant = 0xFF0000FFu,
+                                        .onSurfaceVariant = 0xFF0000DDu, .outline = 0xFF0000EEu },
+                        [] {
+                            CheckBox(false, ActionRunCallback("c"));
+                            Switch(true, ActionRunCallback("s"));
+                            RadioButton(false, ActionRunCallback("r"));
+                        });
+            CheckBox(false, ActionRunCallback("c"), {}, {}, std::nullopt, CheckboxDefaults::colors(0xFF111111u, 0xFF222222u));
+        });
+    } });
+    const Node column = ReadTree(Render("test-toggles", { "test-toggles", 1, { 100, 100 } }));
+    using K = GlanceModifier::Item::Kind;
+    CHECK(column.Find(K::SelectableGroup));
+    // The dynamic theme: Glance's colour state lists.
+    CHECK(ReadToggle(column.children[0]).resource == "kiln_glance_default_check_box" && ReadToggle(column.children[0]).checked);
+    CHECK(ReadToggle(column.children[1]).resource == "kiln_glance_default_switch_thumb" && ReadToggle(column.children[1]).resource2 == "kiln_glance_default_switch_track");
+    const Node& radio = column.children[2];
+    CHECK(radio.kind == 14 && ReadToggle(radio).resource == "kiln_glance_default_radio_button" && ReadToggle(radio).text == "one");
+    // Radio buttons have their own ripple: no wrapping box; a disabled one has no tap.
+    CHECK(radio.Find(K::Clickable) && !column.children[3].Find(K::Clickable) && !ReadToggle(column.children[3]).enabled);
+    // Another theme: its roles.
+    CHECK(ReadToggle(column.children[4]).checkedDay == 0xFF0000AAu && ReadToggle(column.children[4]).uncheckedDay == 0xFF0000CCu);
+    CHECK(ReadToggle(column.children[5]).checkedDay == 0xFF0000BBu && ReadToggle(column.children[5]).uncheckedDay == 0xFF0000EEu);
+    CHECK(ReadToggle(column.children[6]).uncheckedDay == 0xFF0000DDu);
+    CHECK(ReadToggle(column.children[7]).checkedDay == 0xFF111111u && ReadToggle(column.children[7]).resource.empty());
+    bool threw = false;
+    try { CheckboxDefaults::colors(ColorProvider::Resource("x"), 0xFF000000u); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+}
+
+TEST(GlanceLazyListsAndGrids) {
+    RegisterWidget("test-lazy", { .content = [](const WidgetContext&) {
+        Column({}, {}, [] {
+            LazyColumn({}, HorizontalAlignment::End, [](LazyListScope& s) {
+                s.Item([] { Text("a"); });
+                s.Item([] { Text("b"); });
+            });
+            LazyVerticalGrid(GridCells::Fixed(3), {}, [](LazyVerticalGridScope& s) {
+                s.Items(std::vector<std::string>{ "x", "y" }, [](const std::string& v) { return std::int64_t(v[0]); }, [](const std::string& v) { Text(v); });
+            });
+            LazyVerticalGrid(GridCells::Adaptive(80), {}, [](LazyVerticalGridScope& s) { s.Item(5, [] { Text("z"); }); });
+            LinearProgressIndicator();
+        });
+    } });
+    const Node column = ReadTree(Render("test-lazy", { "test-lazy", 1, { 100, 100 } }));
+    using K = GlanceModifier::Item::Kind;
+    const Node& list = column.children[0];
+    // Implicit ids from the reserved range, not stable.
+    jvm::Reader id0(list.children[0].props), id1(list.children[1].props);
+    CHECK(id0.I64() == ReservedItemIdRangeEnd && id1.I64() == ReservedItemIdRangeEnd - 1);
+    jvm::Reader lp(list.props);
+    lp.I32(); lp.F32(); lp.Bool(); lp.Str(); lp.Str(); lp.Str(); lp.Str();
+    CHECK(!lp.Bool());
+    // The item's box takes the list's horizontal alignment.
+    jvm::Reader boxGravity(list.children[0].children[0].props);
+    CHECK(boxGravity.I32() == (0x00800005 | 0x10));
+    const Node& grid = column.children[1];
+    CHECK(grid.kind == 15 && grid.children.size() == 2);
+    jvm::Reader gp(grid.props);
+    CHECK(gp.I32() == 3);
+    gp.F32(); gp.Bool(); gp.Str(); gp.Str(); gp.Str(); gp.Str();
+    CHECK(gp.Bool());   // its own ids: stable
+    // A grid item fills its cell's width.
+    CHECK(grid.children[0].children[0].Find(K::Width)->dimension == 1);
+    jvm::Reader ap(column.children[2].props);
+    CHECK(ap.I32() == 0 && ap.F32() == 80);
+    jvm::Reader progress(column.children[3].props);
+    progress.F32();
+    CHECK(progress.Bool());   // indeterminate
+    bool threw = false;
+    RegisterWidget("test-lazy-bad", { .content = [](const WidgetContext&) {
+        LazyColumn({}, [](LazyListScope& s) { s.Item(ReservedItemIdRangeEnd, [] {}); });
+    }, .stateDefinition = nullptr });
+    try { Render("test-lazy-bad", { "test-lazy-bad", 1, { 10, 10 } }); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+    threw = false;
+    try { LazyVerticalGrid(GridCells::Fixed(6), {}, [](LazyVerticalGridScope&) {}); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+}
+
+TEST(GlanceComponentsAndChecks) {
+    RegisterWidget("test-components", { .content = [](const WidgetContext&) {
+        Scaffold({}, [] { TitleBar(ImageProvider::Resource("icon"), "Title"); }, [] {
+            Column({}, {}, [] {
+                FilledButton("Go", ActionRunCallback("go"));
+                OutlineButton("Out", 0xFF00FF00u, ActionRunCallback("go"), {}, true, ImageProvider::Resource("ic"));
+                SquareIconButton(ImageProvider::Resource("ic"), std::string("square"), ActionRunCallback("go"));
+                CircleIconButton(ImageProvider::Resource("ic"), std::nullopt, ActionRunCallback("go"), {}, true, std::nullopt);
+                AndroidRemoteViews("custom_layout", "container", {}, [] { Text("inside"); });
+            });
+        });
+    } });
+    const Node scaffold = ReadTree(Render("test-components", { "test-components", 1, { 200, 200 } }));
+    using K = GlanceModifier::Item::Kind;
+    CHECK(scaffold.kind == 3 && scaffold.Find(K::AppWidgetBackground) && scaffold.Find(K::BackgroundColor)->colorResource == "kiln_glance_colorWidgetBackground");
+    CHECK(scaffold.Find(K::CornerRadius)->resource == "android:dimen/system_app_widget_background_radius");
+    const Node& title = scaffold.children[0];
+    CHECK(title.kind == 2 && title.children.size() == 2 && ReadText(title.children[1]).text == "Title" && ReadText(title.children[1]).weight == 500);
+    const Node& column = scaffold.children[1].children[0];
+    // FilledButton: a clickable box (the M3 shape as a tinted background image behind the text).
+    const Node& filled = column.children[0];
+    CHECK(filled.kind == 1 && filled.Find(K::Clickable) && filled.Find(K::CornerRadius)->resource == "kiln_glance_component_button_corners");
+    CHECK(filled.children[0].kind == 5);
+    jvm::Reader shape(filled.children[0].props);
+    CHECK(shape.Str() == "kiln_glance_component_btn_filled");
+    // The content: the size fix, then the text in onPrimary.
+    const Node& inner = filled.children[1];
+    CHECK(inner.children.size() == 2 && ReadText(inner.children[1]).color.colorResource == "kiln_glance_colorOnPrimary");
+    // With an icon: a row of the tinted icon, a spacer and the text.
+    CHECK(column.children[1].children[1].children[0].kind == 2 && column.children[1].children[1].children[0].children.size() == 3);
+    // Icon buttons: the size and tap on the ripple box; the description on the button's box.
+    const Node& square = column.children[2];
+    CHECK(square.Find(K::Width) && square.Find(K::Width)->dp == 60 && square.Find(K::Clickable) && square.children.size() == 3);
+    CHECK(square.children[1].Find(K::Semantics) && square.children[1].Find(K::Semantics)->description == "square");
+    const Node& circle = column.children[3];
+    // No background: the button's box and the ripple.
+    CHECK(circle.Find(K::Width) && circle.Find(K::Width)->dp == 48 && circle.children.size() == 2 && circle.children[0].children[0].kind == 5);
+    const Node& custom = column.children[4];
+    jvm::Reader cp(custom.props);
+    CHECK(custom.kind == 16 && cp.Str() == "custom_layout" && cp.Str() == "container" && custom.children.size() == 1);
+
+    // ApplyModifiers' checks, as composition errors.
+    RegisterWidget("test-checks", { .content = [](const WidgetContext&) { Text("x", SelectableGroup({})); }, .stateDefinition = nullptr });
+    CHECK(Await(Draw("test-checks", { "test-checks", 1, {}, {} }, { { 10, 10 } })).failed);
+    RegisterWidget("test-checks", { .content = [](const WidgetContext&) {
+        Column(AppWidgetBackground({}), {}, [] { Box(AppWidgetBackground({}), {}); });
+    }, .stateDefinition = nullptr });
+    CHECK(Await(Draw("test-checks", { "test-checks", 1, {}, {} }, { { 10, 10 } })).failed);
+    // Children need a container to go in.
+    RegisterWidget("test-checks", { .content = [](const WidgetContext&) { AndroidRemoteViews("l", "", {}, [] { Text("x"); }); }, .stateDefinition = nullptr });
+    CHECK(Await(Draw("test-checks", { "test-checks", 1, {}, {} }, { { 10, 10 } })).failed);
+}
+
+TEST(GlancePreviewsLeaveTapsOut) {
+    RegisterWidget("test-preview", { .content = [](const WidgetContext&) { Text("live"); },
+                                     .providePreview = [](int category) -> rt::Task<kiln::Function<void(const WidgetContext&)>> {
+                                         co_return ProvideContent([category](const WidgetContext&) {
+                                             Text("preview " + std::to_string(category), Clickable(GlanceModifier{}, ActionRunCallback("x")));
+                                         });
+                                     },
+                                     .previewSizeMode = SizeMode::Responsive, .previewSizes = { { 100, 50 }, { 200, 100 } } });
+    Drawing d = Await(ComposeForPreview("test-preview", WIDGET_CATEGORY_HOME_SCREEN));
+    CHECK(d.contents.size() == 2);
+    const Node t = ReadTree(d.contents[0]);
+    CHECK(t.kind == 4 && ReadText(t).text == "preview 1" && !t.Find(GlanceModifier::Item::Kind::Clickable));
+    std::vector<std::string> calls;
+    GlanceHost host;
+    host.setWidgetPreview = [&](const std::string& w, int category, const std::vector<ui::Size>& sizes, const std::vector<std::vector<std::uint8_t>>& contents) {
+        calls.push_back(w + " " + std::to_string(category) + " " + std::to_string(sizes.size()) + " " + std::to_string(contents.size()));
+        return category != WIDGET_CATEGORY_KEYGUARD;
+    };
+    SetGlanceHost(std::move(host));
+    CHECK(Await(SetWidgetPreviews("test-preview", { WIDGET_CATEGORY_HOME_SCREEN })) == SET_WIDGET_PREVIEWS_RESULT_SUCCESS);
+    CHECK(Await(SetWidgetPreviews("test-preview", { WIDGET_CATEGORY_KEYGUARD, WIDGET_CATEGORY_SEARCHBOX })) == SET_WIDGET_PREVIEWS_RESULT_RATE_LIMITED);
+    CHECK(calls == (std::vector<std::string>{ "test-preview 1 2 2", "test-preview 2 2 2" }));
+    SetGlanceHost({});
 }

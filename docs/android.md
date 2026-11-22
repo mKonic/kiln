@@ -529,7 +529,8 @@ g::ActionCallbackRegistration tap("tap", [](const g::ActionContext&) { ++taps; }
   appwidget-provider info in `res/xml/counter_widget.xml` (its size, resize modes and
   category). A Gradle app declares a receiver class extending `dev.kiln.KilnWidgetReceiver`
   instead, with `<meta-data android:name="dev.kiln.widget" android:value="counter" />` and the
-  provider info. Its intent filter takes `android.intent.action.LOCALE_CHANGED` as well as
+  provider info. Its intent filter takes `android.intent.action.LOCALE_CHANGED` and
+  `android.intent.action.MY_PACKAGE_REPLACED` as well as
   `APPWIDGET_UPDATE`, so the widget is redrawn in a new language.
 * `SizeMode::Single` draws once, at the widget's minimum size from its provider info (the
   resize minimum when it resizes). `Exact` draws for every size the launcher uses, or for a
@@ -573,8 +574,21 @@ g::ActionCallbackRegistration tap("tap", [](const g::ActionContext&) { ++taps; }
   launcher to place one. `RequestPinGlanceAppWidget` can also show a drawing of it in the
   launcher's dialog and open the app at a deep link once it is placed.
   `WidgetContext::options` holds the launcher's options for the instance.
-* A widget has up to four `LazyColumn`s. Images are app drawables by name, encoded bytes or a
+* `kiln/glance/GlanceComponents.h` has Glance's Material 3 components: `Scaffold`, `TitleBar`,
+  `FilledButton`, `OutlineButton`, `SquareIconButton` and `CircleIconButton`. They take their
+  colours from `GlanceTheme`. `CheckBox`, `Switch` and `RadioButton` take `CheckboxDefaults`,
+  `SwitchDefaults` and `RadioButtonDefaults` colours. Put a group of radio buttons in a `Row`
+  or `Column` with `SelectableGroup`. `AppWidgetBackground` marks the element the launcher
+  treats as the widget's background.
+* A widget has up to four `LazyColumn`s and four `LazyVerticalGrid`s (`GridCells::Fixed(1..5)`
+  or `GridCells::Adaptive(minSize)`). Items without an id of their own get one from Glance's
+  reserved range. Taps on items open the activity directly, or go through kiln's invisible
+  trampoline activity for callbacks, broadcasts and services, as in Glance.
+  `AndroidRemoteViews(layout, containerId, ...)` embeds one of your own layouts, with
+  elements inside its container view. Images are app drawables by name, encoded bytes or a
   URI. Sizes, padding and corner radii take dimension resources as well as dp.
+* `SetWidgetPreviews(name)` sets the widget picker's generated previews (API 35) from
+  `providePreview`, at `previewSizeMode`'s sizes. Taps are left out of previews.
 
 ## Device features
 

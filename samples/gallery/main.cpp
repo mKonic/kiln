@@ -32,6 +32,7 @@
 #include <kiln/ui/Share.h>
 #include <kiln/ui/FileProvider.h>
 #include <kiln/glance/Glance.h>
+#include <kiln/glance/GlanceComponents.h>
 #include <atomic>
 #include <kiln/foundation/Dialog.h>
 #include <kiln/material3/DynamicColorScheme.h>
@@ -343,17 +344,29 @@ namespace {
     // starts for them, per placed widget in its own state, and a lambda that counts them all.
     std::atomic<int> g_WidgetTaps{ 0 };
     const auto kWidgetTaps = kiln::datastore::IntKey("taps");
+    std::atomic<int> g_WidgetChoice{ 0 };
     kiln::glance::WidgetRegistration galleryWidget("gallery", { .sizeMode = kiln::glance::SizeMode::Exact, .content = [](const kiln::glance::WidgetContext& w) {
         namespace g = kiln::glance;
         const g::ColorProviders& colors = g::GlanceTheme::colors();
-        g::Column(g::CornerRadius(g::Padding(g::FillMaxSize(g::Background(g::GlanceModifier{}, colors.widgetBackground)), 12), 16), g::Alignment::Center(), [&] {
-            g::Text("kiln gallery", {}, { .color = colors.primary, .fontSize = 16, .fontWeight = g::FontWeight::Bold });
-            g::Text(std::to_string(g::CurrentState(kWidgetTaps).value_or(0)) + " taps here, " + std::to_string(g_WidgetTaps.load()) + " in all",
-                    g::Padding(g::GlanceModifier{}, 0, 4), { .color = colors.onSurface });
-            g::Row({}, g::Alignment::Center(), [&] {
-                g::Button("Tap", g::ActionRunCallback("gallery-tap"));
-                g::Button("+1", [] { ++g_WidgetTaps; }, g::Padding(g::GlanceModifier{}, 8, 0, 0, 0));
-                if (w.size.width >= 220) g::Button("Open", g::ActionStartActivity(), g::Padding(g::GlanceModifier{}, 8, 0, 0, 0));
+        g::Scaffold({}, [] { g::TitleBar(g::ImageProvider::Resource("kiln_ic_notification"), "kiln gallery"); }, [&] {
+            g::Column(g::FillMaxSize({}), {}, [&] {
+                g::Text(std::to_string(g::CurrentState(kWidgetTaps).value_or(0)) + " taps here, " + std::to_string(g_WidgetTaps.load()) + " in all", {},
+                        { .color = colors.onSurface });
+                g::Row(g::Padding({}, 0, 4), { g::HorizontalAlignment::Start, g::VerticalAlignment::CenterVertically }, [&] {
+                    g::FilledButton("Tap", g::ActionRunCallback("gallery-tap"));
+                    g::OutlineButton("+1", colors.primary, [] { ++g_WidgetTaps; }, g::Padding({}, 8, 0, 0, 0));
+                    if (w.size.width >= 260) g::CircleIconButton(g::ImageProvider::Resource("kiln_ic_media"), std::string("Open"), g::ActionStartActivity());
+                });
+                // Taller: a choice in a list.
+                if (w.size.height >= 240) {
+                    g::LazyColumn(g::DefaultWeight({}), [&](g::LazyListScope& s) {
+                        s.Items(3, [&](int i) {
+                            g::RadioButton(g_WidgetChoice.load() == i, [i] { g_WidgetChoice = i; }, {}, true, "Choice " + std::to_string(i + 1),
+                                           g::TextStyle{ .color = colors.onSurface });
+                        });
+                        s.Item([&] { g::Text("Open the gallery", g::Clickable(g::Padding({}, 12, 8), g::ActionStartActivity()), { .color = colors.primary }); });
+                    });
+                }
             });
         });
     } });

@@ -124,6 +124,10 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
                   android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
                   android:windowSoftInputMode="adjustResize"
                   android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|navigation|locale|layoutDirection|colorMode|touchscreen|grammaticalGender" />
+        <!-- kiln::glance: a widget list item's tap (Glance's InvisibleActionTrampolineActivity). -->
+        <activity android:name="dev.kiln.KilnWidgetTrampoline" android:exported="false"
+                  android:taskAffinity="dev.kiln.widget.ListAdapterCallbackTrampoline" android:theme="@style/KilnWidgetTrampoline"
+                  android:launchMode="singleInstance" android:noHistory="true" android:excludeFromRecents="true" />
         <!-- kiln::work's jobs (JobScheduler). -->
         <service android:name="dev.kiln.KilnJobService" android:exported="false"
                  android:permission="android.permission.BIND_JOB_SERVICE" />
@@ -132,7 +136,7 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
         <service android:name="dev.kiln.KilnMediaService" android:exported="false"
                  android:foregroundServiceType="mediaPlayback" />
         <!-- ui::GetUriForFile: the app's files, shared by content:// URI (FileProvider). -->
-        <provider android:name="dev.kiln.KilnFileProvider" android:authorities="${applicationId}.kiln.fileprovider"
+        <provider android:name="dev.kiln.KilnFileProvider" android:authorities="\${applicationId}.kiln.fileprovider"
                   android:exported="false" android:grantUriPermissions="true" />
         <!-- kiln::alarm: alarms going off, and set again after a reboot (with the app's
              RECEIVE_BOOT_COMPLETED) or when exact alarms are allowed again. -->
@@ -155,6 +159,8 @@ cp -r "$KILN_ROOT/platform/android/res" "$STAGING/res"
     for f in "$STAGING"/res/drawable/*.xml; do echo "int drawable $(basename "$f" .xml) 0x0"; done
     for f in "$STAGING"/res/color/*.xml; do echo "int color $(basename "$f" .xml) 0x0"; done
     grep -ho '<color name="[a-zA-Z_]*"' "$STAGING"/res/values/*.xml | sort -u | sed 's|<color name="|int color |; s|"$| 0x0|'
+    grep -ho '<dimen name="[a-zA-Z_]*"' "$STAGING"/res/values/*.xml | sort -u | sed 's|<dimen name="|int dimen |; s|"$| 0x0|'
+    grep -ho '<style name="[a-zA-Z_]*"' "$STAGING"/res/values/*.xml | sort -u | sed 's|<style name="|int style |; s|"$| 0x0|'
 } > "$STAGING/R.txt"
 # Rules for an app that shrinks its code: native code finds kiln's Java by name, and the androidx
 # interfaces kiln's embedded-View holder implements are the app's to bring.

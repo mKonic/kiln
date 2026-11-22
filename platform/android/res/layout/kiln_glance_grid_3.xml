@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- kiln::glance (KilnGlance.java): LazyVerticalGrid number 3 of a widget (glance-appwidget layout/glance_vertical_grid_*.xml; its column count set at runtime); each grid has its own id, as its adapter is set on the root. -->
+<GridView xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/kiln_glance_grid_3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:divider="@null" android:numColumns="auto_fit" android:listSelector="@android:color/transparent" />

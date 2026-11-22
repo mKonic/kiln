@@ -26,6 +26,7 @@
 #include "kiln/datastore/Preferences.h"
 #include "kiln/runtime/Flow.h"
 #include "kiln/runtime/Task.h"
+#include "kiln/ui/ActivityIntent.h"
 #include "kiln/ui/Credentials.h"
 #include "kiln/ui/Geometry.h"
 #include <kiln/Function.h>
@@ -42,6 +43,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -468,19 +470,142 @@ namespace kiln::glance {
                 std::optional<TextStyle> style = std::nullopt, std::optional<ButtonColors> colors = std::nullopt, int maxLines = INT_MAX,
                 std::string key = {});
     void Spacer(GlanceModifier modifier = {});
-    // progress < 0: indeterminate.
-    void LinearProgressIndicator(float progress, GlanceModifier modifier = {}, ColorProvider color = {}, ColorProvider backgroundColor = {});
-    void CircularProgressIndicator(GlanceModifier modifier = {}, ColorProvider color = {});
-    // onCheckedChange's parameters carry the new state as ToggleableStateKey.
-    void CheckBox(bool checked, Action onCheckedChange, std::string text = {}, GlanceModifier modifier = {}, ColorProvider textColor = {});
-    void Switch(bool checked, Action onCheckedChange, std::string text = {}, GlanceModifier modifier = {}, ColorProvider textColor = {});
-    // A scrolling list; each item (one element, its id stable across updates) is added with Item.
+    // ProgressIndicatorDefaults
+    struct ProgressIndicatorDefaults {
+        static ColorProvider IndicatorColorProvider() { return ColorProvider(0xFF6200EEu); }
+        static ColorProvider BackgroundColorProvider() { return ColorProvider(0x3D6200EEu); }   // the indicator's at 0.24 alpha
+    };
+    void LinearProgressIndicator(float progress, GlanceModifier modifier = {}, ColorProvider color = ProgressIndicatorDefaults::IndicatorColorProvider(),
+                                 ColorProvider backgroundColor = ProgressIndicatorDefaults::BackgroundColorProvider());
+    // Indeterminate.
+    void LinearProgressIndicator(GlanceModifier modifier = {}, ColorProvider color = ProgressIndicatorDefaults::IndicatorColorProvider(),
+                                 ColorProvider backgroundColor = ProgressIndicatorDefaults::BackgroundColorProvider());
+    void CircularProgressIndicator(GlanceModifier modifier = {}, ColorProvider color = ProgressIndicatorDefaults::IndicatorColorProvider());
+
+    // A toggle's colours, checked and unchecked (CheckedUncheckedColorProvider), or a colour
+    // state list resource (ResourceCheckableColorProvider): the theme's default.
+    struct CheckableColors {
+        std::string resource;
+        ColorProvider checked, unchecked;
+        bool operator==(const CheckableColors&) const = default;
+    };
+    struct CheckBoxColors {
+        CheckableColors checkBox;
+        bool operator==(const CheckBoxColors&) const = default;
+    };
+    struct SwitchColors {
+        CheckableColors thumb, track;
+        bool operator==(const SwitchColors&) const = default;
+    };
+    struct RadioButtonColors {
+        CheckableColors radio;
+        bool operator==(const RadioButtonColors&) const = default;
+    };
+    // The colours of resources throw std::invalid_argument, as Glance's do.
+    struct CheckboxDefaults {
+        static CheckBoxColors colors(ColorProvider checkedColor, ColorProvider uncheckedColor);
+        static CheckBoxColors colors();
+    };
+    struct SwitchDefaults {
+        static SwitchColors colors(ColorProvider checkedThumbColor, ColorProvider uncheckedThumbColor, ColorProvider checkedTrackColor,
+                                   ColorProvider uncheckedTrackColor);
+        static SwitchColors colors();
+    };
+    struct RadioButtonDefaults {
+        static RadioButtonColors colors(ColorProvider checkedColor, ColorProvider uncheckedColor);
+        static RadioButtonColors colors();
+    };
+
+    // onCheckedChange's parameters carry the new state as ToggleableStateKey. Style none: the
+    // platform's text style.
+    void CheckBox(bool checked, Action onCheckedChange, GlanceModifier modifier = {}, std::string text = {}, std::optional<TextStyle> style = std::nullopt,
+                  std::optional<CheckBoxColors> colors = std::nullopt, int maxLines = INT_MAX);
+    void CheckBox(bool checked, kiln::Function<void()> onCheckedChange, GlanceModifier modifier = {}, std::string text = {},
+                  std::optional<TextStyle> style = std::nullopt, std::optional<CheckBoxColors> colors = std::nullopt, int maxLines = INT_MAX,
+                  std::string key = {});
+    void Switch(bool checked, Action onCheckedChange, GlanceModifier modifier = {}, std::string text = {}, std::optional<TextStyle> style = std::nullopt,
+                std::optional<SwitchColors> colors = std::nullopt, int maxLines = INT_MAX);
+    void Switch(bool checked, kiln::Function<void()> onCheckedChange, GlanceModifier modifier = {}, std::string text = {},
+                std::optional<TextStyle> style = std::nullopt, std::optional<SwitchColors> colors = std::nullopt, int maxLines = INT_MAX,
+                std::string key = {});
+    // A radio button's tap is onClick (no new state); put the buttons of a group in a Row or Column
+    // with SelectableGroup.
+    void RadioButton(bool checked, Action onClick, GlanceModifier modifier = {}, bool enabled = true, std::string text = {},
+                     std::optional<TextStyle> style = std::nullopt, std::optional<RadioButtonColors> colors = std::nullopt, int maxLines = INT_MAX);
+    void RadioButton(bool checked, kiln::Function<void()> onClick, GlanceModifier modifier = {}, bool enabled = true, std::string text = {},
+                     std::optional<TextStyle> style = std::nullopt, std::optional<RadioButtonColors> colors = std::nullopt, int maxLines = INT_MAX,
+                     std::string key = {});
+    // selectableGroup: the Row's or Column's radio buttons are one group (accessibility services
+    // read them as one).
+    GlanceModifier SelectableGroup(GlanceModifier m);
+    // appWidgetBackground: this element is the widget's background (android:id/background), which
+    // the launcher clips to its corner radius and uses in its transitions. At most one per widget.
+    GlanceModifier AppWidgetBackground(GlanceModifier m);
+
+    // --- lazy lists and grids ------------------------------------------------------------------
+
+    // An item without an id of its own gets one from Glance's reserved range; ids at or below
+    // ReservedItemIdRangeEnd are refused (std::invalid_argument).
+    inline constexpr std::int64_t UnspecifiedItemId = INT64_MIN;
+    inline constexpr std::int64_t ReservedItemIdRangeEnd = -0x4000000000000000LL;
     class LazyListScope {
     public:
-        void Item(std::int64_t id, kiln::Function<void()> content);
-        void Items(int count, kiln::Function<std::int64_t(int)> id, kiln::Function<void(int)> content);
+        void Item(std::int64_t itemId, kiln::Function<void()> content);
+        void Item(kiln::Function<void()> content) { Item(UnspecifiedItemId, std::move(content)); }
+        void Items(int count, kiln::Function<std::int64_t(int)> itemId, kiln::Function<void(int)> itemContent);
+        void Items(int count, kiln::Function<void(int)> itemContent) { Items(count, {}, std::move(itemContent)); }
+        // items(list) / itemsIndexed(list)
+        template<typename T> void Items(const std::vector<T>& items, kiln::Function<std::int64_t(const std::type_identity_t<T>&)> itemId,
+                                        kiln::Function<void(const std::type_identity_t<T>&)> itemContent) {
+            Items(int(items.size()), itemId ? kiln::Function<std::int64_t(int)>([&items, itemId](int i) { return itemId(items[std::size_t(i)]); })
+                                            : kiln::Function<std::int64_t(int)>{},
+                  [&items, itemContent](int i) { itemContent(items[std::size_t(i)]); });
+        }
+        template<typename T> void ItemsIndexed(const std::vector<T>& items, kiln::Function<std::int64_t(int, const std::type_identity_t<T>&)> itemId,
+                                               kiln::Function<void(int, const std::type_identity_t<T>&)> itemContent) {
+            Items(int(items.size()), itemId ? kiln::Function<std::int64_t(int)>([&items, itemId](int i) { return itemId(i, items[std::size_t(i)]); })
+                                            : kiln::Function<std::int64_t(int)>{},
+                  [&items, itemContent](int i) { itemContent(i, items[std::size_t(i)]); });
+        }
     };
-    void LazyColumn(GlanceModifier modifier, kiln::Function<void(LazyListScope&)> content);
+    using LazyVerticalGridScope = LazyListScope;
+    // VerticalScrollMode: SnapScrollMatchHeight snaps to items only with RemoteCompose; with
+    // RemoteViews it scrolls as Normal, as in Glance.
+    struct VerticalScrollMode {
+        enum class Kind { Normal, SnapScrollMatchHeight };
+        Kind kind = Kind::Normal;
+        float initialChildHeight = 0;   // dp
+        static VerticalScrollMode Normal() { return {}; }
+        static VerticalScrollMode SnapScrollMatchHeight(float initialChildHeightDp) { return { Kind::SnapScrollMatchHeight, initialChildHeightDp }; }
+        bool operator==(const VerticalScrollMode&) const = default;
+    };
+    // The options of the activities an item's tap starts (LazyColumn(activityOptions)).
+    struct LazyOptions {
+        VerticalScrollMode verticalScrollMode;
+        std::optional<ui::ActivityOptions> activityOptions;
+    };
+    void LazyColumn(GlanceModifier modifier, HorizontalAlignment horizontalAlignment, kiln::Function<void(LazyListScope&)> content, LazyOptions options = {});
+    inline void LazyColumn(GlanceModifier modifier, kiln::Function<void(LazyListScope&)> content) {
+        LazyColumn(std::move(modifier), HorizontalAlignment::Start, std::move(content));
+    }
+    // GridCells: a fixed count of columns (1 to 5), or as many as fit at a minimum width.
+    struct GridCells {
+        int count = 0;
+        float minSize = 0;   // dp, Adaptive
+        static GridCells Fixed(int count) { return { count, 0 }; }
+        static GridCells Adaptive(float minSizeDp) { return { 0, minSizeDp }; }
+        bool operator==(const GridCells&) const = default;
+    };
+    void LazyVerticalGrid(GridCells gridCells, GlanceModifier modifier, HorizontalAlignment horizontalAlignment, kiln::Function<void(LazyVerticalGridScope&)> content,
+                          std::optional<ui::ActivityOptions> activityOptions = std::nullopt);
+    inline void LazyVerticalGrid(GridCells gridCells, GlanceModifier modifier, kiln::Function<void(LazyVerticalGridScope&)> content) {
+        LazyVerticalGrid(gridCells, std::move(modifier), HorizontalAlignment::Start, std::move(content));
+    }
+
+    // AndroidRemoteViews: an app layout by name, its view `containerViewId` (an id by name)
+    // holding the content's elements; without content, the layout as it is.
+    void AndroidRemoteViews(std::string layout, std::string containerViewId, GlanceModifier modifier = {}, kiln::Function<void()> content = {});
+    inline void AndroidRemoteViews(std::string layout, GlanceModifier modifier = {}) { AndroidRemoteViews(std::move(layout), {}, std::move(modifier)); }
 
     // --- widgets ------------------------------------------------------------------------------
 
@@ -593,6 +718,12 @@ namespace kiln::glance {
         // logged). onCompositionError replaces showing it.
         std::string errorUiLayout = "kiln_glance_error";
         kiln::Function<void(const WidgetContext&, std::exception_ptr)> onCompositionError;
+        // providePreview: the content of the widget picker's generated preview (API 35) for a
+        // widget category, drawn at previewSizeMode's sizes (Single: the provider's minimum;
+        // Responsive: previewSizes). Taps are left out of previews.
+        kiln::Function<rt::Task<kiln::Function<void(const WidgetContext&)>>(int widgetCategory)> providePreview;
+        SizeMode previewSizeMode = SizeMode::Single;
+        std::vector<ui::Size> previewSizes;   // dp
     };
     // provideContent: the content provideGlance provides.
     inline kiln::Function<void(const WidgetContext&)> ProvideContent(kiln::Function<void(const WidgetContext&)> content) { return content; }
@@ -638,6 +769,9 @@ namespace kiln::glance {
     // The ids of its placed instances (GlanceAppWidgetManager.getGlanceIds).
     std::vector<int> AppWidgetIds(const std::string& widget);
     inline std::vector<GlanceId> GetGlanceIds(const std::string& widget) { return AppWidgetIds(widget); }
+    // getGlanceIdBy / getAppWidgetId: a GlanceId is its app widget id.
+    inline GlanceId GetGlanceIdBy(int appWidgetId) { return appWidgetId; }
+    inline int GetAppWidgetId(GlanceId id) { return id; }
     // getAppWidgetSizes: the sizes the launcher shows an instance at (dp).
     std::vector<ui::Size> GetAppWidgetSizes(GlanceId id);
     // requestPinGlanceAppWidget: asks the launcher to place one (false: it cannot), showing a
@@ -667,6 +801,16 @@ namespace kiln::glance {
         bool found = true;
     };
     rt::Task<Drawing> Draw(std::string widget, WidgetContext context, std::vector<ui::Size> sizes);
+    // AppWidgetProviderInfo's widget categories.
+    inline constexpr int WIDGET_CATEGORY_HOME_SCREEN = 1, WIDGET_CATEGORY_KEYGUARD = 2, WIDGET_CATEGORY_SEARCHBOX = 4;
+    // setWidgetPreviews: the generated previews for each category (API 35; one category may
+    // combine several). SET_WIDGET_PREVIEWS_RESULT_RATE_LIMITED when the system refused one.
+    inline constexpr int SET_WIDGET_PREVIEWS_RESULT_SUCCESS = 0, SET_WIDGET_PREVIEWS_RESULT_RATE_LIMITED = 1;
+    rt::Task<int> SetWidgetPreviews(std::string widget, std::vector<int> widgetCategories = { WIDGET_CATEGORY_HOME_SCREEN | WIDGET_CATEGORY_KEYGUARD | WIDGET_CATEGORY_SEARCHBOX });
+    // composeForPreview: a preview's drawing for each preview size (`minimum`: the provider's
+    // minimum size, for Single).
+    rt::Task<Drawing> ComposeForPreview(std::string widget, int widgetCategory, ui::Size minimum = {});
+
     const GlanceAppWidget* FindWidget(const std::string& name);
     // Runs a callback (true when it exists); the host redraws the widget after it.
     rt::Task<bool> RunActionCallback(std::string key, ActionContext context);
@@ -686,6 +830,10 @@ namespace kiln::glance {
         kiln::Function<std::vector<ui::Size>(int)> appWidgetSizes;
         // The widget's name, a drawing for the pin dialog (empty: none), the deep link to open once placed.
         kiln::Function<bool(const std::string&, const std::vector<std::uint8_t>&, const std::string&)> requestPin;
+        // The provider's minimum size (dp), and setWidgetPreview for a category with a drawing
+        // per size (false: rate-limited).
+        kiln::Function<ui::Size(const std::string&)> minimumSize;
+        kiln::Function<bool(const std::string&, int, const std::vector<ui::Size>&, const std::vector<std::vector<std::uint8_t>>&)> setWidgetPreview;
     };
     void SetGlanceHost(GlanceHost host);
 

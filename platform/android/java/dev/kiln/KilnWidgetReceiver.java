@@ -115,12 +115,6 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
             ensureLoaded(context);
             String name = widgetName(context);
             int id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 0);
-            Intent forward = forwardedIntent(intent);
-            if (forward != null) {
-                // From a list item (the list's template is a broadcast to this receiver).
-                forward(context, forward, intent.getIntExtra(KilnGlance.EXTRA_FORWARD_KIND, 0));
-                return;
-            }
             Bundle params = intent.getBundleExtra(KilnGlance.EXTRA_PARAMS);
             if (params == null) params = new Bundle();
             // A toggle's new state (ActionCallbackBroadcastReceiver: ToggleableStateKey).
@@ -134,8 +128,9 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
                     }, "callback in " + name));
             return;
         }
-        if (Intent.ACTION_LOCALE_CHANGED.equals(intent.getAction())) {
-            // Redrawn in the new language, as GlanceAppWidgetReceiver does.
+        if (Intent.ACTION_LOCALE_CHANGED.equals(intent.getAction()) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) {
+            // Redrawn in the new language, as GlanceAppWidgetReceiver does, and after an update of
+            // the app (MyPackageReplacedReceiver), whose layouts may have changed.
             ensureLoaded(context);
             Pending p = new Pending(goAsync(), 1);
             drawAll(context, widgetName(context), p::done);
@@ -153,24 +148,6 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
                 then.run();
             }
         };
-    }
-
-    @SuppressWarnings("deprecation")
-    private static Intent forwardedIntent(Intent intent) {
-        if (!intent.hasExtra(KilnGlance.EXTRA_FORWARD)) return null;
-        if (Build.VERSION.SDK_INT >= 33) return intent.getParcelableExtra(KilnGlance.EXTRA_FORWARD, Intent.class);
-        return intent.getParcelableExtra(KilnGlance.EXTRA_FORWARD);
-    }
-
-    /** What a list item's tap does besides callbacks: Glance's ActionTrampolineActivity's work. */
-    private static void forward(Context context, Intent target, int kind) {
-        switch (kind) {
-            case KilnGlance.FORWARD_ACTIVITY: context.startActivity(target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); break;
-            case KilnGlance.FORWARD_BROADCAST: context.sendBroadcast(target); break;
-            case KilnGlance.FORWARD_SERVICE: context.startService(target); break;
-            case KilnGlance.FORWARD_FOREGROUND_SERVICE: context.startForegroundService(target); break;
-            default: break;
-        }
     }
 
     /** The launcher's sizes for an instance (dp), or estimates. */
@@ -396,4 +373,35 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
         }
         return manager.requestPinAppWidget(r.get(0), extras, success);
     }
+
+    /** The provider's minimum size in dp (its resize minimum when it resizes), as width, height. */
+    static float[] minimumSize(String name) {
+        Context c = appContext;
+        if (c == null) return new float[] { 0, 0 };
+        AppWidgetManager manager = AppWidgetManager.getInstance(c);
+        List<ComponentName> r = receivers(c, name);
+        for (AppWidgetProviderInfo info : manager.getInstalledProvidersForPackage(c.getPackageName(), null)) {
+            if (r.isEmpty() || !info.provider.equals(r.get(0))) continue;
+            float density = c.getResources().getDisplayMetrics().density;
+            int w = info.minWidth, h = info.minHeight;
+            if ((info.resizeMode & AppWidgetProviderInfo.RESIZE_HORIZONTAL) != 0) w = Math.min(w, info.minResizeWidth);
+            if ((info.resizeMode & AppWidgetProviderInfo.RESIZE_VERTICAL) != 0) h = Math.min(h, info.minResizeHeight);
+            return new float[] { w / density, h / density };
+        }
+        return new float[] { 0, 0 };
+    }
+
+    /** setWidgetPreview (API 35): the generated preview for a category; false when rate-limited. */
+    static boolean setWidgetPreview(String name, int category, float[] sizes, byte[][] contents) {
+        Context c = appContext;
+        if (c == null) return false;
+        List<ComponentName> r = receivers(c, name);
+        if (r.isEmpty()) return false;
+        if (Build.VERSION.SDK_INT < 35) {
+            Log.w("kiln", "widget: generated previews need API 35");
+            return false;
+        }
+        return AppWidgetManager.getInstance(c).setWidgetPreview(r.get(0), category, views(c, r.get(0), 0, sizes, contents));
+    }
+
 }

@@ -14,7 +14,7 @@ namespace kiln::android {
 
     namespace {
         jvm::Global<jclass> g_Receiver;
-        jmethodID g_UpdateAll = nullptr, g_Update = nullptr, g_Ids = nullptr, g_Sizes = nullptr, g_RequestPin = nullptr;
+        jmethodID g_UpdateAll = nullptr, g_Update = nullptr, g_Ids = nullptr, g_Sizes = nullptr, g_RequestPin = nullptr, g_MinimumSize = nullptr, g_SetPreview = nullptr;
 
         using Result = std::optional<std::vector<std::uint8_t>>;
 
@@ -123,6 +123,8 @@ namespace kiln::android {
             g_Ids = jvm::detail::StaticMethod(env, c, "appWidgetIds", "(Ljava/lang/String;)[I");
             g_Sizes = jvm::detail::StaticMethod(env, c, "appWidgetSizes", "(I)[F");
             g_RequestPin = jvm::detail::StaticMethod(env, c, "requestPin", "(Ljava/lang/String;[BLjava/lang/String;)Z");
+            g_MinimumSize = jvm::detail::StaticMethod(env, c, "minimumSize", "(Ljava/lang/String;)[F");
+            g_SetPreview = jvm::detail::StaticMethod(env, c, "setWidgetPreview", "(Ljava/lang/String;I[F[[B)Z");
         } catch (const std::exception& e) {
             __android_log_print(ANDROID_LOG_ERROR, "kiln", "widget: no host: %s", e.what());
             return;
@@ -166,6 +168,30 @@ namespace kiln::android {
             jvm::Local<jbyteArray> p = jvm::ToJava(env, std::span<const std::uint8_t>(preview));
             jvm::Local<jstring> l = jvm::ToJava(env, link);
             jboolean ok = env->CallStaticBooleanMethod(g_Receiver.get(), g_RequestPin, n.get(), p.get(), l.get());
+            return Check(env) && ok == JNI_TRUE;
+        };
+        h.minimumSize = [](const std::string& name) {
+            JNIEnv* env = jvm::Env();
+            jvm::Local<jstring> n = jvm::ToJava(env, name);
+            jvm::Local<jfloatArray> a(static_cast<jfloatArray>(env->CallStaticObjectMethod(g_Receiver.get(), g_MinimumSize, n.get())), env);
+            float v[2] = { 0, 0 };
+            if (Check(env) && a && env->GetArrayLength(a.get()) == 2) env->GetFloatArrayRegion(a.get(), 0, 2, v);
+            return ui::Size{ v[0], v[1] };
+        };
+        h.setWidgetPreview = [](const std::string& name, int category, const std::vector<ui::Size>& sizes, const std::vector<std::vector<std::uint8_t>>& contents) {
+            JNIEnv* env = jvm::Env();
+            jvm::Local<jstring> n = jvm::ToJava(env, name);
+            std::vector<float> flat;
+            for (const ui::Size& s : sizes) { flat.push_back(s.width); flat.push_back(s.height); }
+            jvm::Local<jfloatArray> sz(env->NewFloatArray(jsize(flat.size())), env);
+            if (!flat.empty()) env->SetFloatArrayRegion(sz.get(), 0, jsize(flat.size()), flat.data());
+            jvm::Local<jclass> bytesClass(env->FindClass("[B"), env);
+            jvm::Local<jobjectArray> arr(env->NewObjectArray(jsize(contents.size()), bytesClass.get(), nullptr), env);
+            for (std::size_t i = 0; i < contents.size(); ++i) {
+                jvm::Local<jbyteArray> b = jvm::ToJava(env, std::span<const std::uint8_t>(contents[i]));
+                env->SetObjectArrayElement(arr.get(), jsize(i), b.get());
+            }
+            jboolean ok = env->CallStaticBooleanMethod(g_Receiver.get(), g_SetPreview, n.get(), jint(category), sz.get(), arr.get());
             return Check(env) && ok == JNI_TRUE;
         };
         glance::SetGlanceHost(std::move(h));

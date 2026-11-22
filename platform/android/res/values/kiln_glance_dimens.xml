@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- kiln::glance: the M3 components' corners (glance-appwidget values/glance_component_dimens.xml) and the switch thumb's normal colours (values/colors.xml). -->
+<resources>
+    <dimen name="kiln_glance_component_button_corners">24dp</dimen>
+    <dimen name="kiln_glance_component_square_icon_button_corners">16dp</dimen>
+    <dimen name="kiln_glance_component_circle_icon_button_corners">9999dp</dimen>
+    <color name="kiln_glance_switch_thumb_normal_material_dark">#ffbdbdbd</color>
+    <color name="kiln_glance_switch_thumb_normal_material_light">#fff1f1f1</color>
+</resources>
