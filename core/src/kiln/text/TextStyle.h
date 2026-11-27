@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -33,9 +34,28 @@ namespace kiln::text {
         static constexpr TextUnit Unspecified() { return {}; }
         TextUnit TakeOrElse(TextUnit fallback) const { return IsSpecified() ? *this : fallback; }
         bool operator==(const TextUnit& o) const { return type == o.type && (type == Type::Unspecified || value == o.value); }
+        // Arithmetic keeps the unit; Compose throws on an unspecified operand (checkArithmetic),
+        // and comparing sp with em.
+        TextUnit operator-() const { Check(); return { -value, type }; }
+        TextUnit operator*(float f) const { Check(); return { value * f, type }; }
+        TextUnit operator/(float f) const { Check(); return { value / f, type }; }
+        std::partial_ordering operator<=>(const TextUnit& o) const {
+            Check();
+            o.Check();
+            if (type != o.type) throw std::invalid_argument("Cannot perform operation for Sp and Em");
+            return value <=> o.value;
+        }
+
+    private:
+        void Check() const {
+            if (type == Type::Unspecified) throw std::invalid_argument("Cannot perform operation for Unspecified type.");
+        }
     };
     constexpr TextUnit Sp(float v) { return { v, TextUnit::Type::Sp }; }
     constexpr TextUnit Em(float v) { return { v, TextUnit::Type::Em }; }
+    // Density.toSp / FontScaling.toSp: a dp or px length as sp, through the font scale.
+    inline TextUnit ToSp(const ui::Density& d, ui::Dp dp) { return Sp(d.DpToSp(dp)); }
+    inline TextUnit ToSp(const ui::Density& d, float px) { return Sp(d.DpToSp(d.ToDp(px))); }
     constexpr TextUnit operator""_sp(long double v) { return Sp(float(v)); }
     constexpr TextUnit operator""_sp(unsigned long long v) { return Sp(float(v)); }
     constexpr TextUnit operator""_em(long double v) { return Em(float(v)); }

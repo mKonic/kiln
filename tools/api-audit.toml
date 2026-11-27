@@ -61,6 +61,16 @@ modules = [
 ]
 
 [renamed]
+# ui-unit / ui-geometry: Velocity and CornerRadius are Offsets; RoundRect's radii are Offsets
+# named by corner; Density.toSp is text::ToSp (TextUnit lives in text).
+Velocity = "Offset"
+CornerRadius = "Offset"
+"RoundRect.topLeftCornerRadius" = "topLeft"
+"RoundRect.topRightCornerRadius" = "topRight"
+"RoundRect.bottomRightCornerRadius" = "bottomRight"
+"RoundRect.bottomLeftCornerRadius" = "bottomLeft"
+"Density.toSp" = "ToSp"
+"FontScaling.toSp" = "ToSp"
 # biometric: BiometricManager.Strings and the content views are plain structs.
 "Strings.getButtonLabel" = "buttonLabel"
 "Strings.getPromptMessage" = "promptMessage"
@@ -615,6 +625,7 @@ ResourceFont = "Font"
 toFontFamily = "FontFamily Of"
 
 [skipped]
+"CornerRadius.isCircular" = "corner radii are Offsets in kiln: circular is x == y"
 AuthenticationUtils = "Kotlin's file facade for registerForAuthenticationResult, a free function in kiln"
 "CryptoObject.getPresentationSession" = "android.security.identity (IdentityCredential, PresentationSession) is deprecated by the platform; kiln's CryptoObjects are Keystore operations"
 "CryptoObject.getIdentityCredential" = "see CryptoObject.getPresentationSession"
@@ -1043,6 +1054,7 @@ CustomTabsSessionToken = "the browser's view of a session (CustomTabsService); a
 "CustomTabsIntent.isSendToExternalDefaultHandlerEnabled" = "see getActivityResizeBehavior"
 
 [skipped_patterns]
+'\.packedValue$' = "Kotlin value classes' packed Long: kiln's are plain structs"
 '^(Storage|FileStorage|StorageConnection|ReadScope|WriteScope|InterProcessCoordinator|MultiProcessDataStoreFactory|createSingleProcessCoordinator|createMultiProcessCoordinator|writeData|readData)(\..*)?$' = "pluggable storage and multi-process coordination: kiln's DataStore is one process, one file (FileStorage's behaviour built in)"
 '^WindowInfoTracker\.(registerWindowEngagementInfoListener|unregisterWindowEngagementInfoListener|windowEngagementInfo)$' = "window engagement (XR / connected displays): not on phones"
 '^component\d+$' = "Kotlin destructuring (componentN): C++ reads the fields"

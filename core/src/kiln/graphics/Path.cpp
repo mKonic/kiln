@@ -621,4 +621,33 @@ namespace kiln::gfx {
         return path.fillType == FillType::EvenOdd ? (winding & 1) != 0 : winding != 0;
     }
 
+    bool RoundRect::Contains(Offset p) const {
+        const Rect& r = rect;
+        if (p.x < r.left || p.x >= r.right || p.y < r.top || p.y >= r.bottom) return false;
+        float scale = 1;
+        auto minRadius = [&](float a, float b, float limit) {
+            const float sum = a + b;
+            if (sum > limit && sum != 0) scale = std::min(scale, limit / sum);
+        };
+        minRadius(bottomLeft.y, topLeft.y, Height());
+        minRadius(topLeft.x, topRight.x, Width());
+        minRadius(topRight.y, bottomRight.y, Height());
+        minRadius(bottomRight.x, bottomLeft.x, Width());
+        const Offset tl = topLeft * scale, tr = topRight * scale, br = bottomRight * scale, bl = bottomLeft * scale;
+        float x, y, rx, ry;
+        if (p.x < r.left + tl.x && p.y < r.top + tl.y) {
+            x = p.x - r.left - tl.x; y = p.y - r.top - tl.y; rx = tl.x; ry = tl.y;
+        } else if (p.x > r.right - tr.x && p.y < r.top + tr.y) {
+            x = p.x - r.right + tr.x; y = p.y - r.top - tr.y; rx = tr.x; ry = tr.y;
+        } else if (p.x > r.right - br.x && p.y > r.bottom - br.y) {
+            x = p.x - r.right + br.x; y = p.y - r.bottom + br.y; rx = br.x; ry = br.y;
+        } else if (p.x < r.left + bl.x && p.y > r.bottom - bl.y) {
+            x = p.x - r.left - bl.x; y = p.y - r.bottom + bl.y; rx = bl.x; ry = bl.y;
+        } else {
+            return true;
+        }
+        const float nx = x / rx, ny = y / ry;
+        return nx * nx + ny * ny <= 1;
+    }
+
 }

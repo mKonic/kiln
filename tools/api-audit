@@ -106,6 +106,44 @@ def member_known(member, ids):
     return False
 
 
+# Kotlin operator functions and the C++ operator each is.
+OPERATORS = {"plus": "+", "minus": "-", "times": "*", "div": "/", "rem": "%", "unaryMinus": "-",
+             "unaryPlus": "+", "not": "!", "inc": "++", "dec": "--", "compareTo": "<=>", "get": "[]"}
+
+
+def struct_bodies(text, name):
+    """The bodies of struct / class name in text (brace-matched)."""
+    for m in re.finditer(r"\b(?:class|struct)\s+(?:KILN_API\s+)?" + re.escape(name) + r"\b[^;{]*\{", text):
+        depth, i = 1, m.end()
+        while i < len(text) and depth:
+            depth += {"{": 1, "}": -1}.get(text[i], 0)
+            i += 1
+        yield text[m.end():i]
+
+
+def operator_known(name, member, headers):
+    """Whether type name has the C++ operator for Kotlin operator member: in its own body, or
+    a free operator whose first parameter is the type (or, for times / div, a scalar times it)."""
+    op = OPERATORS[member]
+    unary = member in ("unaryMinus", "unaryPlus", "not")
+    sym = re.escape(op)
+    if unary:
+        inner = re.compile(r"operator\s*" + sym + r"\s*\(\s*\)")
+        free = re.compile(r"operator\s*" + sym + r"\s*\(\s*(?:const\s+)?" + re.escape(name) + r"\b[^,)]*\)")
+    else:
+        inner = re.compile(r"operator\s*" + sym + r"\s*\(\s*[^)\s]")
+        free = re.compile(r"operator\s*" + sym + r"\s*\([^)]*\b" + re.escape(name) + r"\b[^)]*,|operator\s*"
+                          + sym + r"\s*\([^,)]*,[^)]*\b" + re.escape(name) + r"\b")
+    if op == "<=>":
+        inner = re.compile(r"operator\s*(?:<=>|<)\s*\(")
+    for text, _ in headers.values():
+        if any(inner.search(b) for b in struct_bodies(text, name)):
+            return True
+        if free.search(text):
+            return True
+    return False
+
+
 def api_names(path, class_filter=None):
     """Yields (group, name): group is the Kotlin file (FooKt) for top-level members, else the class."""
     cls = None          # current class name
@@ -224,7 +262,12 @@ def main():
                     if not all(w.lower() in ids for w in re.findall(r"[A-Za-z_]\w*", renamed[key])):
                         stale.append(f"{short}.{member} -> {renamed[key]}")
                     continue
-                if not member_known(member, cids):
+                if member in OPERATORS and cids is not ids:
+                    if operator_known(kiln_name, member, headers):
+                        continue
+                elif member_known(member, cids):
+                    continue
+                if True:
                     missing.setdefault(cls.split(".")[0] + " (members)", []).append(f"{short}.{member}")
         n = sum(len(v) for v in missing.values())
         total += n

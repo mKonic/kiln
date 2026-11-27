@@ -32,10 +32,18 @@ namespace kiln::ui {
     };
     struct DpSize {
         Dp width, height;
+        constexpr DpSize operator+(DpSize o) const { return { width + o.width, height + o.height }; }
+        constexpr DpSize operator-(DpSize o) const { return { width - o.width, height - o.height }; }
+        constexpr DpSize operator*(float f) const { return { width * f, height * f }; }
+        constexpr DpSize operator/(float f) const { return { width / f, height / f }; }
         bool operator==(const DpSize&) const = default;
+        static constexpr DpSize Unspecified() { return { Dp::Unspecified(), Dp::Unspecified() }; }
+        constexpr bool Specified() const { return width.Specified() && height.Specified(); }
     };
     struct DpOffset {
         Dp x, y;
+        constexpr DpOffset operator+(DpOffset o) const { return { x + o.x, y + o.y }; }
+        constexpr DpOffset operator-(DpOffset o) const { return { x - o.x, y - o.y }; }
         bool operator==(const DpOffset&) const = default;
     };
     struct DpRect {
@@ -64,6 +72,12 @@ namespace kiln::ui {
             return RoundJava(px);
         }
         Dp ToDp(float px) const { return Dp(px / density); }
+        // FontScaling.toSp: dp -> sp through the font scale's converter (TextUnit: text::ToSp).
+        float DpToSp(Dp d) const;
+        // Size <-> DpSize (unspecified stays unspecified) and DpRect -> Rect.
+        struct Size ToSize(DpSize s) const;
+        DpSize ToDpSize(struct Size s) const;
+        struct Rect ToRect(const DpRect& r) const;
         // sp -> px through the platform's nonlinear font scaling (FontScaleConverterFactory:
         // above 1.03 large sizes grow less than small ones), and back.
         float SpToPx(float sp) const;
@@ -77,18 +91,33 @@ namespace kiln::ui {
 
     struct IntSize {
         int width = 0, height = 0;
+        constexpr IntSize operator*(int f) const { return { width * f, height * f }; }
+        constexpr IntSize operator/(int f) const { return { width / f, height / f }; }
         bool operator==(const IntSize&) const = default;
     };
     struct IntOffset {
         int x = 0, y = 0;
         IntOffset operator+(IntOffset o) const { return { x + o.x, y + o.y }; }
         IntOffset operator-(IntOffset o) const { return { x - o.x, y - o.y }; }
+        IntOffset operator-() const { return { -x, -y }; }
+        // times / div round half up (fastRoundToInt), rem keeps the sign of the value.
+        IntOffset operator*(float f) const { return { RoundJava(float(x) * f), RoundJava(float(y) * f) }; }
+        IntOffset operator/(float f) const { return { RoundJava(float(x) / f), RoundJava(float(y) / f) }; }
+        IntOffset operator%(int m) const { return { x % m, y % m }; }
         bool operator==(const IntOffset&) const = default;
     };
     struct Offset {
         float x = 0, y = 0;
         Offset operator+(Offset o) const { return { x + o.x, y + o.y }; }
         Offset operator-(Offset o) const { return { x - o.x, y - o.y }; }
+        Offset operator-() const { return { -x, -y }; }
+        Offset operator*(float f) const { return { x * f, y * f }; }
+        Offset operator/(float f) const { return { x / f, y / f }; }
+        Offset operator%(float f) const { return { std::fmod(x, f), std::fmod(y, f) }; }
+        float GetDistance() const { return std::sqrt(x * x + y * y); }
+        float GetDistanceSquared() const { return x * x + y * y; }
+        // isValid: neither coordinate is NaN (infinities are valid).
+        bool IsValid() const { return !std::isnan(x) && !std::isnan(y); }
         bool operator==(const Offset&) const = default;
         static constexpr Offset Unspecified() { return { NAN, NAN }; }
         bool Specified() const { return !std::isnan(x) && !std::isnan(y); }
@@ -96,7 +125,10 @@ namespace kiln::ui {
     };
     struct Size {
         float width = 0, height = 0;
-        float MinDimension() const { return std::min(width, height); }
+        float MinDimension() const { return std::min(std::fabs(width), std::fabs(height)); }
+        float MaxDimension() const { return std::max(std::fabs(width), std::fabs(height)); }
+        Size operator*(float f) const { return { width * f, height * f }; }
+        Size operator/(float f) const { return { width / f, height / f }; }
         bool operator==(const Size&) const = default;
         static constexpr Size Unspecified() { return { NAN, NAN }; }
         bool Specified() const { return !std::isnan(width) && !std::isnan(height); }
@@ -109,6 +141,13 @@ namespace kiln::ui {
         IntSize GetSize() const { return { Width(), Height() }; }
         bool operator==(const IntRect&) const = default;
         bool Empty() const { return right <= left || bottom <= top; }
+        IntRect Inflate(int d) const { return { left - d, top - d, right + d, bottom + d }; }
+        IntRect Deflate(int d) const { return Inflate(-d); }
+        bool Overlaps(const IntRect& o) const {
+            return !(right <= o.left || o.right <= left) && !(bottom <= o.top || o.bottom <= top);
+        }
+        int MinDimension() const { return std::min(std::abs(Width()), std::abs(Height())); }
+        int MaxDimension() const { return std::max(std::abs(Width()), std::abs(Height())); }
     };
     struct Rect {
         float left = 0, top = 0, right = 0, bottom = 0;
@@ -121,6 +160,14 @@ namespace kiln::ui {
             return { std::max(left, o.left), std::max(top, o.top), std::min(right, o.right), std::min(bottom, o.bottom) };
         }
         bool Empty() const { return right <= left || bottom <= top; }
+        Rect Inflate(float d) const { return { left - d, top - d, right + d, bottom + d }; }
+        Rect Deflate(float d) const { return Inflate(-d); }
+        bool Overlaps(const Rect& o) const { return left < o.right && o.left < right && top < o.bottom && o.top < bottom; }
+        float MinDimension() const { return std::min(std::fabs(Width()), std::fabs(Height())); }
+        float MaxDimension() const { return std::max(std::fabs(Width()), std::fabs(Height())); }
+        // isInfinite: any edge at +infinity; isFinite: every edge finite (not infinite, not NaN).
+        bool IsInfinite() const { return left == INFINITY || top == INFINITY || right == INFINITY || bottom == INFINITY; }
+        bool IsFinite() const { return std::isfinite(left) && std::isfinite(top) && std::isfinite(right) && std::isfinite(bottom); }
         bool operator==(const Rect&) const = default;
     };
 
@@ -165,6 +212,9 @@ namespace kiln::ui {
     // To* truncates towards zero as Kotlin's toInt does, RoundTo* rounds as roundToInt.
     inline Offset ToOffset(IntOffset o) { return { float(o.x), float(o.y) }; }
     inline IntOffset RoundToIntOffset(Offset o) { return { RoundJava(o.x), RoundJava(o.y) }; }
+    inline Size Density::ToSize(DpSize s) const { return s.Specified() ? Size{ ToPx(s.width), ToPx(s.height) } : Size::Unspecified(); }
+    inline DpSize Density::ToDpSize(Size s) const { return s.Specified() ? DpSize{ ToDp(s.width), ToDp(s.height) } : DpSize::Unspecified(); }
+    inline Rect Density::ToRect(const DpRect& r) const { return { ToPx(r.left), ToPx(r.top), ToPx(r.right), ToPx(r.bottom) }; }
     inline Size ToSize(IntSize s) { return { float(s.width), float(s.height) }; }
     inline IntSize ToIntSize(Size s) { return { int(s.width), int(s.height) }; }
     inline IntSize RoundToIntSize(Size s) { return { RoundJava(s.width), RoundJava(s.height) }; }

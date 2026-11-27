@@ -111,5 +111,6 @@ namespace kiln::ui {
 
     float Density::SpToPx(float sp) const { return FontScaleSpToDp(fontScale, sp) * density; }
     float Density::PxToSp(float px) const { return FontScaleDpToSp(fontScale, px / density); }
+    float Density::DpToSp(Dp d) const { return FontScaleDpToSp(fontScale, d.value); }
 
 }

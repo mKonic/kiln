@@ -38,6 +38,11 @@ namespace kiln::gfx {
         static RoundRect Uniform(Rect r, float radius) {
             return { r, { radius, radius }, { radius, radius }, { radius, radius }, { radius, radius } };
         }
+        float Width() const { return rect.Width(); }
+        float Height() const { return rect.Height(); }
+        // RoundRect.contains: inside the bounds and, in a corner's box, inside its ellipse, with
+        // the radii scaled down together when adjacent ones overlap.
+        bool Contains(Offset p) const;
     };
 
     // 2D affine transform: x' = a*x + c*y + e, y' = b*x + d*y + f.
