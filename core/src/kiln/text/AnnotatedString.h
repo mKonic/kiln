@@ -165,6 +165,18 @@ namespace kiln::text {
         bool HasDrawAnnotations(int start, int end) const { return !GetDrawAnnotations(start, end).empty(); }
         std::vector<Range<Bullet>> Bullets() const;
         bool HasLinkAnnotations(int start, int end) const { return !GetLinkAnnotations(start, end).empty(); }
+        bool HasStringAnnotations(std::string_view tag, int start, int end) const { return !GetStringAnnotations(tag, start, end).empty(); }
+        // get(index): the UTF-16 code unit at `index`.
+        char16_t Get(int index) const;
+        bool HasEqualAnnotations(const AnnotatedString& o) const { return m_Annotations == o.m_Annotations; }
+        // The annotations other than draw annotations are equal (layout can be kept), or the
+        // draw annotations are (the drawing can be).
+        bool HasSameLayoutAffectingAnnotations(const AnnotatedString& o) const;
+        bool HasSameDrawAffectingAnnotations(const AnnotatedString& o) const;
+        // mapAnnotations / flatMapAnnotations: the same text with each annotation replaced by
+        // what `transform` returns.
+        AnnotatedString MapAnnotations(const kiln::Function<Range<Annotation>(const Range<Annotation>&)>& transform) const;
+        AnnotatedString FlatMapAnnotations(const kiln::Function<std::vector<Range<Annotation>>(const Range<Annotation>&)>& transform) const;
 
         // subSequence(start, end): annotations clipped and shifted.
         AnnotatedString SubSequence(int start, int end) const;

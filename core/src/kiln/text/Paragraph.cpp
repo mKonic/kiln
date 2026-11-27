@@ -216,7 +216,7 @@ namespace kiln::text {
         }
 
         // One font of a FontFamily's list as a request, with the weight and slant to synthesize.
-        TextFontRequest ResolveListFont(const Font& font, FontWeight weight, FontStyle style, FontSynthesis synthesis) {
+        TextFontRequest ResolveListFont(const Font& font, FontWeight weight, FontStyle style, FontSynthesis synthesis, const ui::Density& density) {
             TextFontRequest f;
             switch (font.source) {
                 case Font::Source::Downloadable:
@@ -247,13 +247,15 @@ namespace kiln::text {
             f.fakeBold = f.weight >= 600 && f.weight - font.weight.weight >= 200;
             f.fakeItalic = f.italic && font.style != FontStyle::Italic;
             // FontVariation.Settings(weight, style) is a font's default.
-            f.variationSettings = !font.variationSettings.empty()
+            f.variationSettings = font.variation ? font.variation->ToString(&density)
+                : !font.variationSettings.empty()
                 ? font.variationSettings
                 : "'wght' " + std::to_string(font.weight.weight) + ", 'ital' " + (font.style == FontStyle::Italic ? "1" : "0");
             return f;
         }
 
-        TextFontRequest ResolveFont(const SpanStyle& s, int weightAdjustment) {
+        TextFontRequest ResolveFont(const SpanStyle& s, const ui::Density& density) {
+            const int weightAdjustment = density.fontWeightAdjustment;
             TextFontRequest f;
             // AndroidFontResolveInterceptor: the bold-text setting shifts every weight.
             FontWeight weight = s.fontWeight.value_or(FontWeight::Normal());
@@ -279,7 +281,7 @@ namespace kiln::text {
                     // Each matched font in order (firstImmediatelyAvailable picks the first that
                     // is ready, by its loading strategy).
                     for (std::size_t i = 0; i < matched.size(); ++i) {
-                        TextFontRequest c = ResolveListFont(matched[i], weight, style, synthesis);
+                        TextFontRequest c = ResolveListFont(matched[i], weight, style, synthesis, density);
                         if (i == 0) f = std::move(c);
                         else f.fallbacks.push_back(std::move(c));
                     }
@@ -298,7 +300,7 @@ namespace kiln::text {
             else if (s.fontSize.IsSp()) r.sizePx = float(ui::RoundJava(d.SpToPx(s.fontSize.value)));
             else if (s.fontSize.IsEm()) r.sizePx = basePx * s.fontSize.value;
             else r.sizePx = basePx;
-            r.font = ResolveFont(s, d.fontWeightAdjustment);
+            r.font = ResolveFont(s, d);
             r.fontFeatureSettings = s.fontFeatureSettings.value_or("");
             if (s.letterSpacing.IsSp()) r.letterSpacingPx = d.SpToPx(s.letterSpacing.value);
             else if (s.letterSpacing.IsEm()) r.letterSpacingEm = s.letterSpacing.value;
@@ -721,5 +723,26 @@ namespace kiln::text {
                                 std::clamp(int(std::ceil(mp->Height())), c.minHeight, c.maxHeight) };
         return TextLayoutResult(std::move(input), std::move(mp), size);
     }
+
+    namespace {
+        // Layout.getSelectionPath: one rectangle per selection rect.
+        gfx::Path PathOfRects(const std::vector<RectF>& rects) {
+            gfx::Path p;
+            for (const RectF& r : rects) p.AddRect({ r.x, r.y, r.x + r.w, r.y + r.h }, gfx::Path::Direction::Clockwise);
+            return p;
+        }
+        template<typename P>
+        void FillBoxes(const P& paragraph, int start, int end, std::vector<float>& target) {
+            for (int i = start; i < end; ++i) {
+                const RectF r = paragraph.BoundingBox(i);
+                target.insert(target.end(), { r.x, r.y, r.x + r.w, r.y + r.h });
+            }
+        }
+    }
+
+    gfx::Path Paragraph::GetPathForRange(int start, int end) const { return PathOfRects(SelectionRects(start, end)); }
+    void Paragraph::FillBoundingBoxes(int start, int end, std::vector<float>& target) const { FillBoxes(*this, start, end, target); }
+    gfx::Path MultiParagraph::GetPathForRange(int start, int end) const { return PathOfRects(SelectionRects(start, end)); }
+    void MultiParagraph::FillBoundingBoxes(int start, int end, std::vector<float>& target) const { FillBoxes(*this, start, end, target); }
 
 }

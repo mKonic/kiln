@@ -108,6 +108,42 @@ namespace kiln::text {
     // FontLoadingStrategy.toString: "Blocking", "Optional", "Async".
     const char* ToString(FontLoadingStrategy s);
 
+    // FontVariation: a variable font's axis values. Settings(weight, style, ...) is the default
+    // a font is loaded with; a setting given again replaces the earlier one (merge).
+    namespace FontVariation {
+        struct Setting {
+            std::string axisName;   // four characters
+            float value = 0;
+            bool needsDensity = false;   // opticalSizing: sp, scaled by the font scale
+            // toVariationValue: the value, an sp size times the font scale.
+            float ToVariationValue(const ui::Density* density) const;
+            bool operator==(const Setting&) const = default;
+        };
+        // Setting(name, value), and the registered axes (each checks its range, as Compose).
+        Setting MakeSetting(std::string name, float value);
+        Setting Weight(int value);        // 'wght' 1..1000
+        Setting Italic(float value);      // 'ital' 0..1
+        Setting Slant(float value);       // 'slnt' -90..90
+        Setting Width(float value);       // 'wdth' > 0
+        Setting Grade(int value);         // 'GRAD' -1000..1000
+        Setting OpticalSizing(TextUnit textSize);   // 'opsz' in sp
+
+        struct Settings {
+            std::vector<Setting> settings;   // axes are unique
+            Settings() = default;
+            explicit Settings(std::vector<Setting> list);
+            bool NeedsDensity() const;
+            // merge: the other settings replace those of the same axes and add the rest.
+            Settings Merge(const Settings& other) const;
+            Settings Merge(const std::vector<Setting>& overrides) const;
+            // The font-variation-settings string ("'wght' 650, 'opsz' 18").
+            std::string ToString(const ui::Density* density) const;
+            bool operator==(const Settings&) const = default;
+        };
+        Settings MakeSettings(FontWeight weight, FontStyle style, std::vector<Setting> settings = {});
+        inline const Settings Empty{};
+    }
+
     // A font: a file (Font(asset/file, weight, style, variationSettings)), an installed font by
     // family name (Font(DeviceFontFamilyName)), or a downloadable font (path is the provider
     // query). A FontFamily of several fonts tries the matching ones in order (loadingStrategy).
@@ -122,6 +158,9 @@ namespace kiln::text {
         FontStyle style = FontStyle::Normal;
         // FontVariation.Settings: "'wght' 650, 'wdth' 90" style axes.
         std::string variationSettings;
+        // The typed form (Font(..., variationSettings = FontVariation.Settings(...))); used in
+        // place of the string when set, so optical sizing follows the font scale.
+        std::optional<FontVariation::Settings> variation;
         bool operator==(const Font&) const = default;
         // Font(GoogleFont(name, bestEffort), provider, weight, style).
         static Font Google(const std::string& name, FontWeight weight = FontWeight::Normal(), FontStyle style = FontStyle::Normal,
@@ -242,6 +281,14 @@ namespace kiln::text {
         // The fields that change layout (everything but colour, brush, background, decoration,
         // shadow and draw style).
         bool HasSameLayoutAffectingAttributes(const SpanStyle& o) const;
+        // hasSameNonLayoutAttributes: foreground (colour, brush, alpha), decoration, shadow and
+        // draw style are equal (the background is drawn by the text's own spans).
+        bool HasSameNonLayoutAttributes(const SpanStyle& o) const {
+            const bool alphaEqual = (std::isnan(alpha) && std::isnan(o.alpha)) || alpha == o.alpha;
+            return color == o.color && brush == o.brush && alphaEqual && textDecoration == o.textDecoration && shadow == o.shadow &&
+                   drawStyle == o.drawStyle;
+        }
+        SpanStyle operator+(const SpanStyle& other) const { return Merge(other); }
     };
 
     enum class TextAlign : std::uint8_t { Unspecified = 0, Left = 1, Right = 2, Center = 3, Justify = 4, Start = 5, End = 6 };
@@ -294,6 +341,7 @@ namespace kiln::text {
         bool IncludeFontPadding() const { return platformStyle ? platformStyle->includeFontPadding : false; }
 
         ParagraphStyle Merge(const ParagraphStyle& other) const;
+        ParagraphStyle operator+(const ParagraphStyle& other) const { return Merge(other); }
         bool operator==(const ParagraphStyle&) const = default;
     };
 
@@ -322,6 +370,13 @@ namespace kiln::text {
         bool HasSameLayoutAffectingAttributes(const TextStyle& o) const {
             return paragraph == o.paragraph && span.HasSameLayoutAffectingAttributes(o.span);
         }
+        // Only what is drawn differs from nothing: a redraw, not a layout, is enough when false.
+        bool HasSameDrawAffectingAttributes(const TextStyle& o) const { return span.HasSameNonLayoutAttributes(o.span); }
+        const SpanStyle& ToSpanStyle() const { return span; }
+        const ParagraphStyle& ToParagraphStyle() const { return paragraph; }
+        TextStyle operator+(const TextStyle& other) const { return Merge(other); }
+        TextStyle operator+(const SpanStyle& other) const { return Merge(other); }
+        TextStyle operator+(const ParagraphStyle& other) const { return Merge(other); }
 
         // Shorthands for the common fields.
         TextStyle& WithColor(ui::Color c) { span.color = c; return *this; }

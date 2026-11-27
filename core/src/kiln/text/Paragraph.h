@@ -9,6 +9,7 @@
 #include "kiln/TextBackend.h"
 #include <kiln/Function.h>
 #include "kiln/text/AnnotatedString.h"
+#include "kiln/graphics/Path.h"
 
 #include <functional>
 #include <memory>
@@ -90,6 +91,10 @@ namespace kiln::text {
         std::vector<RectF> SelectionRects(int start, int end) const;
         std::pair<int, int> WordBoundary(int offset) const;
         bool IsRtlCharAt(int offset) const;
+        // getPathForRange: the selection rectangles of [start, end) as one path.
+        gfx::Path GetPathForRange(int start, int end) const;
+        // fillBoundingBoxes: left, top, right, bottom of each character of [start, end).
+        void FillBoundingBoxes(int start, int end, std::vector<float>& target) const;
         // getRangeForRect: the first to the last segment the rect includes, {0, 0} for none.
         std::pair<int, int> RangeForRect(const ui::Rect& rect, TextGranularity granularity, const TextInclusionStrategy& inclusion) const;
 
@@ -158,6 +163,8 @@ namespace kiln::text {
         std::pair<int, int> RangeForRect(const ui::Rect& rect, TextGranularity granularity, const TextInclusionStrategy& inclusion) const;
         // One per placeholder given: where it is, or none (ellipsized, cut off, past maxLines).
         const std::vector<std::optional<RectF>>& PlaceholderRects() const { return m_PlaceholderRects; }
+        gfx::Path GetPathForRange(int start, int end) const;
+        void FillBoundingBoxes(int start, int end, std::vector<float>& target) const;
         // boundaryBoxComputeCache: the boxes of recent ranges (TextLayoutResult::BoundingBoxes),
         // packed left, top, right, bottom, so redraws skip the line and run queries.
         std::unordered_map<std::uint64_t, std::vector<float>>& BoundingBoxCache() const { return m_BoxCache; }
@@ -225,6 +232,7 @@ namespace kiln::text {
         ResolvedTextDirection ParagraphDirection(int offset) const { return m_Paragraphs->ParagraphDirection(offset); }
         ResolvedTextDirection BidiRunDirection(int offset) const { return m_Paragraphs->BidiRunDirection(offset); }
         const std::vector<std::optional<RectF>>& PlaceholderRects() const { return m_Paragraphs->PlaceholderRects(); }
+        gfx::Path GetPathForRange(int start, int end) const { return m_Paragraphs->GetPathForRange(start, end); }
 
         // getBoundingBoxesForRange: one box per line (per visual run on a line with mixed
         // directions) around [start, end), as tall as the line; trailing whitespace at a wrap and

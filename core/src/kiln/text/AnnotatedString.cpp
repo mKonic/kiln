@@ -201,4 +201,63 @@ namespace kiln::text {
         return AnnotatedString(m_Text, std::move(out));
     }
 
+    char16_t AnnotatedString::Get(int index) const {
+        // Walks the code points, counting UTF-16 units, to the one holding `index`.
+        const auto* t = reinterpret_cast<const unsigned char*>(m_Text.data());
+        int n = 0;
+        for (std::size_t i = 0; i < m_Text.size();) {
+            std::uint32_t cp = t[i];
+            const int extra = cp >= 0xF0 ? 3 : cp >= 0xE0 ? 2 : cp >= 0xC0 ? 1 : 0;
+            cp &= extra == 3 ? 0x07u : extra == 2 ? 0x0Fu : extra == 1 ? 0x1Fu : 0x7Fu;
+            for (int k = 1; k <= extra && i + std::size_t(k) < m_Text.size(); ++k) cp = (cp << 6) | (t[i + std::size_t(k)] & 0x3Fu);
+            const int units = cp >= 0x10000 ? 2 : 1;
+            if (index < n + units) {
+                if (units == 1) return char16_t(cp);
+                cp -= 0x10000;
+                return index == n ? char16_t(0xD800 + (cp >> 10)) : char16_t(0xDC00 + (cp & 0x3FF));
+            }
+            n += units;
+            i += std::size_t(extra + 1);
+        }
+        return 0;
+    }
+
+    namespace {
+        bool SameAnnotationsWhere(const std::vector<Range<Annotation>>& a, const std::vector<Range<Annotation>>& b, bool draw) {
+            auto skip = [draw](const Range<Annotation>& r) { return std::holds_alternative<DrawAnnotation>(r.item) != draw; };
+            std::size_t i = 0, j = 0;
+            for (;;) {
+                while (i < a.size() && skip(a[i])) ++i;
+                while (j < b.size() && skip(b[j])) ++j;
+                if (i >= a.size() || j >= b.size()) return i >= a.size() && j >= b.size();
+                if (!(a[i] == b[j])) return false;
+                ++i;
+                ++j;
+            }
+        }
+    }
+
+    bool AnnotatedString::HasSameLayoutAffectingAnnotations(const AnnotatedString& o) const {
+        return SameAnnotationsWhere(m_Annotations, o.m_Annotations, false);
+    }
+    bool AnnotatedString::HasSameDrawAffectingAnnotations(const AnnotatedString& o) const {
+        return SameAnnotationsWhere(m_Annotations, o.m_Annotations, true);
+    }
+
+    AnnotatedString AnnotatedString::MapAnnotations(const kiln::Function<Range<Annotation>(const Range<Annotation>&)>& transform) const {
+        std::vector<Range<Annotation>> out;
+        out.reserve(m_Annotations.size());
+        for (const auto& r : m_Annotations) out.push_back(transform(r));
+        return AnnotatedString(m_Text, std::move(out));
+    }
+
+    AnnotatedString AnnotatedString::FlatMapAnnotations(const kiln::Function<std::vector<Range<Annotation>>(const Range<Annotation>&)>& transform) const {
+        std::vector<Range<Annotation>> out;
+        for (const auto& r : m_Annotations) {
+            auto more = transform(r);
+            out.insert(out.end(), std::make_move_iterator(more.begin()), std::make_move_iterator(more.end()));
+        }
+        return AnnotatedString(m_Text, std::move(out));
+    }
+
 }

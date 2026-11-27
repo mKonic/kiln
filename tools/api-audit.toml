@@ -61,6 +61,17 @@ modules = [
 ]
 
 [renamed]
+# ui-text
+"Alignment.topRatio" = "alignment"   # LineHeightStyle::alignment (Top 0 .. Bottom 1, Proportional -1)
+"Trim.trimsFirstLineTop" = "TrimFirstLineTop"
+"Trim.trimsLastLineBottom" = "TrimLastLineBottom"
+"LocaleList.iterator" = "begin"
+"MultiParagraph.minIntrinsicWidth" = "MeasureIntrinsics"   # ParagraphIntrinsicWidths minWidth / maxWidth
+"MultiParagraph.maxIntrinsicWidth" = "MeasureIntrinsics"
+"Paragraph.minIntrinsicWidth" = "MeasureIntrinsics"
+"Paragraph.maxIntrinsicWidth" = "MeasureIntrinsics"
+"MultiParagraph.paint" = "DrawText"
+"Paragraph.paint" = "DrawText"
 # ui-graphics
 "ShadowContext.createDropShadowPainter" = "DropShadowPainter"
 "ShadowContext.createInnerShadowPainter" = "InnerShadowPainter"
@@ -666,6 +677,14 @@ ResourceFont = "Font"
 toFontFamily = "FontFamily Of"
 
 [skipped]
+"LinkInteractionListener.onClick" = "a LinkInteractionListener is a kiln::Function<void(const LinkAnnotation&)>, called"
+"TextInclusionStrategy.isIncluded" = "a TextInclusionStrategy is a kiln::Function<bool(textBounds, rect)>, called"
+"Locale.platformLocale" = "Android interop (java.util.Locale)"
+"MultiParagraphIntrinsics.hasStaleResolvedFonts" = "kiln lays text out again when an async font arrives (the backend invalidates the text's nodes)"
+"ParagraphIntrinsics.hasStaleResolvedFonts" = "see MultiParagraphIntrinsics.hasStaleResolvedFonts"
+"ResourceFont.resId" = "fonts are assets or files (Font::path); there are no font resources"
+"TextLayoutInput.defaultLocaleList" = "the backend uses the style's localeList, else the system's"
+"TextLayoutInput.fontFamilyResolver" = "the TextBackend resolves fonts"
 "ColorProducer.invoke" = "a ColorProducer is a kiln::Function<Color()> (BasicText's color, Surface's backgroundColor), called"
 "BlurRadiusSpec.createRenderEffect" = "kiln's renderer draws the progressive blur itself (GraphicsLayerParams::progressiveBlur); there is no platform RenderEffect to make"
 "Canvas.enableZ" = "reorder barriers for RenderNode z ordering: kiln draws each layer's elevation shadow with the layer, in draw order"
@@ -1112,6 +1131,7 @@ CustomTabsSessionToken = "the browser's view of a session (CustomTabsService); a
 "CustomTabsIntent.isSendToExternalDefaultHandlerEnabled" = "see getActivityResizeBehavior"
 
 [skipped_patterns]
+'^FontListFontFamily\.' = "FontFamily::fonts is a std::vector<Font>: its list operations are the vector's"
 '^(ArcTo|RelativeArcTo)\.arcStart(X|Y|Dx|Dy)$' = "PathNode's arguments are PathNode::v (arcs: rx, ry, theta, large arc, sweep, then the end point)"
 '^Composer\.' = "the Compose compiler plugin's calls (groups, nodes, defaults, source information): kiln's Composition API is written by hand (Remember, Section, Child, Node, Movable, Provide)"
 '^(StateObject|SnapshotStateList|SnapshotStateMap|SnapshotStateSet)\.(firstStateRecord|prependStateRecord|mergeRecords)$' = "MVCC state records: kiln's state is single-threaded and writes land at once (runtime/State.h)"

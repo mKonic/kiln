@@ -32,6 +32,8 @@ namespace kiln::foundation {
         bool Reversed() const { return start > end; }
         int Length() const { return Max() - Min(); }
         bool Contains(const TextRange& o) const { return Min() <= o.Min() && o.Max() <= Max(); }
+        bool Contains(int offset) const { return Min() <= offset && offset < Max(); }
+        bool Intersects(const TextRange& o) const { return Min() < o.Max() && o.Min() < Max(); }
         TextRange CoerceIn(int lo, int hi) const;
         bool operator==(const TextRange&) const = default;
     };
