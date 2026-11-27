@@ -374,6 +374,20 @@ namespace kiln::rt {
             g.scope->m_Provided[&local] = std::move(cell);
             RunChild(*g.scope, std::move(content), nullptr);
         }
+        // providesDefault: `value` only where no outer Provide gave the local one (an outer
+        // value is passed on unchanged).
+        template<typename T>
+        void ProvideDefault(const Local<T>& local, T value, kiln::Function<void()> content, Key key = {}) {
+            const T* outer = ReadIfProvided(local);
+            Provide(local, outer ? *outer : std::move(value), std::move(content), key);
+        }
+        // providesComputed: the value computed from other locals. Compose computes it where it
+        // is read; kiln computes it here, with the locals in effect at this Provide.
+        template<typename T>
+        void ProvideComputed(const Local<T>& local, const kiln::Function<T(const LocalAccessorScope&)>& compute,
+                             kiln::Function<void()> content, Key key = {});
+        // Composition.hasInvalidations: a scope waits to be recomposed.
+        bool HasInvalidations() const { return !m_Pending.empty(); }
 
     private:
         template<typename T>
@@ -446,6 +460,12 @@ namespace kiln::rt {
     };
 
     template<typename T>
+    void Composition::ProvideComputed(const Local<T>& local, const kiln::Function<T(const LocalAccessorScope&)>& compute,
+                                      kiln::Function<void()> content, Key key) {
+        Provide(local, compute(LocalAccessorScope{ m_Current }), std::move(content), key);
+    }
+
+    template<typename T>
     const T& Composition::ComputedDefault(Scope* scope, const Local<T>& local) {
         static thread_local std::unordered_map<const void*, std::shared_ptr<void>> outside;   // read outside any scope
         T value = local.ComputeDefault(LocalAccessorScope{ scope });
@@ -462,6 +482,15 @@ namespace kiln::rt {
         State<T>& state;
         void Set(T v) const { state.Set(std::move(v)); }
         const T& Get() const { return state.Peek(); }
+        // awaitDispose: suspends until the producer is cancelled (keys changed, the call left),
+        // then runs onDispose, to release what the producer registered.
+        Task<> AwaitDispose(kiln::Function<void()> onDispose) const {
+            struct Guard {
+                kiln::Function<void()> fn;
+                ~Guard() { if (fn) fn(); }
+            } guard{ std::move(onDispose) };
+            co_await AwaitCancellation{};
+        }
     };
     template<typename T>
     State<T>& ProduceState(T initial, Keys keys, kiln::Function<Task<>(ProduceStateScope<T>)> producer, Key key = {}) {

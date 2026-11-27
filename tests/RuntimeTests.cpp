@@ -671,3 +671,74 @@ TEST(AGatedCompositionsEffectsWaitForTheGate) {
     c.SetContent([] {});
     c.Recompose();
 }
+
+// ProduceStateTest.awaitDispose, CompositionLocalTests' providesDefault / providesComputed,
+// CompositionTests' hasInvalidations, and the state collections' bulk operations.
+TEST(ProduceStateAwaitDisposeRunsWhenTheCallLeaves) {
+    Dispatcher& d = Dispatcher::Main();
+    Node root("root");
+    Composition c(root);
+    State<bool> show(true);
+    int disposed = 0;
+    c.SetContent([&] {
+        if (show.Get()) c.Child([&] {
+            ProduceState<int>(0, Keys(), [&disposed](ProduceStateScope<int> p) -> Task<> {
+                p.Set(1);
+                co_await p.AwaitDispose([&disposed] { ++disposed; });
+            });
+        });
+    });
+    c.Recompose();
+    d.RunPending();
+    CHECK_EQ(disposed, 0);
+    show.Set(false);
+    Observation::ApplyChanges();   // as Compose: invalidations arrive with the applied change
+    CHECK(c.HasInvalidations());
+    c.Recompose();
+    d.RunPending();
+    CHECK(!c.HasInvalidations());
+    CHECK_EQ(disposed, 1);
+}
+
+TEST(ProvidesDefaultAndComputed) {
+    Node root("root");
+    Composition c(root);
+    static const Local<int> size(1);
+    static const Local<int> doubled(0);
+    int inner = 0, outerDefault = 0, computed = 0;
+    c.SetContent([&] {
+        c.ProvideDefault(size, 5, [&] { c.Child([&] { outerDefault = c.Read(size); }); });
+        c.Provide(size, 3, [&] {
+            c.ProvideDefault(size, 5, [&] { c.Child([&] { inner = c.Read(size); }); });   // keeps 3
+            c.ProvideComputed<int>(doubled, [](const LocalAccessorScope& s) { return s.CurrentValue(size) * 2; },
+                                   [&] { c.Child([&] { computed = c.Read(doubled); }); });
+        });
+    });
+    c.Recompose();
+    CHECK_EQ(outerDefault, 5);
+    CHECK_EQ(inner, 3);
+    CHECK_EQ(computed, 6);
+}
+
+TEST(StateCollectionsBulkOperationsAreOneChange) {
+    StateList<int> l;
+    for (int i = 0; i < 6; ++i) l.Add(i);
+    const auto v0 = l.Version();
+    l.RemoveRange(1, 4);
+    CHECK_EQ(l.Version(), v0 + 1);
+    CHECK(l.Get() == (std::vector<int>{ 0, 4, 5 }));
+    StateMap<std::string, int> m;
+    const auto m0 = m.Version();
+    m.PutAll(std::map<std::string, int>{ { "a", 1 }, { "b", 2 } });
+    CHECK_EQ(m.Version(), m0 + 1);
+    CHECK(m.ContainsValue(2) && !m.ContainsValue(3) && m.Keys().size() == 2);
+    StateSet<int> s;
+    CHECK(s.AddAll(std::vector<int>{ 1, 2, 3, 4 }));
+    const auto s0 = s.Version();
+    CHECK(!s.AddAll(std::vector<int>{ 1, 2 }));
+    CHECK_EQ(s.Version(), s0);
+    CHECK(s.ContainsAll(std::vector<int>{ 1, 4 }) && !s.ContainsAll(std::vector<int>{ 1, 9 }));
+    CHECK(s.RetainAll(std::vector<int>{ 1, 2, 3 }));
+    CHECK(s.RemoveAll(std::vector<int>{ 3, 9 }));
+    CHECK(s.Get() == (std::unordered_set<int>{ 1, 2 }));
+}

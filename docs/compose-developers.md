@@ -84,3 +84,17 @@ Column(Modifier{}, [&name] {
   not. Use `Peek()` in callbacks such as click handlers.
 * Coroutines are C++20 coroutines (`kiln::rt::Task<>`) on the main thread. Cancelling a
   task destroys its frame, so destructors run as `finally` blocks would.
+* State is single-threaded and has no snapshots. A write takes effect at once, and readers
+  recompose at the next frame. There is no `Snapshot.withMutableSnapshot`.
+* Code drawn through Compose's `Canvas` and `Paint` ports through `ui::DrawIntoCanvas`, which
+  wraps the `DrawScope`. Compose's 4×4 `Matrix` is `gfx::Matrix4`; the canvas draws its 2D part.
+
+```cpp
+auto drawn = kiln::foundation::DrawBehind(kiln::ui::Modifier{}, [](kiln::ui::DrawScope& scope) {
+    kiln::ui::DrawIntoCanvas(scope, [](kiln::ui::Canvas& canvas) {
+        kiln::gfx::Paint paint{ .color = kiln::ui::Color(0xFF6750A4u), .strokeWidth = 4,
+                                .style = kiln::gfx::PaintingStyle::Stroke };
+        canvas.DrawCircle({ 50, 50 }, 40, paint);
+    });
+});
+```

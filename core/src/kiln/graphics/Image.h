@@ -30,6 +30,7 @@ namespace kiln::gfx {
         PixelMap(std::vector<ui::Color> buffer, int width, int height, int bufferOffset = 0, int stride = -1)
             : m_Buffer(std::move(buffer)), m_Width(width), m_Height(height), m_Offset(bufferOffset), m_Stride(stride < 0 ? width : stride) {}
         ui::Color operator()(int x, int y) const { return m_Buffer[std::size_t(m_Offset + y * m_Stride + x)]; }
+        ui::Color Get(int x, int y) const { return (*this)(x, y); }
         int Width() const { return m_Width; }
         int Height() const { return m_Height; }
         const std::vector<ui::Color>& Buffer() const { return m_Buffer; }

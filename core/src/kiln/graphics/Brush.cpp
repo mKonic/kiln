@@ -1,4 +1,5 @@
 #include "kiln/graphics/Brush.h"
+#include "kiln/graphics/Paint.h"
 
 #include "kiln/ui/ColorSpace.h"
 
@@ -103,6 +104,46 @@ namespace kiln::gfx {
         if (LerpFrom(a, other, t, out)) return out;
         if (LerpFrom(other, a, 1 - t, out)) return out;
         return t < 0.5f ? a : other;
+    }
+
+    Size Brush::IntrinsicSize() const {
+        switch (kind) {
+            case Kind::Linear:
+                return { std::isfinite(start.x) && std::isfinite(end.x) ? std::fabs(start.x - end.x) : NAN,
+                         std::isfinite(start.y) && std::isfinite(end.y) ? std::fabs(start.y - end.y) : NAN };
+            case Kind::Radial:
+                return std::isfinite(radius) ? Size{ radius * 2, radius * 2 } : Size::Unspecified();
+            default:
+                return Size::Unspecified();
+        }
+    }
+
+    void Brush::ApplyTo(Size size, Paint& paint, float alpha) const {
+        if (kind == Kind::Solid) {
+            paint.alpha = 1;
+            const ui::Color c = colors.empty() ? ui::Color::Black() : colors[0];
+            paint.color = alpha != 1 ? c.WithAlpha(c.Alpha() * alpha) : c;
+            paint.shader.reset();
+            return;
+        }
+        // ShaderBrush.applyTo: no shader for an empty size.
+        if (size.width <= 0 || size.height <= 0) {
+            paint.shader.reset();
+        } else if (kind == Kind::Shader) {
+            paint.shader = (*shader)(size);
+        } else {
+            Brush b = *this;
+            auto resolve = [&](Offset& p) {
+                if (p.x == kInf) p.x = size.width;
+                if (p.y == kInf) p.y = size.height;
+            };
+            if (kind == Kind::Linear) { resolve(b.start); resolve(b.end); }
+            if ((kind == Kind::Radial || kind == Kind::Sweep) && !b.center) b.center = Offset{ size.width / 2, size.height / 2 };
+            if (kind == Kind::Radial && b.radius == kInf) b.radius = std::min(size.width, size.height) / 2;
+            paint.shader = std::move(b);
+        }
+        paint.color = ui::Color::Black();
+        paint.alpha = alpha;
     }
 
 }

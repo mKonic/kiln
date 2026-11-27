@@ -56,9 +56,25 @@ def counterpart_ids(headers, name, cache):
         return cache[low]
     pattern = re.compile(r"\b(?:class|struct|enum\s+class|enum|using)\s+(?:KILN_API\s+)?" + re.escape(name) + r"\b", re.I)
     ids = None
+    cache[low] = None   # a base naming the class again stops here
+    bases = set()
+    base_pattern = re.compile(r"\b(?:class|struct)\s+(?:KILN_API\s+)?" + re.escape(name) + r"\b\s*(?:final\s*)?:([^{;]*)\{", re.I)
     for text, words in headers.values():
         if pattern.search(text):
             ids = (ids or set()) | words
+            for m in base_pattern.finditer(text):
+                for b in m.group(1).split(","):
+                    b = re.sub(r"\b(public|private|protected|virtual)\b", "", b).split("<")[0].strip().split("::")[-1]
+                    if b and b.lower() != low:
+                        bases.add(b)
+    # A class's members include its bases' (GraphicsLayer : GraphicsLayerParams).
+    if ids is not None:
+        for b in bases:
+            if b.startswith("enable_shared_from_this"):
+                continue
+            more = counterpart_ids(headers, b, cache)
+            if more:
+                ids |= more
     cache[low] = ids
     return ids
 
@@ -108,7 +124,8 @@ def member_known(member, ids):
 
 # Kotlin operator functions and the C++ operator each is.
 OPERATORS = {"plus": "+", "minus": "-", "times": "*", "div": "/", "rem": "%", "unaryMinus": "-",
-             "unaryPlus": "+", "not": "!", "inc": "++", "dec": "--", "compareTo": "<=>", "get": "[]"}
+             "unaryPlus": "+", "not": "!", "inc": "++", "dec": "--", "compareTo": "<=>", "get": "[]",
+             "timesAssign": "*=", "plusAssign": "+=", "minusAssign": "-=", "divAssign": "/=", "remAssign": "%="}
 
 
 def struct_bodies(text, name):

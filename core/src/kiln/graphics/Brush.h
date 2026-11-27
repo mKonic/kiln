@@ -24,6 +24,8 @@ namespace kiln::gfx {
 
     enum class TileMode : std::uint8_t { Clamp, Repeated, Mirror, Decal };
 
+    struct Paint;
+
     struct Brush {
         // Image: the image repeated from the origin by its tile modes (ImageShader); Composite:
         // two brushes blended (CompositeShader, src over dst by `blend`); Shader: a brush made for
@@ -46,6 +48,13 @@ namespace kiln::gfx {
 
         // Whether drawing it needs layers (image, composite and shader brushes) rather than a
         // single shaded quad.
+        // intrinsicSize: a linear gradient's extent between finite points, a radial one's
+        // diameter for a finite radius; Unspecified otherwise.
+        Size IntrinsicSize() const;
+        // applyTo(size, paint, alpha): a solid colour sets the paint's colour (times alpha) and
+        // clears its shader; a gradient or shader brush becomes the paint's shader, made for
+        // `size` (infinite points and an unset centre resolved against it), with `alpha`.
+        void ApplyTo(Size size, Paint& paint, float alpha) const;
         bool IsLayered() const { return kind == Kind::Image || kind == Kind::Composite || kind == Kind::Shader; }
         static Brush ImageShader(ImageBitmap image, TileMode tileModeX = TileMode::Clamp, TileMode tileModeY = TileMode::Clamp) {
             Brush b; b.kind = Kind::Image; b.image = std::move(image); b.tile = tileModeX; b.tileY = tileModeY; return b;

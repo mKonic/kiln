@@ -650,4 +650,46 @@ namespace kiln::gfx {
         return nx * nx + ny * ny <= 1;
     }
 
+    bool Path::IsConvex() const {
+        // More than one contour is not convex (a Move after drawing starts another).
+        int moves = 0;
+        for (Verb v : m_Verbs) {
+            if (v == Verb::Move) ++moves;
+        }
+        if (moves > 1) return false;
+        // The distinct points round the closed contour.
+        std::vector<Offset> pts;
+        for (const Offset& p : m_Points) {
+            if (pts.empty() || pts.back() != p) pts.push_back(p);
+        }
+        while (pts.size() > 1 && pts.front() == pts.back()) pts.pop_back();
+        if (pts.size() < 3) return true;
+        const std::size_t n = pts.size();
+        int turn = 0, dxChanges = 0, dyChanges = 0, lastDx = 0, lastDy = 0, firstDx = 0, firstDy = 0;
+        auto sign = [](float v) { return v > 0 ? 1 : v < 0 ? -1 : 0; };
+        for (std::size_t i = 0; i < n; ++i) {
+            const Offset a = pts[i], b = pts[(i + 1) % n], c = pts[(i + 2) % n];
+            const float cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+            if (const int s = sign(cross)) {
+                if (turn && s != turn) return false;
+                turn = s;
+            }
+            // A convex outline reverses its x and y directions twice each.
+            const int dx = sign(b.x - a.x), dy = sign(b.y - a.y);
+            if (dx) {
+                if (lastDx && dx != lastDx) ++dxChanges;
+                if (!firstDx) firstDx = dx;
+                lastDx = dx;
+            }
+            if (dy) {
+                if (lastDy && dy != lastDy) ++dyChanges;
+                if (!firstDy) firstDy = dy;
+                lastDy = dy;
+            }
+        }
+        if (lastDx && firstDx && lastDx != firstDx) ++dxChanges;
+        if (lastDy && firstDy && lastDy != firstDy) ++dyChanges;
+        return dxChanges <= 2 && dyChanges <= 2;
+    }
+
 }

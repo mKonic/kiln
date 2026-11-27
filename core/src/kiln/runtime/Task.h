@@ -271,6 +271,14 @@ namespace kiln::rt {
         void await_resume() const noexcept {}
     };
 
+    // co_await AwaitCancellation{}: never resumes; the job's cancellation destroys the frames,
+    // so destructors of the waiting task's locals are its `finally`.
+    struct AwaitCancellation {
+        bool await_ready() const noexcept { return false; }
+        void await_suspend(std::coroutine_handle<>) const noexcept {}
+        void await_resume() const noexcept {}
+    };
+
     // co_await Yield(): resume after the work already queued.
     struct Yield {
         bool await_ready() const noexcept { return false; }

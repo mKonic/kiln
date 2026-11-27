@@ -86,10 +86,16 @@ namespace kiln::gfx {
         // arcTo: the arc of `oval` from startAngle sweeping sweepAngle (degrees, clockwise in a
         // y-down space). Without forceMoveTo a line joins the current point to the arc start.
         void ArcTo(Rect oval, float startAngleDegrees, float sweepAngleDegrees, bool forceMoveTo);
+        void ArcToRad(Rect oval, float startAngleRadians, float sweepAngleRadians, bool forceMoveTo) {
+            ArcTo(oval, startAngleRadians * 57.29577951308232f, sweepAngleRadians * 57.29577951308232f, forceMoveTo);
+        }
         void AddRect(Rect r, Direction dir = Direction::CounterClockwise);
         void AddOval(Rect oval, Direction dir = Direction::CounterClockwise);
         void AddRoundRect(const RoundRect& rr, Direction dir = Direction::CounterClockwise);
         void AddArc(Rect oval, float startAngleDegrees, float sweepAngleDegrees);
+        void AddArcRad(Rect oval, float startAngleRadians, float sweepAngleRadians) {
+            AddArc(oval, startAngleRadians * 57.29577951308232f, sweepAngleRadians * 57.29577951308232f);
+        }
         void AddPath(const Path& other, Offset offset = {});
         // Path.op: this path becomes `a` combined with `b` (each by its own fill type). The
         // result is polygonal (flattened within `tolerance`, Clipper2) and EvenOdd, like Skia's
@@ -104,6 +110,12 @@ namespace kiln::gfx {
         void Transform(const Matrix& m) { for (Offset& p : m_Points) p = m.Map(p); }
 
         bool IsEmpty() const { return m_Verbs.empty(); }
+        // isConvex (SkPath's convexity): one contour whose points, control points included,
+        // turn one way only and go round once. Empty paths and single points count as convex.
+        bool IsConvex() const;
+        // Path + / -: the union and difference of two paths (Path.op).
+        friend Path operator+(const Path& a, const Path& b) { return Combine(PathOperation::Union, a, b); }
+        friend Path operator-(const Path& a, const Path& b) { return Combine(PathOperation::Difference, a, b); }
         Rect Bounds() const;   // of all points, control points included (like getBounds' conservative form)
         const std::vector<Verb>& Verbs() const { return m_Verbs; }
         const std::vector<Offset>& Points() const { return m_Points; }

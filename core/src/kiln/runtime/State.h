@@ -168,6 +168,12 @@ namespace kiln::rt {
         void Add(T item) { m_Items.push_back(std::move(item)); RecordWrite(); }
         void Insert(std::size_t at, T item) { m_Items.insert(m_Items.begin() + std::ptrdiff_t(at), std::move(item)); RecordWrite(); }
         void RemoveAt(std::size_t i) { m_Items.erase(m_Items.begin() + std::ptrdiff_t(i)); RecordWrite(); }
+        // removeRange: [from, to), one change.
+        void RemoveRange(std::size_t from, std::size_t to) {
+            if (from >= to) return;
+            m_Items.erase(m_Items.begin() + std::ptrdiff_t(from), m_Items.begin() + std::ptrdiff_t(to));
+            RecordWrite();
+        }
         void Clear() { if (!m_Items.empty()) { m_Items.clear(); RecordWrite(); } }
         template<typename Fn> void Update(Fn&& fn) { fn(m_Items); RecordWrite(); }
 
@@ -186,6 +192,24 @@ namespace kiln::rt {
         bool Contains(const K& k) const { RecordRead(); return m_Items.contains(k); }
         const V* Find(const K& k) const { RecordRead(); auto it = m_Items.find(k); return it == m_Items.end() ? nullptr : &it->second; }
         void Put(K k, V v) { m_Items.insert_or_assign(std::move(k), std::move(v)); RecordWrite(); }
+        // putAll: one change for all the entries.
+        template<typename Range> void PutAll(const Range& entries) {
+            bool any = false;
+            for (const auto& [k, v] : entries) { m_Items.insert_or_assign(k, v); any = true; }
+            if (any) RecordWrite();
+        }
+        bool ContainsValue(const V& v) const {
+            RecordRead();
+            for (const auto& [k, value] : m_Items) if (value == v) return true;
+            return false;
+        }
+        std::vector<K> Keys() const {
+            RecordRead();
+            std::vector<K> out;
+            out.reserve(m_Items.size());
+            for (const auto& [k, v] : m_Items) out.push_back(k);
+            return out;
+        }
         bool Remove(const K& k) { if (!m_Items.erase(k)) return false; RecordWrite(); return true; }
         void Clear() { if (!m_Items.empty()) { m_Items.clear(); RecordWrite(); } }
         template<typename Fn> void Update(Fn&& fn) { fn(m_Items); RecordWrite(); }
@@ -207,6 +231,32 @@ namespace kiln::rt {
         bool Remove(const T& v) { if (!m_Items.erase(v)) return false; RecordWrite(); return true; }
         void Clear() { if (!m_Items.empty()) { m_Items.clear(); RecordWrite(); } }
         template<typename Fn> void Update(Fn&& fn) { fn(m_Items); RecordWrite(); }
+        // addAll / removeAll / retainAll: one change when the set changed; containsAll.
+        template<typename Range> bool AddAll(const Range& r) {
+            bool changed = false;
+            for (const auto& v : r) changed |= m_Items.insert(v).second;
+            if (changed) RecordWrite();
+            return changed;
+        }
+        template<typename Range> bool RemoveAll(const Range& r) {
+            bool changed = false;
+            for (const auto& v : r) changed |= m_Items.erase(v) > 0;
+            if (changed) RecordWrite();
+            return changed;
+        }
+        template<typename Range> bool RetainAll(const Range& r) {
+            const std::unordered_set<T, Hash> keep(std::begin(r), std::end(r));
+            const std::size_t before = m_Items.size();
+            std::erase_if(m_Items, [&](const T& v) { return !keep.contains(v); });
+            if (m_Items.size() == before) return false;
+            RecordWrite();
+            return true;
+        }
+        template<typename Range> bool ContainsAll(const Range& r) const {
+            RecordRead();
+            for (const auto& v : r) if (!m_Items.contains(v)) return false;
+            return true;
+        }
 
     private:
         std::unordered_set<T, Hash> m_Items;
