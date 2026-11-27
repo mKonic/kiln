@@ -263,7 +263,8 @@ def main():
                         stale.append(f"{short}.{member} -> {renamed[key]}")
                     continue
                 if member in OPERATORS and cids is not ids:
-                    if operator_known(kiln_name, member, headers):
+                    # get and compareTo are often named methods in kiln (Get, CompareTo).
+                    if operator_known(kiln_name, member, headers) or (member in ("get", "compareTo") and member_known(member, cids)):
                         continue
                 elif member_known(member, cids):
                     continue
